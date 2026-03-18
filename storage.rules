@@ -1,0 +1,74 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return signedIn()
+          ? firestore.get(
+              /databases/(default)/documents/users/$(request.auth.uid)
+            )
+          : null;
+    }
+
+    function role() {
+      return signedIn() ? userDoc().data.role : '';
+    }
+
+    function isStaff() {
+      return role() in ['super_admin', 'superAdmin', 'admin', 'employee'];
+    }
+
+    match /admin_videos/{allPaths=**} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+
+    match /news/{allPaths=**} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+
+    match /contest_videos/{allPaths=**} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+
+    match /contest_logos/{allPaths=**} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+
+    match /participant_videos/{allPaths=**} {
+      allow read: if true;
+      allow write: if signedIn();
+    }
+
+    match /videos/{allPaths=**} {
+      allow read: if true;
+      allow write: if signedIn();
+    }
+
+    match /sponsorship/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if signedIn();
+    }
+
+    match /sponsorship_applications/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if signedIn();
+    }
+
+    match /invoices/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if signedIn();
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if isStaff();
+    }
+  }
+}

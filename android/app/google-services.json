@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "127201745203",
+    "project_id": "video-contest-show-b788b",
+    "storage_bucket": "video-contest-show-b788b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:127201745203:android:19590664e164ba6267c646",
+        "android_client_info": {
+          "package_name": "com.videocontestshow.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDFTTxsc6TvH67KLciq9midkLOTwFw7QwE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

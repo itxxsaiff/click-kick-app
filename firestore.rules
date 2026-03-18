@@ -1,0 +1,129 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return signedIn()
+          ? get(/databases/$(database)/documents/users/$(request.auth.uid))
+          : null;
+    }
+
+    function role() {
+      return signedIn() ? userDoc().data.role : '';
+    }
+
+    function isStaff() {
+      return role() in ['super_admin', 'superAdmin', 'admin', 'employee'];
+    }
+
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function isSponsorForContest(contestId) {
+      return signedIn() &&
+        get(/databases/$(database)/documents/contests/$(contestId)).data.sponsorId == request.auth.uid;
+    }
+
+    match /users/{userId} {
+      allow create: if isOwner(userId) || isStaff();
+      allow read: if signedIn();
+      allow update: if isOwner(userId) || isStaff();
+      allow delete: if isStaff();
+    }
+
+    match /contests/{contestId} {
+      allow read: if true;
+      allow create, delete: if isStaff();
+      allow update: if isStaff() || isSponsorForContest(contestId);
+
+      match /submissions/{submissionId} {
+        allow read: if resource.data.status == 'approved' || resource.data.status == 'winner'
+          || isOwner(resource.data.userId) || isStaff() || isSponsorForContest(contestId);
+        allow create: if signedIn();
+        allow update: if isOwner(resource.data.userId)
+          || isStaff()
+          || (
+            signedIn()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['shareCount', 'lastSharedAt'])
+            && request.resource.data.shareCount == resource.data.shareCount + 1
+          );
+        allow delete: if isOwner(resource.data.userId) || isStaff();
+
+        match /sponsor_comments/{commentId} {
+          allow read: if isStaff() || isSponsorForContest(contestId) || isOwner(get(/databases/$(database)/documents/contests/$(contestId)/submissions/$(submissionId)).data.userId);
+          allow create: if isStaff() || isSponsorForContest(contestId);
+          allow update, delete: if isStaff();
+        }
+      }
+
+      match /votes/{voteId} {
+        allow read: if isStaff()
+          || isSponsorForContest(contestId)
+          || (signedIn() && request.auth.uid == voteId);
+        allow create: if signedIn() && request.auth.uid == voteId;
+        allow update, delete: if isStaff();
+      }
+
+      match /review_messages/{messageId} {
+        allow read: if isStaff() || isSponsorForContest(contestId);
+        allow create: if isStaff() || isSponsorForContest(contestId);
+        allow update, delete: if isStaff();
+      }
+    }
+
+    match /news/{newsId} {
+      allow read: if true;
+      allow create, update, delete: if isStaff();
+    }
+
+    match /admin_videos/{videoId} {
+      allow read: if true;
+      allow create, update, delete: if isStaff();
+    }
+
+    match /sponsorshipApplications/{applicationId} {
+      allow create: if signedIn();
+      allow read: if isStaff() || isOwner(resource.data.sponsorId);
+      allow update: if isStaff() || isOwner(resource.data.sponsorId);
+      allow delete: if isStaff();
+    }
+
+    match /sponsorship_applications/{applicationId} {
+      allow create: if signedIn();
+      allow read: if isStaff() || isOwner(resource.data.sponsorId);
+      allow update: if isStaff() || isOwner(resource.data.sponsorId);
+      allow delete: if isStaff();
+    }
+
+    match /payments/{paymentId} {
+      allow create: if signedIn();
+      allow read: if isStaff() || isOwner(resource.data.userId) || isOwner(resource.data.sponsorId);
+      allow update: if isStaff();
+      allow delete: if isStaff();
+    }
+
+    match /invoices/{invoiceId} {
+      allow create: if signedIn();
+      allow read: if isStaff() || isOwner(resource.data.userId) || isOwner(resource.data.sponsorId);
+      allow update, delete: if isStaff();
+    }
+
+    match /auditLogs/{logId} {
+      allow read, write: if isStaff();
+    }
+
+    match /audit_logs/{logId} {
+      allow create: if signedIn();
+      allow read, update, delete: if isStaff();
+    }
+
+    match /{document=**} {
+      allow read, write: if isStaff();
+    }
+  }
+}

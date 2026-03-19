@@ -6,6 +6,7 @@ import 'package:video_player/video_player.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/gradient_button.dart';
+import '../../widgets/report_video_dialog.dart';
 import 'video_upload_screen.dart';
 
 class ContestDetailScreen extends StatelessWidget {
@@ -846,6 +847,27 @@ class _VotingGrid extends StatelessWidget {
                           },
                           icon: const Icon(
                             Icons.share_rounded,
+                            color: AppColors.hotPink,
+                            size: 20,
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: context.tr('Report Video'),
+                          onPressed: () => showReportVideoDialog(
+                            context: context,
+                            videoType: 'participant_video',
+                            contestId: contestId,
+                            submissionId: doc.id,
+                            targetUserId: ownerUserId,
+                            contestTitle: contestTitle,
+                            participantName:
+                                (data['userName'] ??
+                                        data['participantName'] ??
+                                        '')
+                                    .toString(),
+                          ),
+                          icon: const Icon(
+                            Icons.flag_outlined,
                             color: AppColors.hotPink,
                             size: 20,
                           ),

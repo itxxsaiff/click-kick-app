@@ -3,7 +3,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
 import 'firebase_options.dart';
+import 'config/stripe_config.dart';
 import 'l10n/app_locale_controller.dart';
 import 'l10n/app_strings.dart';
 import 'l10n/l10n.dart';
@@ -19,6 +21,11 @@ Future<void> main() async {
   final localeController = AppLocaleController();
   await localeController.load();
   await AppStrings.load();
+
+  if (!kIsWeb) {
+    Stripe.publishableKey = StripeConfig.publishableKey;
+    await Stripe.instance.applySettings();
+  }
 
   if (!kIsWeb) {
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);

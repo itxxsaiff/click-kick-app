@@ -10,12 +10,13 @@ import 'package:video_player/video_player.dart';
 import '../../l10n/l10n.dart';
 import '../../services/contest_report_service.dart';
 import '../../services/auth_service.dart';
-import '../../services/payment_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/pdf_preview_screen.dart';
 import '../../widgets/news_slider.dart';
 import '../../widgets/gradient_button.dart';
+import '../payments/sponsorship_payment_screen.dart';
 import '../shared/contest_video_review_screen.dart';
+import '../shared/legal_center_screen.dart';
 
 class SponsorHome extends StatefulWidget {
   const SponsorHome({super.key, required this.displayName});
@@ -1494,7 +1495,6 @@ class _SponsorAdsTab extends StatefulWidget {
 }
 
 class _SponsorAdsTabState extends State<_SponsorAdsTab> {
-  final _paymentService = PaymentService();
 
   Future<void> _openCreateCampaign({
     String? applicationId,
@@ -1871,28 +1871,38 @@ class _SponsorAdsTabState extends State<_SponsorAdsTab> {
                               Expanded(
                                 child: FilledButton.icon(
                                   icon: const Icon(Icons.payments, size: 16),
-                                  label: Text(context.tr('Pay Now (Test)')),
+                                  label: Text(context.tr('Pay Now')),
                                   style: FilledButton.styleFrom(
                                     backgroundColor: AppColors.hotPink,
                                     foregroundColor: Colors.white,
                                   ),
                                   onPressed: () async {
                                     try {
-                                      final result = await _paymentService
-                                          .paySponsorshipApplicationDemo(
-                                            applicationId: doc.id,
-                                            sponsorId: widget.uid,
-                                          );
-                                      if (!mounted) return;
-                                      ScaffoldMessenger.of(
+                                      final result = await Navigator.push<bool>(
                                         context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            '${context.tr('Payment marked paid.')} ${context.tr('Invoice')}: ${(result['invoiceNumber'] ?? '').toString()}',
-                                          ),
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              SponsorshipPaymentScreen(
+                                                applicationId: doc.id,
+                                                amount: platformFee,
+                                                title: title,
+                                              ),
                                         ),
                                       );
+                                      if (!mounted) return;
+                                      if (result == true) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              context.tr(
+                                                'Payment completed successfully.',
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      }
                                     } catch (_) {
                                       if (!mounted) return;
                                       ScaffoldMessenger.of(
@@ -2786,6 +2796,19 @@ class _SponsorProfileTabState extends State<_SponsorProfileTab> {
               ),
             ],
           ),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const LegalCenterScreen(),
+              ),
+            );
+          },
+          icon: const Icon(Icons.privacy_tip_outlined),
+          label: Text(context.tr('Legal & Privacy')),
         ),
         const SizedBox(height: 12),
         OutlinedButton.icon(

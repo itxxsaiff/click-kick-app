@@ -5,6 +5,7 @@ import '../../l10n/l10n.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/gradient_button.dart';
+import '../shared/legal_center_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -569,6 +570,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   ? context.tr('Create Sponsor Account')
                                   : context.tr('Create Account')),
                         onPressed: _isLoading ? () {} : _handleRegister,
+                      ),
+                      const SizedBox(height: 10),
+                      TextButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const LegalCenterScreen(),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.privacy_tip_outlined),
+                        label: Text(context.tr('Legal & Privacy')),
                       ),
                     ],
                   ),

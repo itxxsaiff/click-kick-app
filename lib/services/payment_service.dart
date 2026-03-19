@@ -6,6 +6,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -349,22 +350,13 @@ class PaymentService {
     return url;
   }
 
-  Future<void> paySponsorshipApplicationWithStripe({
+  Future<Map<String, String>> createSponsorshipPaymentIntentData({
     required String applicationId,
   }) async {
-    if (kIsWeb) {
-      throw FirebaseFunctionsException(
-        code: 'unimplemented',
-        message:
-            'Use Stripe Checkout on web. PaymentSheet is used on Android/iOS.',
-      );
-    }
-
     final callable = FirebaseFunctions.instance.httpsCallable(
       'createSponsorshipPaymentIntent',
     );
     final response = await callable.call({'applicationId': applicationId});
-
     final data = Map<String, dynamic>.from(
       (response.data as Map?) ?? const <String, dynamic>{},
     );
@@ -384,6 +376,35 @@ class PaymentService {
       );
     }
 
+    return {
+      'paymentIntentClientSecret': paymentIntentClientSecret,
+      'customerId': customerId,
+      'ephemeralKeySecret': ephemeralKeySecret,
+      'merchantDisplayName': merchantDisplayName,
+    };
+  }
+
+  Future<void> paySponsorshipApplicationWithStripe({
+    required String applicationId,
+  }) async {
+    if (kIsWeb) {
+      throw FirebaseFunctionsException(
+        code: 'unimplemented',
+        message:
+            'Use Stripe Checkout on web. PaymentSheet is used on Android/iOS.',
+      );
+    }
+
+    final data = await createSponsorshipPaymentIntentData(
+      applicationId: applicationId,
+    );
+    final paymentIntentClientSecret =
+        data['paymentIntentClientSecret'] ?? '';
+    final customerId = data['customerId'] ?? '';
+    final ephemeralKeySecret = data['ephemeralKeySecret'] ?? '';
+    final merchantDisplayName =
+        data['merchantDisplayName'] ?? 'Video Contest Show';
+
     await Stripe.instance.initPaymentSheet(
       paymentSheetParameters: SetupPaymentSheetParameters(
         merchantDisplayName: merchantDisplayName,
@@ -395,5 +416,57 @@ class PaymentService {
     );
 
     await Stripe.instance.presentPaymentSheet();
+  }
+
+  Future<void> confirmSponsorshipPaymentWithCard({
+    required String applicationId,
+    required String cardholderName,
+  }) async {
+    if (kIsWeb) {
+      final url = await createSponsorshipCheckoutSession(
+        applicationId: applicationId,
+      );
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      return;
+    }
+
+    final data = await createSponsorshipPaymentIntentData(
+      applicationId: applicationId,
+    );
+    final paymentIntentClientSecret =
+        data['paymentIntentClientSecret'] ?? '';
+    if (paymentIntentClientSecret.isEmpty) {
+      throw FirebaseFunctionsException(
+        code: 'internal',
+        message: 'Stripe payment data is incomplete.',
+      );
+    }
+
+    await Stripe.instance.confirmPayment(
+      paymentIntentClientSecret: paymentIntentClientSecret,
+      data: PaymentMethodParams.card(
+        paymentMethodData: PaymentMethodData(
+          billingDetails: BillingDetails(name: cardholderName.trim()),
+        ),
+      ),
+    );
+  }
+
+  Future<void> waitForApplicationPaid(
+    String applicationId, {
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    final started = DateTime.now();
+    while (DateTime.now().difference(started) < timeout) {
+      final snap = await _firestore
+          .collection('sponsorship_applications')
+          .doc(applicationId)
+          .get();
+      final status = (snap.data()?['paymentStatus'] ?? 'unpaid').toString();
+      if (status == 'paid') {
+        return;
+      }
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
   }
 }

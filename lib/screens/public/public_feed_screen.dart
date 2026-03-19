@@ -10,6 +10,8 @@ import 'package:video_player/video_player.dart';
 import '../../l10n/l10n.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/report_video_dialog.dart';
+import '../shared/legal_center_screen.dart';
 import '../user/contest_detail_screen.dart';
 
 class PublicFeedScreen extends StatefulWidget {
@@ -488,6 +490,20 @@ class _HomeFeedTabState extends State<_HomeFeedTab> {
                             ),
                           ),
                           Positioned(
+                            top: 64,
+                            right: 14,
+                            child: IconButton(
+                              onPressed: () => showReportVideoDialog(
+                                context: context,
+                                videoType: 'contest_video',
+                                contestId: doc.id,
+                                targetUserId: (data['sponsorId'] ?? '').toString(),
+                                contestTitle: title,
+                              ),
+                              icon: const Icon(Icons.flag_outlined),
+                            ),
+                          ),
+                          Positioned(
                             left: 16,
                             right: 16,
                             bottom: 18,
@@ -644,6 +660,7 @@ class _FeedItem {
     this.videoUrl = '',
     this.winnerPrize = 0,
     this.adminName = '',
+    this.adminVideoId = '',
   });
 
   final String type;
@@ -656,6 +673,7 @@ class _FeedItem {
   final String videoUrl;
   final double winnerPrize;
   final String adminName;
+  final String adminVideoId;
 
   bool get isContest => type == 'contest';
   bool get isNews => type == 'news';
@@ -703,6 +721,7 @@ class _FeedItem {
           (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime(2000),
       videoUrl: (data['videoUrl'] ?? '').toString(),
       adminName: (data['adminName'] ?? 'Admin').toString(),
+      adminVideoId: doc.id,
     );
   }
 }
@@ -807,6 +826,19 @@ class _AdminVideoFeedCard extends StatelessWidget {
                     await Share.share(text, subject: item.adminName);
                   },
                   icon: const Icon(Icons.share_rounded),
+                ),
+              ),
+              Positioned(
+                top: 64,
+                right: 14,
+                child: IconButton(
+                  onPressed: () => showReportVideoDialog(
+                    context: context,
+                    videoType: 'admin_video',
+                    adminVideoId: item.adminVideoId,
+                    contestTitle: item.adminName,
+                  ),
+                  icon: const Icon(Icons.flag_outlined),
                 ),
               ),
               Positioned(
@@ -1911,6 +1943,26 @@ class _PublicUserProfileTabState extends State<_PublicUserProfileTab> {
                 ),
               ),
             ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const LegalCenterScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.privacy_tip_outlined),
+            label: Text(context.tr('Legal & Privacy')),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.white,
+              side: const BorderSide(color: AppColors.border),
+            ),
           ),
         ),
         const SizedBox(height: 12),

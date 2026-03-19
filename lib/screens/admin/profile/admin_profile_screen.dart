@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/gradient_button.dart';
+import '../../shared/legal_center_screen.dart';
 
 class AdminProfileScreen extends StatefulWidget {
   const AdminProfileScreen({super.key});
@@ -217,6 +218,19 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
                             ? context.tr('Saving...')
                             : context.tr('Update Profile'),
                         onPressed: _saving ? () {} : _save,
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const LegalCenterScreen(),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.privacy_tip_outlined),
+                        label: Text(context.tr('Legal & Privacy')),
                       ),
                     ],
                   ),

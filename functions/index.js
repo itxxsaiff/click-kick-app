@@ -2,6 +2,7 @@ const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {onRequest} = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const Stripe = require("stripe");
+const crypto = require("crypto");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -12,6 +13,211 @@ const db = admin.firestore();
  */
 function getStripeClient() {
   return new Stripe(process.env.STRIPE_SECRET);
+}
+
+/**
+ * Builds invoice number.
+ * @return {string}
+ */
+function invoiceNumber() {
+  const now = new Date();
+  const yyyy = now.getUTCFullYear();
+  const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(now.getUTCDate()).padStart(2, "0");
+  const rand = String(Math.floor(Math.random() * 900000) + 100000);
+  return `INV-${yyyy}${mm}${dd}-${rand}`;
+}
+
+/**
+ * Formats date.
+ * @param {Date} date
+ * @return {string}
+ */
+function ymd(date) {
+  const yyyy = date.getUTCFullYear();
+  const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(date.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * Escapes PDF text.
+ * @param {string} value
+ * @return {string}
+ */
+function pdfEscape(value) {
+  return String(value || "")
+      .replace(/\\/g, "\\\\")
+      .replace(/\(/g, "\\(")
+      .replace(/\)/g, "\\)");
+}
+
+/**
+ * Builds a simple one-page PDF.
+ * @param {Object} params
+ * @return {Buffer}
+ */
+function buildInvoicePdf({
+  invoiceNo,
+  invoiceDate,
+  sponsorName,
+  sponsorEmail,
+  companyName,
+  applicationName,
+  country,
+  amount,
+}) {
+  const lines = [
+    {text: "Click Kick - Sponsorship Invoice", x: 50, y: 790, size: 18},
+    {text: `Invoice #: ${invoiceNo}`, x: 50, y: 760, size: 12},
+    {text: `Date: ${ymd(invoiceDate)}`, x: 50, y: 742, size: 12},
+    {text: `Sponsor: ${sponsorName}`, x: 50, y: 706, size: 12},
+    {text: `Email: ${sponsorEmail}`, x: 50, y: 688, size: 12},
+    {text: `Company: ${companyName || "-"}`, x: 50, y: 670, size: 12},
+    {text: `Application: ${applicationName}`, x: 50, y: 634, size: 12},
+    {text: `Region: ${country}`, x: 50, y: 616, size: 12},
+    {
+      text: "Description: Sponsorship Campaign Fee",
+      x: 50,
+      y: 580,
+      size: 12,
+    },
+    {
+      text: `Amount: $${Number(amount || 0).toFixed(2)}`,
+      x: 50,
+      y: 562,
+      size: 12,
+    },
+    {
+      text: `Total Paid: $${Number(amount || 0).toFixed(2)}`,
+      x: 50,
+      y: 526,
+      size: 14,
+    },
+    {
+      text: "Thank you for your sponsorship payment.",
+      x: 50,
+      y: 488,
+      size: 11,
+    },
+  ];
+
+  const content = lines
+      .map((line) =>
+        `BT /F1 ${line.size} Tf ${line.x} ${line.y} Td ` +
+        `(${pdfEscape(line.text)}) Tj ET`,
+      )
+      .join("\n");
+
+  const contentLength = Buffer.byteLength(content, "utf8");
+  const objects = [
+    "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
+    "2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj",
+    "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] " +
+      "/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj",
+    `4 0 obj << /Length ${contentLength} >> stream\n${content}\n` +
+      "endstream endobj",
+    "5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj",
+  ];
+
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  for (const object of objects) {
+    offsets.push(Buffer.byteLength(pdf, "utf8"));
+    pdf += `${object}\n`;
+  }
+  const xrefStart = Buffer.byteLength(pdf, "utf8");
+  pdf += `xref\n0 ${objects.length + 1}\n`;
+  pdf += "0000000000 65535 f \n";
+  for (let i = 1; i <= objects.length; i++) {
+    pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\n`;
+  pdf += `startxref\n${xrefStart}\n%%EOF`;
+  return Buffer.from(pdf, "utf8");
+}
+
+/**
+ * Generates invoice PDF, uploads it, and writes invoice fields.
+ * @param {Object} params
+ * @return {Promise<void>}
+ */
+async function ensureInvoiceForApplication({applicationId, sponsorId}) {
+  const appRef = db.collection("sponsorship_applications").doc(applicationId);
+  const appSnap = await appRef.get();
+  if (!appSnap.exists) return;
+
+  const appData = appSnap.data() || {};
+  if (appData.invoiceNumber && appData.invoiceUrl) {
+    return;
+  }
+
+  const effectiveSponsorId = sponsorId || appData.sponsorId || "";
+  const sponsorSnap = effectiveSponsorId ?
+    await db.collection("users").doc(effectiveSponsorId).get() :
+    null;
+  const sponsor = sponsorSnap && sponsorSnap.exists ?
+    sponsorSnap.data() || {} :
+    {};
+  const now = new Date();
+  const generatedInvoiceNumber = invoiceNumber();
+  const amount = Number(appData.applicationFee || 1000);
+  const pdfBuffer = buildInvoicePdf({
+    invoiceNo: generatedInvoiceNumber,
+    invoiceDate: now,
+    sponsorName: sponsor.displayName || "Sponsor",
+    sponsorEmail: sponsor.email || "",
+    companyName: sponsor.companyName || "",
+    applicationName:
+      appData.companySponsorName ||
+      appData.applicationName ||
+      "Sponsorship Application",
+    country: appData.targetCountry || "ALL",
+    amount,
+  });
+
+  const bucket = admin.storage().bucket();
+  const filePath = `invoices/${generatedInvoiceNumber}.pdf`;
+  const token = crypto.randomUUID();
+  const file = bucket.file(filePath);
+  await file.save(pdfBuffer, {
+    contentType: "application/pdf",
+    metadata: {
+      metadata: {
+        firebaseStorageDownloadTokens: token,
+      },
+    },
+  });
+
+  const invoiceUrl =
+    `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/` +
+    `${encodeURIComponent(filePath)}?alt=media&token=${token}`;
+  const invoiceTimestamp = admin.firestore.Timestamp.fromDate(now);
+
+  await appRef.set({
+    invoiceNumber: generatedInvoiceNumber,
+    invoiceUrl,
+    invoiceGeneratedAt: invoiceTimestamp,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, {merge: true});
+
+  const paymentDocs = await db.collection("payments")
+      .where("applicationId", "==", applicationId)
+      .where("status", "==", "paid")
+      .get();
+  const batch = db.batch();
+  paymentDocs.docs.forEach((doc) => {
+    batch.set(doc.ref, {
+      sponsorId: effectiveSponsorId,
+      invoiceNumber: generatedInvoiceNumber,
+      invoiceUrl,
+      invoiceGeneratedAt: invoiceTimestamp,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, {merge: true});
+  });
+  if (!paymentDocs.empty) {
+    await batch.commit();
+  }
 }
 
 /**
@@ -168,6 +374,11 @@ async function markApplicationPaid({
     provider,
     stripeSessionId,
     stripePaymentIntentId,
+  });
+
+  await ensureInvoiceForApplication({
+    applicationId,
+    sponsorId: sponsorId || appData.sponsorId || "",
   });
 }
 

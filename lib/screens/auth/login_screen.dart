@@ -4,6 +4,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/gradient_button.dart';
 import '../../widgets/social_icon_button.dart';
+import '../shared/legal_center_screen.dart';
 
 enum _SocialProvider { google, apple, facebook }
 
@@ -267,6 +268,19 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                       ],
+                    ),
+                    SizedBox(height: isCompact ? 8 : 12),
+                    TextButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const LegalCenterScreen(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.privacy_tip_outlined),
+                      label: Text(context.tr('Legal & Privacy')),
                     ),
                     SizedBox(height: isCompact ? 8 : 14),
                     Row(

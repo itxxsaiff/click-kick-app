@@ -86,6 +86,11 @@ service cloud.firestore {
       allow create, update, delete: if isStaff();
     }
 
+    match /video_reports/{reportId} {
+      allow create: if signedIn();
+      allow read, update, delete: if isStaff();
+    }
+
     match /sponsorshipApplications/{applicationId} {
       allow create: if signedIn();
       allow read: if isStaff() || isOwner(resource.data.sponsorId);

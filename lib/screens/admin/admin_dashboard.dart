@@ -12,6 +12,7 @@ import 'feed_videos/admin_feed_videos_screen.dart';
 import 'news/admin_news_screen.dart';
 import 'admin_employees_screen.dart';
 import 'ads/admin_ads_screen.dart';
+import 'admin_video_reports_screen.dart';
 import 'payments/admin_invoices_screen.dart';
 import 'payments/admin_payments_screen.dart';
 
@@ -176,6 +177,20 @@ class AdminDashboard extends StatelessWidget {
                               context,
                               MaterialPageRoute(
                                 builder: (_) => const AdminVideosScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        _AdminTile(
+                          title: context.tr('Video Reports'),
+                          subtitle: context.tr('Review flags'),
+                          icon: Icons.flag_outlined,
+                          accent: const Color(0xFF65E8FF),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const AdminVideoReportsScreen(),
                               ),
                             );
                           },

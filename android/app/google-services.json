@@ -12,7 +12,20 @@
           "package_name": "com.videocontestshow.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "127201745203-apv0seltkfm81ggll84g3c2km28abri4.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.videocontestshow.app",
+            "certificate_hash": "16a26514b972492890a78d62b96a7103bbda862a"
+          }
+        },
+        {
+          "client_id": "127201745203-khruilil3if315sg7vjkoajcfi28hpna.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDFTTxsc6TvH67KLciq9midkLOTwFw7QwE"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "127201745203-khruilil3if315sg7vjkoajcfi28hpna.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

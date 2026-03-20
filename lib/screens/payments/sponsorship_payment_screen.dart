@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_stripe/flutter_stripe.dart';
 
 import '../../l10n/l10n.dart';
 import '../../services/payment_service.dart';
@@ -26,13 +25,11 @@ class SponsorshipPaymentScreen extends StatefulWidget {
 class _SponsorshipPaymentScreenState extends State<SponsorshipPaymentScreen> {
   final _paymentService = PaymentService();
   final _nameController = TextEditingController();
-  final _cardController = CardFormEditController();
   bool _submitting = false;
 
   @override
   void dispose() {
     _nameController.dispose();
-    _cardController.dispose();
     super.dispose();
   }
 
@@ -42,26 +39,21 @@ class _SponsorshipPaymentScreenState extends State<SponsorshipPaymentScreen> {
       _show(context.tr('Cardholder name is required.'));
       return;
     }
-    if (!kIsWeb && !_cardController.details.complete) {
-      _show(context.tr('Please complete your card details.'));
-      return;
-    }
 
     setState(() => _submitting = true);
     try {
-      await _paymentService.confirmSponsorshipPaymentWithCard(
+      await _paymentService.openSponsorshipCheckout(
         applicationId: widget.applicationId,
-        cardholderName: _nameController.text.trim(),
       );
-      await _paymentService.waitForApplicationPaid(widget.applicationId);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(context.tr('Payment completed successfully.')),
+          content: Text(
+            context.tr('Stripe checkout opened. Complete payment to continue.'),
+          ),
           behavior: SnackBarBehavior.floating,
         ),
       );
-      Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
       _show(_friendlyError(e));
@@ -89,6 +81,9 @@ class _SponsorshipPaymentScreenState extends State<SponsorshipPaymentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isCompact = screenHeight < 760;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(context.tr('Secure Payment')),
@@ -102,7 +97,7 @@ class _SponsorshipPaymentScreenState extends State<SponsorshipPaymentScreen> {
               padding: const EdgeInsets.all(20),
               children: [
                 Container(
-                  padding: const EdgeInsets.all(18),
+                  padding: EdgeInsets.all(isCompact ? 16 : 18),
                   decoration: BoxDecoration(
                     color: AppColors.card,
                     borderRadius: BorderRadius.circular(24),
@@ -113,7 +108,9 @@ class _SponsorshipPaymentScreenState extends State<SponsorshipPaymentScreen> {
                     children: [
                       Text(
                         widget.title,
-                        style: Theme.of(context).textTheme.titleLarge,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontSize: isCompact ? 18 : null,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       Text(
@@ -126,17 +123,17 @@ class _SponsorshipPaymentScreenState extends State<SponsorshipPaymentScreen> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        kIsWeb
-                            ? context.tr('On web, Stripe checkout will open in a secure page.')
-                            : context.tr('Enter your card details below to complete payment securely.'),
+                        context.tr(
+                          'You will be redirected to Stripe Checkout to enter your card details securely.',
+                        ),
                         style: const TextStyle(color: AppColors.textMuted),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: isCompact ? 12 : 16),
                 Container(
-                  padding: const EdgeInsets.all(18),
+                  padding: EdgeInsets.all(isCompact ? 16 : 18),
                   decoration: BoxDecoration(
                     color: AppColors.card,
                     borderRadius: BorderRadius.circular(24),
@@ -153,42 +150,22 @@ class _SponsorshipPaymentScreenState extends State<SponsorshipPaymentScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      if (kIsWeb)
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: AppColors.cardSoft,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: AppColors.border),
-                          ),
-                          child: Text(
-                            context.tr('Stripe will open a secure hosted card form for web payments.'),
-                            style: const TextStyle(color: AppColors.textMuted),
-                          ),
-                        )
-                      else
-                        Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: AppColors.cardSoft,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: AppColors.border),
-                          ),
-                          child: CardFormField(
-                            controller: _cardController,
-                            style: CardFormStyle(
-                              backgroundColor: AppColors.cardSoft,
-                              textColor: Colors.white,
-                              placeholderColor: AppColors.textMuted,
-                              borderColor: AppColors.border,
-                              borderRadius: 16,
-                              cursorColor: AppColors.hotPink,
-                              textErrorColor: AppColors.hotPink,
-                            ),
-                          ),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppColors.cardSoft,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: AppColors.border),
                         ),
-                      const SizedBox(height: 22),
+                        child: Text(
+                          context.tr(
+                            'After tapping the button below, Stripe Checkout will open where you can enter your card number, expiry date, and CVC.',
+                          ),
+                          style: const TextStyle(color: AppColors.textMuted),
+                        ),
+                      ),
+                      SizedBox(height: isCompact ? 18 : 22),
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
@@ -196,7 +173,9 @@ class _SponsorshipPaymentScreenState extends State<SponsorshipPaymentScreen> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.hotPink,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            padding: EdgeInsets.symmetric(
+                              vertical: isCompact ? 14 : 16,
+                            ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(18),
                             ),
@@ -205,7 +184,7 @@ class _SponsorshipPaymentScreenState extends State<SponsorshipPaymentScreen> {
                           label: Text(
                             _submitting
                                 ? context.tr('Processing...')
-                                : context.tr('Pay Securely'),
+                                : context.tr('Continue to Stripe'),
                           ),
                         ),
                       ),

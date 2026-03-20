@@ -1960,21 +1960,27 @@ class _PublicUserProfileTabState extends State<_PublicUserProfileTab> {
             icon: const Icon(Icons.privacy_tip_outlined),
             label: Text(context.tr('Legal & Privacy')),
             style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.white,
+              foregroundColor: AppColors.textMuted,
+              backgroundColor: AppColors.card,
               side: const BorderSide(color: AppColors.border),
+              padding: const EdgeInsets.symmetric(vertical: 14),
             ),
           ),
         ),
         const SizedBox(height: 12),
         SizedBox(
           width: double.infinity,
-          child: OutlinedButton.icon(
+          child: FilledButton.icon(
             onPressed: _logout,
             icon: const Icon(Icons.logout),
             label: Text(context.tr('Logout')),
-            style: OutlinedButton.styleFrom(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFB93A63),
               foregroundColor: Colors.white,
-              side: const BorderSide(color: AppColors.border),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
             ),
           ),
         ),

@@ -2809,9 +2809,15 @@ class _SponsorProfileTabState extends State<_SponsorProfileTab> {
           },
           icon: const Icon(Icons.privacy_tip_outlined),
           label: Text(context.tr('Legal & Privacy')),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.textMuted,
+            backgroundColor: AppColors.card,
+            side: const BorderSide(color: AppColors.border),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+          ),
         ),
         const SizedBox(height: 12),
-        OutlinedButton.icon(
+        FilledButton.icon(
           onPressed: () async {
             await AuthService().signOut();
             if (!mounted) return;
@@ -2819,6 +2825,14 @@ class _SponsorProfileTabState extends State<_SponsorProfileTab> {
           },
           icon: const Icon(Icons.logout),
           label: Text(context.tr('Logout')),
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFFB93A63),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
         ),
       ],
     );

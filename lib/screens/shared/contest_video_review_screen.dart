@@ -206,6 +206,10 @@ class _ContestVideoReviewSectionState extends State<ContestVideoReviewSection> {
         (widget.contestData['sponsorVideoApprovalStatus'] ?? 'pending_upload')
             .toString();
     final canReview = contestVideoUrl.isNotEmpty;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isCompact = screenHeight < 760;
+    final notesMinHeight = isCompact ? 150.0 : screenHeight * 0.24;
+    final notesMaxHeight = isCompact ? 240.0 : screenHeight * 0.40;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -281,8 +285,8 @@ class _ContestVideoReviewSectionState extends State<ContestVideoReviewSection> {
           const SizedBox(height: 10),
           Container(
             constraints: BoxConstraints(
-              minHeight: MediaQuery.of(context).size.height * 0.28,
-              maxHeight: MediaQuery.of(context).size.height * 0.48,
+              minHeight: notesMinHeight,
+              maxHeight: notesMaxHeight,
             ),
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
@@ -370,8 +374,8 @@ class _ContestVideoReviewSectionState extends State<ContestVideoReviewSection> {
           const SizedBox(height: 10),
           TextField(
             controller: _noteController,
-            minLines: 2,
-            maxLines: 4,
+            minLines: isCompact ? 2 : 3,
+            maxLines: isCompact ? 3 : 4,
             enabled: canReview && !_sending,
             decoration: InputDecoration(
               hintText: widget.isSponsor

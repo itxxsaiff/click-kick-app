@@ -216,7 +216,7 @@ class _AdminEmployeesScreenState extends State<AdminEmployeesScreen> {
                             physics: const NeverScrollableScrollPhysics(),
                             crossAxisSpacing: 10,
                             mainAxisSpacing: 10,
-                            childAspectRatio: width >= 620 ? 2.4 : 1.65,
+                            childAspectRatio: width >= 620 ? 2.2 : 1.18,
                             children: [
                               _StatCard(
                                 label: context.tr('Total'),
@@ -276,77 +276,10 @@ class _AdminEmployeesScreenState extends State<AdminEmployeesScreen> {
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(color: AppColors.border),
                             ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 42,
-                                  height: 42,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.neonGreen.withOpacity(0.15),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: const Icon(
-                                    Icons.person_outline,
-                                    color: AppColors.neonGreen,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        name,
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.titleSmall,
-                                      ),
-                                      Text(
-                                        email,
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.bodySmall,
-                                      ),
-                                      if (phone.isNotEmpty)
-                                        Text(
-                                          phone,
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.bodySmall,
-                                        ),
-                                      const SizedBox(height: 6),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: isDisabled
-                                              ? Colors.redAccent.withOpacity(0.18)
-                                              : AppColors.neonGreen.withOpacity(
-                                                  0.18,
-                                                ),
-                                          borderRadius:
-                                              BorderRadius.circular(999),
-                                        ),
-                                        child: Text(
-                                          context.tr(
-                                            isDisabled ? 'Disabled' : 'Active',
-                                          ),
-                                          style: TextStyle(
-                                            color: isDisabled
-                                                ? Colors.redAccent
-                                                : AppColors.neonGreen,
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 11,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Container(
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final compact = constraints.maxWidth < 380;
+                                final assignedChip = Container(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 10,
                                     vertical: 6,
@@ -369,60 +302,178 @@ class _AdminEmployeesScreenState extends State<AdminEmployeesScreen> {
                                       fontSize: 12,
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 6),
-                                IconButton(
-                                  tooltip: context.tr('Employee Report'),
-                                  onPressed: () => _openEmployeeReport(
-                                    employeeId: doc.id,
-                                    data: d,
-                                  ),
-                                  icon: const Icon(
-                                    Icons.description_outlined,
-                                    color: AppColors.hotPink,
-                                  ),
-                                ),
-                                PopupMenuButton<String>(
-                                  onSelected: (value) async {
-                                    if (value == 'disable') {
-                                      await _setEmployeeStatus(
+                                );
+                                final actionRow = Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      tooltip: context.tr('Employee Report'),
+                                      onPressed: () => _openEmployeeReport(
                                         employeeId: doc.id,
-                                        status: 'disabled',
-                                      );
-                                    } else if (value == 'enable') {
-                                      await _setEmployeeStatus(
-                                        employeeId: doc.id,
-                                        status: 'active',
-                                      );
-                                    } else if (value == 'remove') {
-                                      await _removeEmployee(
-                                        employeeId: doc.id,
-                                        employeeName: name,
-                                      );
-                                    }
-                                  },
-                                  itemBuilder: (context) => [
-                                    PopupMenuItem(
-                                      value: isDisabled
-                                          ? 'enable'
-                                          : 'disable',
-                                      child: Text(
-                                        context.tr(
-                                          isDisabled
-                                              ? 'Enable Access'
-                                              : 'Disable Access',
-                                        ),
+                                        data: d,
+                                      ),
+                                      icon: const Icon(
+                                        Icons.description_outlined,
+                                        color: AppColors.hotPink,
                                       ),
                                     ),
-                                    PopupMenuItem(
-                                      value: 'remove',
-                                      child: Text(
-                                        context.tr('Remove Employee'),
-                                      ),
+                                    PopupMenuButton<String>(
+                                      onSelected: (value) async {
+                                        if (value == 'disable') {
+                                          await _setEmployeeStatus(
+                                            employeeId: doc.id,
+                                            status: 'disabled',
+                                          );
+                                        } else if (value == 'enable') {
+                                          await _setEmployeeStatus(
+                                            employeeId: doc.id,
+                                            status: 'active',
+                                          );
+                                        } else if (value == 'remove') {
+                                          await _removeEmployee(
+                                            employeeId: doc.id,
+                                            employeeName: name,
+                                          );
+                                        }
+                                      },
+                                      itemBuilder: (context) => [
+                                        PopupMenuItem(
+                                          value: isDisabled
+                                              ? 'enable'
+                                              : 'disable',
+                                          child: Text(
+                                            context.tr(
+                                              isDisabled
+                                                  ? 'Enable Access'
+                                                  : 'Disable Access',
+                                            ),
+                                          ),
+                                        ),
+                                        PopupMenuItem(
+                                          value: 'remove',
+                                          child: Text(
+                                            context.tr('Remove Employee'),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
-                                ),
-                              ],
+                                );
+
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Container(
+                                          width: 42,
+                                          height: 42,
+                                          decoration: BoxDecoration(
+                                            color: AppColors.neonGreen
+                                                .withOpacity(0.15),
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                          ),
+                                          child: const Icon(
+                                            Icons.person_outline,
+                                            color: AppColors.neonGreen,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                name,
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: Theme.of(
+                                                  context,
+                                                ).textTheme.titleSmall,
+                                              ),
+                                              Text(
+                                                email,
+                                                maxLines: compact ? 2 : 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: Theme.of(
+                                                  context,
+                                                ).textTheme.bodySmall,
+                                              ),
+                                              if (phone.isNotEmpty)
+                                                Text(
+                                                  phone,
+                                                  maxLines: 2,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: Theme.of(
+                                                    context,
+                                                  ).textTheme.bodySmall,
+                                                ),
+                                              const SizedBox(height: 6),
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 4,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: isDisabled
+                                                      ? Colors.redAccent
+                                                          .withOpacity(0.18)
+                                                      : AppColors.neonGreen
+                                                          .withOpacity(0.18),
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                        999,
+                                                      ),
+                                                ),
+                                                child: Text(
+                                                  context.tr(
+                                                    isDisabled
+                                                        ? 'Disabled'
+                                                        : 'Active',
+                                                  ),
+                                                  style: TextStyle(
+                                                    color: isDisabled
+                                                        ? Colors.redAccent
+                                                        : AppColors.neonGreen,
+                                                    fontWeight: FontWeight.w700,
+                                                    fontSize: 11,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    if (compact)
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        crossAxisAlignment:
+                                            WrapCrossAlignment.center,
+                                        children: [
+                                          assignedChip,
+                                          actionRow,
+                                        ],
+                                      )
+                                    else
+                                      Row(
+                                        children: [
+                                          assignedChip,
+                                          const Spacer(),
+                                          actionRow,
+                                        ],
+                                      ),
+                                  ],
+                                );
+                              },
                             ),
                           );
                         }),
@@ -865,29 +916,38 @@ class _StatCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.border),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(10),
+      child: LayoutBuilder(
+        builder: (context, constraints) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: color, size: 18),
             ),
-            child: Icon(icon, color: color, size: 18),
-          ),
-          const Spacer(),
-          Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w800,
-              fontSize: 28,
+            const Spacer(),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w800,
+                fontSize: constraints.maxWidth < 160 ? 24 : 28,
+              ),
             ),
-          ),
-          Text(label, style: Theme.of(context).textTheme.bodyMedium),
-        ],
+            Text(
+              label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+        ),
       ),
     );
   }

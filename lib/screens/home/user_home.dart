@@ -8,6 +8,7 @@ import '../../l10n/l10n.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/news_slider.dart';
+import '../shared/legal_center_screen.dart';
 import '../user/contest_detail_screen.dart';
 
 class UserHome extends StatefulWidget {
@@ -1551,12 +1552,38 @@ class _UserProfileTabState extends State<_UserProfileTab> {
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const LegalCenterScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.privacy_tip_outlined),
+            label: Text(context.tr('Legal & Privacy')),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.textMuted,
+              backgroundColor: AppColors.card,
+              side: const BorderSide(color: AppColors.border),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
             onPressed: _logout,
             icon: const Icon(Icons.logout),
             label: Text(context.tr('Logout')),
-            style: OutlinedButton.styleFrom(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFB93A63),
               foregroundColor: Colors.white,
-              side: const BorderSide(color: AppColors.border),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
             ),
           ),
         ),

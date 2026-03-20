@@ -10,6 +10,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../config/stripe_config.dart';
+import '../firebase_options.dart';
+
 class PaymentService {
   PaymentService({FirebaseFirestore? firestore, FirebaseStorage? storage})
     : _firestore = firestore ?? FirebaseFirestore.instance,
@@ -17,6 +20,23 @@ class PaymentService {
 
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
+  static bool _stripeConfigured = false;
+
+  String _appBaseUrl() {
+    if (kIsWeb) return Uri.base.origin;
+    final authDomain = DefaultFirebaseOptions.web.authDomain;
+    if (authDomain != null && authDomain.isNotEmpty) {
+      return 'https://$authDomain';
+    }
+    return 'https://${DefaultFirebaseOptions.web.projectId}.firebaseapp.com';
+  }
+
+  Future<void> _ensureStripeConfigured() async {
+    if (kIsWeb || _stripeConfigured) return;
+    Stripe.publishableKey = StripeConfig.publishableKey;
+    await Stripe.instance.applySettings();
+    _stripeConfigured = true;
+  }
 
   String _invoiceNumber() {
     final now = DateTime.now();
@@ -324,7 +344,7 @@ class PaymentService {
   Future<String> createSponsorshipCheckoutSession({
     required String applicationId,
   }) async {
-    final origin = Uri.base.origin;
+    final origin = _appBaseUrl();
     final callable = FirebaseFunctions.instance.httpsCallable(
       'createSponsorshipCheckoutSession',
     );
@@ -395,6 +415,8 @@ class PaymentService {
       );
     }
 
+    await _ensureStripeConfigured();
+
     final data = await createSponsorshipPaymentIntentData(
       applicationId: applicationId,
     );
@@ -418,6 +440,24 @@ class PaymentService {
     await Stripe.instance.presentPaymentSheet();
   }
 
+  Future<void> openSponsorshipCheckout({
+    required String applicationId,
+  }) async {
+    final url = await createSponsorshipCheckoutSession(
+      applicationId: applicationId,
+    );
+    final launched = await launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!launched) {
+      throw FirebaseFunctionsException(
+        code: 'internal',
+        message: 'Failed to launch Stripe checkout.',
+      );
+    }
+  }
+
   Future<void> confirmSponsorshipPaymentWithCard({
     required String applicationId,
     required String cardholderName,
@@ -429,6 +469,8 @@ class PaymentService {
       await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
       return;
     }
+
+    await _ensureStripeConfigured();
 
     final data = await createSponsorshipPaymentIntentData(
       applicationId: applicationId,

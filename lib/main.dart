@@ -78,8 +78,19 @@ class VideoContestApp extends StatelessWidget {
               final routeName = settings.name ?? '/';
               final uri = Uri.parse(routeName);
               if (uri.path == '/register') {
+                final type = (uri.queryParameters['type'] ?? '').toLowerCase();
+                if (type == 'user' || type == 'personal') {
+                  return MaterialPageRoute(
+                    builder: (_) => const RegisterScreen(),
+                  );
+                }
+                if (type == 'business' || type == 'sponsor') {
+                  return MaterialPageRoute(
+                    builder: (_) => const RegisterScreen(isSponsor: true),
+                  );
+                }
                 return MaterialPageRoute(
-                  builder: (_) => const RegisterScreen(),
+                  builder: (_) => const AccountTypeSelectionScreen(),
                 );
               }
               if (uri.path == '/login') {

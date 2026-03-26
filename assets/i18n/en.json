@@ -582,5 +582,22 @@
   "Payment cancelled.": "Payment cancelled.",
   "This application is already paid.": "This application is already paid.",
   "Unable to open Stripe checkout.": "Unable to open Stripe checkout.",
-  "Pay Now": "Pay Now"
+  "Pay Now": "Pay Now",
+  "Sign": "Sign",
+  "Prizes": "Prizes",
+  "Choose language": "Choose language",
+  "Change app language": "Change app language",
+  "No updates available right now.": "No updates available right now.",
+  "Profile Info": "Profile Info",
+  "Profile Update": "Profile Update",
+  "View your account information.": "View your account information.",
+  "Update your name, email, and phone.": "Update your name, email, and phone.",
+  "Update your account password securely.": "Update your account password securely.",
+  "Terms, guidelines, and privacy policy.": "Terms, guidelines, and privacy policy.",
+  "Sign out from your account.": "Sign out from your account.",
+  "Select Account Type": "Select Account Type",
+  "Personal Account": "Personal Account",
+  "Business Account": "Business Account",
+  "Create Business Account": "Create Business Account",
+  "Create business account and manage your assigned contests.": "Create business account and manage your assigned contests."
 }

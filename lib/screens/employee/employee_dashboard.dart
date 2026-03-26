@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../l10n/l10n.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/settings_action_tile.dart';
 import '../admin/admin_videos_screen.dart';
 import '../shared/legal_center_screen.dart';
 
@@ -25,10 +26,8 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
     switch (_index) {
       case 0:
         return context.tr('Dashboard');
-      case 1:
-        return context.tr('Profile');
       default:
-        return context.tr('Security');
+        return context.tr('Profile');
     }
   }
 
@@ -36,10 +35,8 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
     switch (_index) {
       case 0:
         return Icons.dashboard_customize;
-      case 1:
-        return Icons.person;
       default:
-        return Icons.lock;
+        return Icons.person;
     }
   }
 
@@ -81,7 +78,6 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
                           ],
                         ),
                       ),
-                      const LanguageMenuButton(compact: true),
                     ],
                   ),
                 ),
@@ -91,7 +87,6 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
                     children: [
                       _EmployeeDashboardTab(displayName: widget.displayName),
                       _EmployeeProfileTab(displayName: widget.displayName),
-                      const _EmployeeSecurityTab(),
                     ],
                   ),
                 ),
@@ -149,11 +144,6 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
                   icon: const Icon(Icons.person_outline),
                   activeIcon: const Icon(Icons.person),
                   label: context.tr('Profile'),
-                ),
-                BottomNavigationBarItem(
-                  icon: const Icon(Icons.lock_outline),
-                  activeIcon: const Icon(Icons.lock),
-                  label: context.tr('Security'),
                 ),
               ],
             ),
@@ -379,16 +369,219 @@ class _EmployeeDashboardTab extends StatelessWidget {
   }
 }
 
-class _EmployeeProfileTab extends StatefulWidget {
+class _EmployeeProfileTab extends StatelessWidget {
   const _EmployeeProfileTab({required this.displayName});
 
   final String displayName;
 
   @override
-  State<_EmployeeProfileTab> createState() => _EmployeeProfileTabState();
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return Center(child: Text(context.tr('Please login.')));
+    }
+
+    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      future: FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data() ?? <String, dynamic>{};
+        final name =
+            (data['displayName'] ?? user.displayName ?? displayName).toString();
+        final email = (data['email'] ?? user.email ?? '').toString();
+
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: AppColors.card,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      color: AppColors.cardSoft,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: const Icon(
+                      Icons.person,
+                      color: AppColors.hotPink,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(name, style: Theme.of(context).textTheme.titleMedium),
+                        const SizedBox(height: 4),
+                        Text(
+                          email,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            SettingsActionTile(
+              icon: Icons.badge_outlined,
+              title: context.tr('Profile Info'),
+              subtitle: context.tr('View your account information.'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => _EmployeeProfileInfoScreen(user: user),
+                  ),
+                );
+              },
+            ),
+            SettingsActionTile(
+              icon: Icons.edit_outlined,
+              title: context.tr('Profile Update'),
+              subtitle: context.tr('Update your name, email, and phone.'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => _EmployeeProfileUpdateScreen(
+                      user: user,
+                      displayName: displayName,
+                    ),
+                  ),
+                );
+              },
+            ),
+            SettingsActionTile(
+              icon: Icons.lock_outline,
+              title: context.tr('Change Password'),
+              subtitle: context.tr('Update your account password securely.'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const _EmployeeSecurityScreen(),
+                  ),
+                );
+              },
+            ),
+            SettingsActionTile(
+              icon: Icons.language_outlined,
+              title: context.tr('Language'),
+              subtitle: context.tr('Choose language'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const LanguageSelectionScreen(),
+                  ),
+                );
+              },
+            ),
+            SettingsActionTile(
+              icon: Icons.privacy_tip_outlined,
+              title: context.tr('Legal & Privacy'),
+              subtitle: context.tr('Terms, guidelines, and privacy policy.'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const LegalCenterScreen(),
+                  ),
+                );
+              },
+            ),
+            SettingsActionTile(
+              icon: Icons.logout,
+              title: context.tr('Logout'),
+              subtitle: context.tr('Sign out from your account.'),
+              isDanger: true,
+              onTap: () async {
+                await AuthService().signOut();
+                if (!context.mounted) return;
+                Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
 
-class _EmployeeProfileTabState extends State<_EmployeeProfileTab> {
+class _EmployeeProfileInfoScreen extends StatelessWidget {
+  const _EmployeeProfileInfoScreen({required this.user});
+
+  final User user;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(context.tr('Profile Info'))),
+      body: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        future: FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
+        builder: (context, snapshot) {
+          final data = snapshot.data?.data() ?? <String, dynamic>{};
+          final rows = <MapEntry<String, String>>[
+            MapEntry(context.tr('Full Name'), (data['displayName'] ?? user.displayName ?? '').toString()),
+            MapEntry(context.tr('Email'), (data['email'] ?? user.email ?? '').toString()),
+            MapEntry(context.tr('Phone number'), '${(data['phoneCountryCode'] ?? '').toString()} ${(data['phoneNumber'] ?? '').toString()}'.trim()),
+          ];
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.card,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: rows.map((row) => Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(row.key, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                        const SizedBox(height: 4),
+                        Text(row.value.isEmpty ? '-' : row.value, style: const TextStyle(color: AppColors.textLight, fontSize: 16, fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                  )).toList(),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _EmployeeProfileUpdateScreen extends StatefulWidget {
+  const _EmployeeProfileUpdateScreen({required this.user, required this.displayName});
+
+  final User user;
+  final String displayName;
+
+  @override
+  State<_EmployeeProfileUpdateScreen> createState() => _EmployeeProfileUpdateScreenState();
+}
+
+class _EmployeeProfileUpdateScreenState extends State<_EmployeeProfileUpdateScreen> {
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _phoneCode = TextEditingController(text: '+1');
@@ -406,16 +599,13 @@ class _EmployeeProfileTabState extends State<_EmployeeProfileTab> {
   }
 
   Future<void> _load() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
     final doc = await FirebaseFirestore.instance
         .collection('users')
-        .doc(user.uid)
+        .doc(widget.user.uid)
         .get();
     final data = doc.data() ?? <String, dynamic>{};
-    _name.text = (data['displayName'] ?? user.displayName ?? widget.displayName)
-        .toString();
-    _email.text = (data['email'] ?? user.email ?? '').toString();
+    _name.text = (data['displayName'] ?? widget.user.displayName ?? widget.displayName).toString();
+    _email.text = (data['email'] ?? widget.user.email ?? '').toString();
     _phoneCode.text = (data['phoneCountryCode'] ?? '+1').toString();
     _phoneNumber.text = (data['phoneNumber'] ?? '').toString();
     _phoneIso = (data['phoneCountryIso'] ?? 'US').toString();
@@ -438,11 +628,10 @@ class _EmployeeProfileTabState extends State<_EmployeeProfileTab> {
     setState(() => _saving = true);
     try {
       final newEmail = _email.text.trim();
-      final willUpdateEmail =
-          newEmail.isNotEmpty && newEmail != (user.email ?? '');
+      final willUpdateEmail = newEmail.isNotEmpty && newEmail != (user.email ?? '');
       if (willUpdateEmail) {
         if (_currentPassword.text.trim().isEmpty) {
-          _show(context.tr('Current password is required.'));
+          _showEmployeeMessage(context, context.tr('Current password is required.'));
           return;
         }
         final credential = EmailAuthProvider.credential(
@@ -464,197 +653,133 @@ class _EmployeeProfileTabState extends State<_EmployeeProfileTab> {
         'updatedAt': DateTime.now().toUtc(),
       }, SetOptions(merge: true));
 
-      _show(
+      _showEmployeeMessage(
+        context,
         willUpdateEmail
-            ? context.tr(
-                'Verification email sent. Confirm it to complete email change.',
-              )
+            ? context.tr('Verification email sent. Confirm it to complete email change.')
             : context.tr('Profile updated.'),
       );
     } on FirebaseAuthException catch (e) {
       if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
-        _show(context.tr('Current password is incorrect.'));
+        _showEmployeeMessage(context, context.tr('Current password is incorrect.'));
       } else {
-        _show(context.tr('Update failed.'));
+        _showEmployeeMessage(context, context.tr('Update failed.'));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
-  void _show(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: const TextStyle(color: Colors.white)),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: const Color(0xFF2B1B44),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    return Scaffold(
+      appBar: AppBar(title: Text(context.tr('Profile Update'))),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              children: [
+                TextField(controller: _name, decoration: InputDecoration(labelText: context.tr('Full Name'))),
+                const SizedBox(height: 12),
+                TextField(controller: _email, decoration: InputDecoration(labelText: context.tr('Email'))),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 4,
+                      child: InkWell(
+                        onTap: () {
+                          showCountryPicker(
+                            context: context,
+                            showPhoneCode: true,
+                            onSelect: (country) {
+                              setState(() {
+                                _phoneCode.text = '+${country.phoneCode}';
+                                _phoneIso = country.countryCode;
+                              });
+                            },
+                          );
+                        },
+                        child: InputDecorator(
+                          decoration: InputDecoration(labelText: context.tr('Code')),
+                          child: Text('$_phoneIso ${_phoneCode.text}', style: const TextStyle(color: AppColors.textLight, fontWeight: FontWeight.w700)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 7,
+                      child: TextField(
+                        controller: _phoneNumber,
+                        keyboardType: TextInputType.phone,
+                        decoration: InputDecoration(labelText: context.tr('Phone number')),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _currentPassword,
+                  obscureText: _obscureCurrentPassword,
+                  decoration: InputDecoration(
+                    labelText: context.tr('Current Password (for email change)'),
+                    suffixIcon: IconButton(
+                      onPressed: () => setState(() => _obscureCurrentPassword = !_obscureCurrentPassword),
+                      icon: Icon(_obscureCurrentPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _saving ? null : _save,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.hotPink,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: Text(
+                      _saving ? context.tr('Saving...') : context.tr('Update Profile'),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.card,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Column(
-            children: [
-              TextField(
-                controller: _name,
-                decoration: InputDecoration(labelText: context.tr('Full Name')),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _email,
-                decoration: InputDecoration(labelText: context.tr('Email')),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    flex: 4,
-                    child: InkWell(
-                      onTap: () {
-                        showCountryPicker(
-                          context: context,
-                          showPhoneCode: true,
-                          onSelect: (country) {
-                            setState(() {
-                              _phoneCode.text = '+${country.phoneCode}';
-                              _phoneIso = country.countryCode;
-                            });
-                          },
-                        );
-                      },
-                      child: InputDecorator(
-                        decoration: InputDecoration(
-                          labelText: context.tr('Code'),
-                        ),
-                        child: Text(
-                          '$_phoneIso ${_phoneCode.text}',
-                          style: const TextStyle(
-                            color: AppColors.textLight,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 7,
-                    child: TextField(
-                      controller: _phoneNumber,
-                      keyboardType: TextInputType.phone,
-                      decoration: InputDecoration(
-                        labelText: context.tr('Phone number'),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _currentPassword,
-                obscureText: _obscureCurrentPassword,
-                decoration: InputDecoration(
-                  labelText: context.tr('Current Password (for email change)'),
-                  suffixIcon: IconButton(
-                    onPressed: () => setState(
-                      () => _obscureCurrentPassword =
-                          !_obscureCurrentPassword,
-                    ),
-                    icon: Icon(
-                      _obscureCurrentPassword
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _saving ? null : _save,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.hotPink,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: Text(
-                    _saving ? context.tr('Saving...') : context.tr('Update Profile'),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const LegalCenterScreen(),
-                ),
-              );
-            },
-            icon: const Icon(Icons.privacy_tip_outlined),
-            label: Text(context.tr('Legal & Privacy')),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.textMuted,
-              backgroundColor: AppColors.card,
-              side: const BorderSide(color: AppColors.border),
-              padding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: () async {
-              await AuthService().signOut();
-              if (!context.mounted) return;
-              Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
-            },
-            icon: const Icon(Icons.logout),
-            label: Text(context.tr('Logout')),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFB93A63),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 }
 
-class _EmployeeSecurityTab extends StatefulWidget {
-  const _EmployeeSecurityTab();
-
-  @override
-  State<_EmployeeSecurityTab> createState() => _EmployeeSecurityTabState();
+void _showEmployeeMessage(BuildContext context, String message) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(message, style: const TextStyle(color: Colors.white)),
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: const Color(0xFF2B1B44),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+    ),
+  );
 }
 
-class _EmployeeSecurityTabState extends State<_EmployeeSecurityTab> {
+class _EmployeeSecurityScreen extends StatefulWidget {
+  const _EmployeeSecurityScreen();
+
+  @override
+  State<_EmployeeSecurityScreen> createState() => _EmployeeSecurityTabState();
+}
+
+class _EmployeeSecurityTabState extends State<_EmployeeSecurityScreen> {
   final _current = TextEditingController();
   final _newPass = TextEditingController();
   final _confirm = TextEditingController();
@@ -731,88 +856,91 @@ class _EmployeeSecurityTabState extends State<_EmployeeSecurityTab> {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.card,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.border),
+    return Scaffold(
+      appBar: AppBar(title: Text(context.tr('Change Password'))),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              children: [
+                TextField(
+                  controller: _current,
+                  obscureText: _obscureCurrent,
+                  decoration: InputDecoration(
+                    labelText: context.tr('Current password'),
+                    suffixIcon: IconButton(
+                      onPressed: () =>
+                          setState(() => _obscureCurrent = !_obscureCurrent),
+                      icon: Icon(
+                        _obscureCurrent
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _newPass,
+                  obscureText: _obscureNew,
+                  decoration: InputDecoration(
+                    labelText: context.tr('New password'),
+                    suffixIcon: IconButton(
+                      onPressed: () =>
+                          setState(() => _obscureNew = !_obscureNew),
+                      icon: Icon(
+                        _obscureNew
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _confirm,
+                  obscureText: _obscureConfirm,
+                  decoration: InputDecoration(
+                    labelText: context.tr('Confirm new password'),
+                    suffixIcon: IconButton(
+                      onPressed: () =>
+                          setState(() => _obscureConfirm = !_obscureConfirm),
+                      icon: Icon(
+                        _obscureConfirm
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _saving ? null : _changePassword,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.hotPink,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: Text(
+                      _saving
+                          ? context.tr('Updating...')
+                          : context.tr('Update Password'),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-          child: Column(
-            children: [
-              TextField(
-                controller: _current,
-                obscureText: _obscureCurrent,
-                decoration: InputDecoration(
-                  labelText: context.tr('Current password'),
-                  suffixIcon: IconButton(
-                    onPressed: () =>
-                        setState(() => _obscureCurrent = !_obscureCurrent),
-                    icon: Icon(
-                      _obscureCurrent
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _newPass,
-                obscureText: _obscureNew,
-                decoration: InputDecoration(
-                  labelText: context.tr('New password'),
-                  suffixIcon: IconButton(
-                    onPressed: () =>
-                        setState(() => _obscureNew = !_obscureNew),
-                    icon: Icon(
-                      _obscureNew
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _confirm,
-                obscureText: _obscureConfirm,
-                decoration: InputDecoration(
-                  labelText: context.tr('Confirm new password'),
-                  suffixIcon: IconButton(
-                    onPressed: () =>
-                        setState(() => _obscureConfirm = !_obscureConfirm),
-                    icon: Icon(
-                      _obscureConfirm
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _saving ? null : _changePassword,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.hotPink,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: Text(
-                    _saving
-                        ? context.tr('Updating...')
-                        : context.tr('Update Password'),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

@@ -582,5 +582,22 @@
   "Payment cancelled.": "تم إلغاء الدفع.",
   "This application is already paid.": "تم دفع هذا الطلب بالفعل.",
   "Unable to open Stripe checkout.": "تعذر فتح صفحة Stripe للدفع.",
-  "Pay Now": "ادفع الآن"
+  "Pay Now": "ادفع الآن",
+  "Sign": "تسجيل",
+  "Prizes": "الجوائز",
+  "Choose language": "اختر اللغة",
+  "Change app language": "تغيير لغة التطبيق",
+  "No updates available right now.": "لا توجد تحديثات متاحة حالياً.",
+  "Profile Info": "معلومات الملف الشخصي",
+  "Profile Update": "تحديث الملف الشخصي",
+  "View your account information.": "عرض معلومات حسابك.",
+  "Update your name, email, and phone.": "تحديث الاسم والبريد الإلكتروني ورقم الهاتف.",
+  "Update your account password securely.": "تحديث كلمة المرور الخاصة بحسابك بأمان.",
+  "Terms, guidelines, and privacy policy.": "الشروط والإرشادات وسياسة الخصوصية.",
+  "Sign out from your account.": "تسجيل الخروج من حسابك.",
+  "Select Account Type": "اختر نوع الحساب",
+  "Personal Account": "حساب شخصي",
+  "Business Account": "حساب أعمال",
+  "Create Business Account": "إنشاء حساب أعمال",
+  "Create business account and manage your assigned contests.": "أنشئ حساب أعمال وأدر المسابقات المخصصة لك."
 }

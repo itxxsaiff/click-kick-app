@@ -7,8 +7,69 @@ import '../../theme/app_colors.dart';
 import '../../widgets/gradient_button.dart';
 import '../shared/legal_center_screen.dart';
 
+class AccountTypeSelectionScreen extends StatelessWidget {
+  const AccountTypeSelectionScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          const _SpaceBackground(),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              child: Column(
+                children: [
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: 220,
+                    height: 170,
+                    child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+                  ),
+                  const SizedBox(height: 28),
+                  Text(
+                    context.tr('Create Account'),
+                    style: Theme.of(context).textTheme.headlineMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    context.tr('Select Account Type'),
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  _AccountTypeTile(
+                    icon: Icons.person_outline_rounded,
+                    title: context.tr('Personal Account'),
+                    accent: AppColors.hotPink,
+                    onTap: () => Navigator.pushNamed(context, '/register?type=user'),
+                    showArrow: true,
+                  ),
+                  const SizedBox(height: 16),
+                  _AccountTypeTile(
+                    icon: Icons.business_center_outlined,
+                    title: context.tr('Business Account'),
+                    accent: const Color(0xFF47C8FF),
+                    onTap: () =>
+                        Navigator.pushNamed(context, '/register?type=business'),
+                  ),
+                  const Spacer(),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+  const RegisterScreen({super.key, this.isSponsor = false});
+
+  final bool isSponsor;
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -26,12 +87,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String _phoneCountryCode = '+1';
   String _phoneCountryIso = 'US';
   final _authService = AuthService();
-  bool _isSponsor = false;
+  late final bool _isSponsor;
   bool _acceptedTerms = true;
   bool _isLoading = false;
   bool _autoValidate = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _isSponsor = widget.isSponsor;
+  }
 
   Future<void> _pickSponsorCountry() async {
     Country? selected;
@@ -205,7 +272,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        context.tr('Create Account'),
+                        _isSponsor
+                            ? context.tr('Business Account')
+                            : context.tr('Personal Account'),
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const Spacer(),
@@ -213,80 +282,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: AppColors.card,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(10),
-                            onTap: () => setState(() => _isSponsor = false),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              decoration: BoxDecoration(
-                                color: _isSponsor
-                                    ? Colors.transparent
-                                    : AppColors.hotPink.withOpacity(0.22),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  context.tr('Register User'),
-                                  style: TextStyle(
-                                    color: _isSponsor
-                                        ? AppColors.textMuted
-                                        : Colors.white,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(10),
-                            onTap: () => setState(() => _isSponsor = true),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              decoration: BoxDecoration(
-                                color: _isSponsor
-                                    ? AppColors.hotPink.withOpacity(0.22)
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  context.tr('Join Sponsor'),
-                                  style: TextStyle(
-                                    color: _isSponsor
-                                        ? Colors.white
-                                        : AppColors.textMuted,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
                   const SizedBox(height: 8),
                   _AuthCard(
                     title: _isSponsor
-                        ? context.tr('Join as Sponsor')
+                        ? context.tr('Create Business Account')
                         : context.tr('Join the Contest'),
                     subtitle: _isSponsor
                         ? context.tr(
-                            'Create sponsor account and manage your assigned contests.',
+                            'Create business account and manage your assigned contests.',
                           )
                         : context.tr(
                             'Upload, compete, and win amazing prizes.',
@@ -567,7 +570,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         label: _isLoading
                             ? context.tr('Creating...')
                             : (_isSponsor
-                                  ? context.tr('Create Sponsor Account')
+                                  ? context.tr('Create Business Account')
                                   : context.tr('Create Account')),
                         onPressed: _isLoading ? () {} : _handleRegister,
                       ),
@@ -596,7 +599,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                       const SizedBox(width: 8),
                       TextButton(
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: () =>
+                            Navigator.pushReplacementNamed(context, '/login'),
                         child: Text(context.tr('Login')),
                       ),
                     ],
@@ -637,6 +641,73 @@ class _SpaceBackground extends StatelessWidget {
             child: _GlowOrb(size: 200, color: AppColors.neonGreen),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _AccountTypeTile extends StatelessWidget {
+  const _AccountTypeTile({
+    required this.icon,
+    required this.title,
+    required this.accent,
+    required this.onTap,
+    this.showArrow = false,
+  });
+
+  final IconData icon;
+  final String title;
+  final Color accent;
+  final VoidCallback onTap;
+  final bool showArrow;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(24),
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+        decoration: BoxDecoration(
+          color: AppColors.card.withValues(alpha: 0.86),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: accent.withValues(alpha: 0.75), width: 1.4),
+          boxShadow: [
+            BoxShadow(
+              color: accent.withValues(alpha: 0.22),
+              blurRadius: 18,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: accent.withValues(alpha: 0.14),
+                border: Border.all(color: accent.withValues(alpha: 0.75)),
+              ),
+              child: Icon(icon, color: accent, size: 30),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            if (showArrow)
+              Icon(Icons.chevron_right_rounded, color: accent, size: 34),
+          ],
+        ),
       ),
     );
   }

@@ -14,6 +14,7 @@ import '../../theme/app_colors.dart';
 import '../../widgets/pdf_preview_screen.dart';
 import '../../widgets/news_slider.dart';
 import '../../widgets/gradient_button.dart';
+import '../../widgets/settings_action_tile.dart';
 import '../payments/sponsorship_payment_screen.dart';
 import '../shared/contest_video_review_screen.dart';
 import '../shared/legal_center_screen.dart';
@@ -38,10 +39,8 @@ class _SponsorHomeState extends State<SponsorHome> {
         return context.tr('Dashboard');
       case 2:
         return context.tr('Applications');
-      case 3:
-        return context.tr('Profile');
       default:
-        return context.tr('Security');
+        return context.tr('Profile');
     }
   }
 
@@ -53,10 +52,8 @@ class _SponsorHomeState extends State<SponsorHome> {
         return Icons.analytics;
       case 2:
         return Icons.campaign;
-      case 3:
-        return Icons.person;
       default:
-        return Icons.lock;
+        return Icons.person;
     }
   }
 
@@ -101,7 +98,6 @@ class _SponsorHomeState extends State<SponsorHome> {
                           ],
                         ),
                       ),
-                      const LanguageMenuButton(compact: true),
                     ],
                   ),
                 ),
@@ -113,7 +109,6 @@ class _SponsorHomeState extends State<SponsorHome> {
                       _SponsorDashboardTab(uid: uid),
                       _SponsorAdsTab(uid: uid),
                       _SponsorProfileTab(displayName: widget.displayName),
-                      const _SponsorSecurityTab(),
                     ],
                   ),
                 ),
@@ -174,11 +169,6 @@ class _SponsorHomeState extends State<SponsorHome> {
                   icon: Icon(Icons.person_outline),
                   activeIcon: Icon(Icons.person),
                   label: context.tr('Profile'),
-                ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.lock_outline),
-                  activeIcon: Icon(Icons.lock),
-                  label: context.tr('Security'),
                 ),
               ],
             ),
@@ -2566,16 +2556,221 @@ class _DateTile extends StatelessWidget {
   }
 }
 
-class _SponsorProfileTab extends StatefulWidget {
+class _SponsorProfileTab extends StatelessWidget {
   const _SponsorProfileTab({required this.displayName});
 
   final String displayName;
 
   @override
-  State<_SponsorProfileTab> createState() => _SponsorProfileTabState();
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return Center(child: Text(context.tr('Please login.')));
+    }
+
+    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      future: FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data() ?? <String, dynamic>{};
+        final name =
+            (data['displayName'] ?? user.displayName ?? displayName).toString();
+        final email = (data['email'] ?? user.email ?? '').toString();
+
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: AppColors.card,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      color: AppColors.cardSoft,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: const Icon(
+                      Icons.person,
+                      color: AppColors.hotPink,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(name, style: Theme.of(context).textTheme.titleMedium),
+                        const SizedBox(height: 4),
+                        Text(
+                          email,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            SettingsActionTile(
+              icon: Icons.badge_outlined,
+              title: context.tr('Profile Info'),
+              subtitle: context.tr('View your account information.'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => _SponsorProfileInfoScreen(user: user),
+                  ),
+                );
+              },
+            ),
+            SettingsActionTile(
+              icon: Icons.edit_outlined,
+              title: context.tr('Profile Update'),
+              subtitle: context.tr('Update your name, email, and phone.'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => _SponsorProfileUpdateScreen(
+                      user: user,
+                      displayName: displayName,
+                    ),
+                  ),
+                );
+              },
+            ),
+            SettingsActionTile(
+              icon: Icons.lock_outline,
+              title: context.tr('Change Password'),
+              subtitle: context.tr('Update your account password securely.'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const _SponsorSecurityScreen(),
+                  ),
+                );
+              },
+            ),
+            SettingsActionTile(
+              icon: Icons.language_outlined,
+              title: context.tr('Language'),
+              subtitle: context.tr('Choose language'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const LanguageSelectionScreen(),
+                  ),
+                );
+              },
+            ),
+            SettingsActionTile(
+              icon: Icons.privacy_tip_outlined,
+              title: context.tr('Legal & Privacy'),
+              subtitle: context.tr('Terms, guidelines, and privacy policy.'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const LegalCenterScreen(),
+                  ),
+                );
+              },
+            ),
+            SettingsActionTile(
+              icon: Icons.logout,
+              title: context.tr('Logout'),
+              subtitle: context.tr('Sign out from your account.'),
+              isDanger: true,
+              onTap: () async {
+                await AuthService().signOut();
+                if (!context.mounted) return;
+                Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
 
-class _SponsorProfileTabState extends State<_SponsorProfileTab> {
+class _SponsorProfileInfoScreen extends StatelessWidget {
+  const _SponsorProfileInfoScreen({required this.user});
+
+  final User user;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(context.tr('Profile Info'))),
+      body: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        future: FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
+        builder: (context, snapshot) {
+          final data = snapshot.data?.data() ?? <String, dynamic>{};
+          final rows = <MapEntry<String, String>>[
+            MapEntry(context.tr('Full Name'), (data['displayName'] ?? user.displayName ?? '').toString()),
+            MapEntry(context.tr('Email'), (data['email'] ?? user.email ?? '').toString()),
+            MapEntry(context.tr('Phone number'), '${(data['phoneCountryCode'] ?? '').toString()} ${(data['phoneNumber'] ?? '').toString()}'.trim()),
+            MapEntry(context.tr('Country'), (data['country'] ?? '').toString()),
+            MapEntry(context.tr('Company Name'), (data['companyName'] ?? '').toString()),
+          ];
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.card,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: rows.map((row) => Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(row.key, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                        const SizedBox(height: 4),
+                        Text(row.value.isEmpty ? '-' : row.value, style: const TextStyle(color: AppColors.textLight, fontSize: 16, fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                  )).toList(),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SponsorProfileUpdateScreen extends StatefulWidget {
+  const _SponsorProfileUpdateScreen({required this.user, required this.displayName});
+
+  final User user;
+  final String displayName;
+
+  @override
+  State<_SponsorProfileUpdateScreen> createState() => _SponsorProfileUpdateScreenState();
+}
+
+class _SponsorProfileUpdateScreenState extends State<_SponsorProfileUpdateScreen> {
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _country = TextEditingController();
@@ -2595,16 +2790,13 @@ class _SponsorProfileTabState extends State<_SponsorProfileTab> {
   }
 
   Future<void> _load() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
     final doc = await FirebaseFirestore.instance
         .collection('users')
-        .doc(user.uid)
+        .doc(widget.user.uid)
         .get();
     final data = doc.data() ?? {};
-    _name.text = (data['displayName'] ?? user.displayName ?? widget.displayName)
-        .toString();
-    _email.text = (data['email'] ?? user.email ?? '').toString();
+    _name.text = (data['displayName'] ?? widget.user.displayName ?? widget.displayName).toString();
+    _email.text = (data['email'] ?? widget.user.email ?? '').toString();
     _country.text = (data['country'] ?? '').toString();
     _company.text = (data['companyName'] ?? '').toString();
     _phoneCode.text = (data['phoneCountryCode'] ?? '+1').toString();
@@ -2635,12 +2827,12 @@ class _SponsorProfileTabState extends State<_SponsorProfileTab> {
       if (newEmail.isNotEmpty && newEmail != (user.email ?? '')) {
         final currentEmail = (user.email ?? '').trim();
         if (currentEmail.isEmpty) {
-          _show('Current account email is missing. Please login again.');
+          _showSponsorMessage(context, 'Current account email is missing. Please login again.');
           setState(() => _saving = false);
           return;
         }
         if (_currentPassword.text.trim().isEmpty) {
-          _show('Current password is required to change email.');
+          _showSponsorMessage(context, context.tr('Current password is required to change email.'));
           setState(() => _saving = false);
           return;
         }
@@ -2664,189 +2856,123 @@ class _SponsorProfileTabState extends State<_SponsorProfileTab> {
         if (newEmail != (user.email ?? '')) 'pendingEmail': newEmail,
         'updatedAt': DateTime.now().toUtc(),
       }, SetOptions(merge: true));
-      _show('Profile updated.');
+      _showSponsorMessage(context, context.tr('Profile updated.'));
     } on FirebaseAuthException catch (e) {
       if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
-        _show('Current password is incorrect.');
+        _showSponsorMessage(context, context.tr('Current password is incorrect.'));
       } else {
-        _show('Profile update failed (${e.code}).');
+        _showSponsorMessage(context, context.tr('Profile update failed (${e.code}).'));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
-  void _show(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: const TextStyle(color: Colors.white)),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: const Color(0xFF2B1B44),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    return Scaffold(
+      appBar: AppBar(title: Text(context.tr('Profile Update'))),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              children: [
+                TextField(controller: _name, decoration: InputDecoration(labelText: context.tr('Full Name'))),
+                const SizedBox(height: 12),
+                TextField(controller: _email, decoration: InputDecoration(labelText: context.tr('Email'))),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 4,
+                      child: InkWell(
+                        onTap: () {
+                          showCountryPicker(
+                            context: context,
+                            showPhoneCode: true,
+                            onSelect: (country) {
+                              setState(() {
+                                _phoneCode.text = '+${country.phoneCode}';
+                                _phoneIso = country.countryCode;
+                              });
+                            },
+                          );
+                        },
+                        child: InputDecorator(
+                          decoration: InputDecoration(labelText: context.tr('Code')),
+                          child: Text('$_phoneIso ${_phoneCode.text}', style: const TextStyle(color: AppColors.textLight, fontWeight: FontWeight.w700)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 7,
+                      child: TextField(
+                        controller: _phoneNumber,
+                        keyboardType: TextInputType.phone,
+                        decoration: InputDecoration(labelText: context.tr('Phone number')),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(controller: _country, decoration: InputDecoration(labelText: context.tr('Country'))),
+                const SizedBox(height: 12),
+                TextField(controller: _company, decoration: InputDecoration(labelText: context.tr('Company Name'))),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _currentPassword,
+                  obscureText: _obscureCurrentPassword,
+                  decoration: InputDecoration(
+                    labelText: context.tr('Current Password (for email change)'),
+                    suffixIcon: IconButton(
+                      onPressed: () => setState(() => _obscureCurrentPassword = !_obscureCurrentPassword),
+                      icon: Icon(_obscureCurrentPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                GradientButton(
+                  label: _saving ? context.tr('Saving...') : context.tr('Update Profile'),
+                  onPressed: _saving ? () {} : _save,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.card,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Column(
-            children: [
-              TextField(
-                controller: _name,
-                decoration: InputDecoration(labelText: context.tr('Full Name')),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _email,
-                decoration: InputDecoration(labelText: context.tr('Email')),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    flex: 4,
-                    child: InkWell(
-                      onTap: () {
-                        showCountryPicker(
-                          context: context,
-                          showPhoneCode: true,
-                          onSelect: (country) {
-                            setState(() {
-                              _phoneCode.text = '+${country.phoneCode}';
-                              _phoneIso = country.countryCode;
-                            });
-                          },
-                        );
-                      },
-                      child: InputDecorator(
-                        decoration: InputDecoration(
-                          labelText: context.tr('Code'),
-                        ),
-                        child: Text(
-                          '$_phoneIso ${_phoneCode.text}',
-                          style: const TextStyle(
-                            color: AppColors.textLight,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 7,
-                    child: TextField(
-                      controller: _phoneNumber,
-                      keyboardType: TextInputType.phone,
-                      decoration: InputDecoration(
-                        labelText: context.tr('Phone number'),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _country,
-                decoration: InputDecoration(labelText: context.tr('Country')),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _company,
-                decoration: InputDecoration(
-                  labelText: context.tr('Company Name'),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _currentPassword,
-                obscureText: _obscureCurrentPassword,
-                decoration: InputDecoration(
-                  labelText: context.tr('Current Password (for email change)'),
-                  suffixIcon: IconButton(
-                    onPressed: () => setState(
-                      () => _obscureCurrentPassword = !_obscureCurrentPassword,
-                    ),
-                    icon: Icon(
-                      _obscureCurrentPassword
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              GradientButton(
-                label: _saving
-                    ? context.tr('Saving...')
-                    : context.tr('Update Profile'),
-                onPressed: _saving ? () {} : _save,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const LegalCenterScreen(),
-              ),
-            );
-          },
-          icon: const Icon(Icons.privacy_tip_outlined),
-          label: Text(context.tr('Legal & Privacy')),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.textMuted,
-            backgroundColor: AppColors.card,
-            side: const BorderSide(color: AppColors.border),
-            padding: const EdgeInsets.symmetric(vertical: 14),
-          ),
-        ),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: () async {
-            await AuthService().signOut();
-            if (!mounted) return;
-            Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
-          },
-          icon: const Icon(Icons.logout),
-          label: Text(context.tr('Logout')),
-          style: FilledButton.styleFrom(
-            backgroundColor: const Color(0xFFB93A63),
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 }
 
-class _SponsorSecurityTab extends StatefulWidget {
-  const _SponsorSecurityTab();
-
-  @override
-  State<_SponsorSecurityTab> createState() => _SponsorSecurityTabState();
+void _showSponsorMessage(BuildContext context, String message) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(message, style: const TextStyle(color: Colors.white)),
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: const Color(0xFF2B1B44),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+    ),
+  );
 }
 
-class _SponsorSecurityTabState extends State<_SponsorSecurityTab> {
+class _SponsorSecurityScreen extends StatefulWidget {
+  const _SponsorSecurityScreen();
+
+  @override
+  State<_SponsorSecurityScreen> createState() => _SponsorSecurityTabState();
+}
+
+class _SponsorSecurityTabState extends State<_SponsorSecurityScreen> {
   final _current = TextEditingController();
   final _newPass = TextEditingController();
   final _confirm = TextEditingController();

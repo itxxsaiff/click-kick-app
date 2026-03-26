@@ -59,7 +59,6 @@ class AdminDashboard extends StatelessWidget {
                           ],
                         ),
                       ),
-                      const LanguageMenuButton(compact: true),
                       IconButton(
                         onPressed: () async {
                           await AuthService().signOut();
@@ -233,6 +232,20 @@ class AdminDashboard extends StatelessWidget {
                               context,
                               MaterialPageRoute(
                                 builder: (_) => const AdminPaymentsScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        _AdminTile(
+                          title: context.tr('Language'),
+                          subtitle: context.tr('Change app language'),
+                          icon: Icons.language,
+                          accent: const Color(0xFF65E8FF),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const LanguageSelectionScreen(),
                               ),
                             );
                           },

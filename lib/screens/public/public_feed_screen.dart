@@ -728,10 +728,38 @@ class _ContestFeedCard extends StatelessWidget {
   final bool isPlaying;
   final VoidCallback? onTapVideo;
 
+  Future<void> _requireAuth(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(context.tr('Sign Up / Login first')),
+        content: Text(
+          context.tr('Please sign up or login first to continue.'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              Navigator.pushNamed(context, '/register');
+            },
+            child: Text(context.tr('Sign Up')),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              Navigator.pushNamed(context, '/login');
+            },
+            child: Text(context.tr('Login')),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _openContest(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      Navigator.pushNamed(context, '/login');
+      _requireAuth(context);
       return;
     }
     Navigator.push(
@@ -821,6 +849,10 @@ class _ContestFeedCard extends StatelessWidget {
                       icon: Icons.share_rounded,
                       label: context.tr('Share'),
                       onTap: () async {
+                        if (FirebaseAuth.instance.currentUser == null) {
+                          await _requireAuth(context);
+                          return;
+                        }
                         final text =
                             '${item.title}\n${item.description}\n${context.tr('Winner Prize')}: \$${item.winnerPrize.toStringAsFixed(0)}';
                         await Share.share(text, subject: item.title);
@@ -1038,6 +1070,34 @@ class _AdminVideoFeedCard extends StatelessWidget {
   final VideoPlayerController? controller;
   final VoidCallback? onTapVideo;
 
+  Future<void> _requireAuth(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(context.tr('Sign Up / Login first')),
+        content: Text(
+          context.tr('Please sign up or login first to continue.'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              Navigator.pushNamed(context, '/register');
+            },
+            child: Text(context.tr('Sign Up')),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              Navigator.pushNamed(context, '/login');
+            },
+            child: Text(context.tr('Login')),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -1114,6 +1174,10 @@ class _AdminVideoFeedCard extends StatelessWidget {
                       icon: Icons.share_rounded,
                       label: context.tr('Share'),
                       onTap: () async {
+                        if (FirebaseAuth.instance.currentUser == null) {
+                          await _requireAuth(context);
+                          return;
+                        }
                         final text = '${item.adminName}\n${item.description}\n${item.videoUrl}';
                         await Share.share(text, subject: item.adminName);
                       },
@@ -1289,6 +1353,34 @@ class _FeedInfoBadge extends StatelessWidget {
 class _NewsFeedCardState extends State<_NewsFeedCard> {
   bool _expanded = false;
 
+  Future<void> _requireAuth(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(context.tr('Sign Up / Login first')),
+        content: Text(
+          context.tr('Please sign up or login first to continue.'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              Navigator.pushNamed(context, '/register');
+            },
+            child: Text(context.tr('Sign Up')),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              Navigator.pushNamed(context, '/login');
+            },
+            child: Text(context.tr('Login')),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
@@ -1344,6 +1436,10 @@ class _NewsFeedCardState extends State<_NewsFeedCard> {
                 right: 14,
                 child: IconButton(
                   onPressed: () async {
+                    if (FirebaseAuth.instance.currentUser == null) {
+                      await _requireAuth(context);
+                      return;
+                    }
                     final text = '${item.title}\n${item.description}';
                     await Share.share(text, subject: item.title);
                   },
@@ -1506,7 +1602,6 @@ class _ParticipantDashboardTab extends StatefulWidget {
 class _ParticipantDashboardTabState extends State<_ParticipantDashboardTab> {
   late Future<List<Map<String, dynamic>>> _future;
   String? _errorMessage;
-  String _statusFilter = 'all';
 
   @override
   void initState() {
@@ -1678,194 +1773,310 @@ class _ParticipantDashboardTabState extends State<_ParticipantDashboardTab> {
             final bt = (b['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
             return bt.compareTo(at);
           });
-
-        final filtered = _statusFilter == 'all'
-            ? docs
-            : _statusFilter == 'winner'
-                ? docs.where((e) => e['isWinner'] == true).toList()
-                : docs.where((e) => (e['status'] ?? '').toString() == _statusFilter).toList();
-
-        final pending = docs.where((e) => (e['status'] ?? '') == 'pending').length;
         final approved = docs.where((e) => (e['status'] ?? '') == 'approved').length;
-        final rejected = docs.where((e) => (e['status'] ?? '') == 'rejected').length;
+        final winners = docs.where((e) => e['isWinner'] == true).length;
+        final authUser = FirebaseAuth.instance.currentUser;
+        final fallbackName = docs.isNotEmpty
+            ? ((docs.first['userName'] ??
+                        docs.first['participantName'] ??
+                        docs.first['displayName']) ??
+                    '')
+                .toString()
+            : '';
+        final profileName = (authUser?.displayName?.trim().isNotEmpty ?? false)
+            ? authUser!.displayName!.trim()
+            : (fallbackName.isNotEmpty ? fallbackName : context.tr('Participant'));
+        final profileEmail = (authUser?.email ?? '').trim();
 
         return RefreshIndicator(
           onRefresh: _refresh,
-          child: ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: filtered.isEmpty ? 3 : filtered.length + 2,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
-            itemBuilder: (context, index) {
-              if (index == 0) {
-                return Row(
-                  children: [
-                    _CountCard(
-                      label: _t(context, 'Total', 'الإجمالي'),
-                      value: docs.length,
-                      color: AppColors.hotPink,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                  child: Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: AppColors.card,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: AppColors.border),
                     ),
-                    const SizedBox(width: 8),
-                    _CountCard(
-                      label: _t(context, 'Pending', 'قيد الانتظار'),
-                      value: pending,
-                      color: AppColors.sunset,
-                    ),
-                    const SizedBox(width: 8),
-                    _CountCard(
-                      label: _t(context, 'Approved', 'مقبول'),
-                      value: approved,
-                      color: const Color(0xFF2DAF6F),
-                    ),
-                    const SizedBox(width: 8),
-                    _CountCard(
-                      label: _t(context, 'Rejected', 'مرفوض'),
-                      value: rejected,
-                      color: const Color(0xFFC53D5D),
-                    ),
-                  ],
-                );
-              }
-              if (index == 1) {
-                const options = ['all', 'pending', 'approved', 'rejected', 'winner'];
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _t(context, 'Filter by status', 'تصفية حسب الحالة'),
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 8),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: options.map((option) {
-                          final isSelected = _statusFilter == option;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ChoiceChip(
-                              label: Text(
-                                _t(
-                                  context,
-                                  option[0].toUpperCase() + option.substring(1),
-                                  switch (option) {
-                                    'all' => 'الكل',
-                                    'pending' => 'قيد الانتظار',
-                                    'approved' => 'مقبول',
-                                    'rejected' => 'مرفوض',
-                                    _ => 'الفائز',
-                                  },
-                                ),
-                                style: const TextStyle(color: Colors.white),
-                              ),
-                              selected: isSelected,
-                              onSelected: (_) => setState(() => _statusFilter = option),
-                              selectedColor: AppColors.hotPink.withOpacity(0.22),
-                              backgroundColor: AppColors.card,
-                              side: BorderSide(
-                                color: isSelected ? AppColors.hotPink : AppColors.border,
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ],
-                );
-              }
-
-              if (filtered.isEmpty) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(context.tr('No videos found for selected filter.')),
-                  ),
-                );
-              }
-
-              final data = filtered[index - 2];
-              final status = (data['isWinner'] == true)
-                  ? 'winner'
-                  : (data['status'] ?? 'pending').toString();
-              final reason = (data['rejectionReason'] ?? '').toString();
-              final videoUrl = (data['videoUrl'] ?? '').toString();
-              final contestName =
-                  (data['contestName'] ?? data['contestTitle'] ?? data['contestId'] ?? '')
-                      .toString();
-
-              Color badge = AppColors.sunset;
-              if (status == 'approved') badge = const Color(0xFF2DAF6F);
-              if (status == 'rejected') badge = const Color(0xFFC53D5D);
-              if (status == 'winner') badge = AppColors.hotPink;
-
-              return Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppColors.card,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+                    child: Column(
                       children: [
-                        Expanded(
-                          child: Text(
-                            '${_t(context, 'Contest', 'المسابقة')}: $contestName',
-                            style: Theme.of(context).textTheme.titleMedium,
+                        Container(
+                          width: 74,
+                          height: 74,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppColors.cardSoft,
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: const Icon(
+                            Icons.person_rounded,
+                            color: AppColors.hotPink,
+                            size: 38,
                           ),
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: badge.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(10),
+                        const SizedBox(height: 12),
+                        Text(
+                          profileName,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
                           ),
-                          child: Text(
-                            _t(
-                              context,
-                              status[0].toUpperCase() + status.substring(1),
-                              switch (status) {
-                                'approved' => 'مقبول',
-                                'rejected' => 'مرفوض',
-                                'winner' => 'الفائز',
-                                _ => 'قيد الانتظار',
-                              },
-                            ),
-                            style: TextStyle(
-                              color: badge,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
+                        ),
+                        if (profileEmail.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            profileEmail,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: AppColors.textMuted,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
+                        ],
+                        const SizedBox(height: 18),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _ProfileStatBlock(
+                                value: docs.length.toString(),
+                                label: _t(context, 'Total Videos', 'إجمالي الفيديوهات'),
+                              ),
+                            ),
+                            Expanded(
+                              child: _ProfileStatBlock(
+                                value: approved.toString(),
+                                label: _t(context, 'Approved', 'مقبول'),
+                              ),
+                            ),
+                            Expanded(
+                              child: _ProfileStatBlock(
+                                value: winners.toString(),
+                                label: _t(context, 'Winner', 'الفائز'),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
-                    FilledButton.tonalIcon(
-                      onPressed: videoUrl.isEmpty
-                          ? null
-                          : () async {
-                              await showDialog<void>(
-                                context: context,
-                                barrierDismissible: true,
-                                builder: (_) => _InlineVideoDialog(videoUrl: videoUrl),
-                              );
-                            },
-                      icon: const Icon(Icons.play_circle_fill),
-                      label: Text(_t(context, 'Watch Video', 'مشاهدة الفيديو')),
-                    ),
-                    if (status == 'rejected' && reason.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text('${_t(context, 'Reason', 'السبب')}: $reason'),
-                    ],
-                  ],
+                  ),
                 ),
-              );
-            },
+              ),
+              if (docs.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(context.tr('No videos found for selected filter.')),
+                    ),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  sliver: SliverGrid(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final data = docs[index];
+                        final status = (data['isWinner'] == true)
+                            ? 'winner'
+                            : (data['status'] ?? 'pending').toString();
+                        final videoUrl = (data['videoUrl'] ?? '').toString();
+                        final contestName =
+                            (data['contestName'] ??
+                                        data['contestTitle'] ??
+                                        data['contestId'] ??
+                                        '')
+                                    .toString();
+                        final votes = ((data['voteCount'] ?? 0) as num).toInt();
+                        final reason = (data['rejectionReason'] ?? '').toString();
+
+                        Color badge = AppColors.sunset;
+                        String badgeLabel = _t(context, 'Pending', 'قيد الانتظار');
+                        if (status == 'approved') {
+                          badge = const Color(0xFF2DAF6F);
+                          badgeLabel = _t(context, 'Approved', 'مقبول');
+                        } else if (status == 'rejected') {
+                          badge = const Color(0xFFC53D5D);
+                          badgeLabel = _t(context, 'Rejected', 'مرفوض');
+                        } else if (status == 'winner') {
+                          badge = AppColors.hotPink;
+                          badgeLabel = _t(context, 'Winner', 'الفائز');
+                        }
+
+                        return GestureDetector(
+                          onTap: videoUrl.isEmpty
+                              ? null
+                              : () async {
+                                  await showDialog<void>(
+                                    context: context,
+                                    barrierDismissible: true,
+                                    builder: (_) => _InlineVideoDialog(videoUrl: videoUrl),
+                                  );
+                                },
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: AppColors.card,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: Stack(
+                              children: [
+                                Positioned.fill(
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(18),
+                                      gradient: const LinearGradient(
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                        colors: [AppColors.cardSoft, AppColors.card],
+                                      ),
+                                    ),
+                                    child: const Center(
+                                      child: Icon(
+                                        Icons.play_circle_fill_rounded,
+                                        color: AppColors.hotPink,
+                                        size: 38,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Positioned(
+                                  top: 8,
+                                  left: 8,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: badge.withValues(alpha: 0.18),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Text(
+                                      badgeLabel,
+                                      style: TextStyle(
+                                        color: badge,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Positioned(
+                                  left: 10,
+                                  right: 10,
+                                  bottom: 10,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        contestName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.favorite_rounded,
+                                            color: AppColors.hotPink,
+                                            size: 13,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Expanded(
+                                            child: Text(
+                                              '$votes',
+                                              style: const TextStyle(
+                                                color: AppColors.textLight,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      if (status == 'rejected' && reason.isNotEmpty) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          reason,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: AppColors.textMuted,
+                                            fontSize: 10,
+                                            height: 1.25,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                      childCount: docs.length,
+                    ),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      mainAxisSpacing: 8,
+                      crossAxisSpacing: 8,
+                      childAspectRatio: 0.72,
+                    ),
+                  ),
+                ),
+            ],
           ),
         );
       },
+    );
+  }
+}
+
+class _ProfileStatBlock extends StatelessWidget {
+  const _ProfileStatBlock({required this.value, required this.label});
+
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: AppColors.textMuted,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }

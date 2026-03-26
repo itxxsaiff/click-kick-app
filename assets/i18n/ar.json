@@ -599,5 +599,12 @@
   "Personal Account": "حساب شخصي",
   "Business Account": "حساب أعمال",
   "Create Business Account": "إنشاء حساب أعمال",
-  "Create business account and manage your assigned contests.": "أنشئ حساب أعمال وأدر المسابقات المخصصة لك."
+  "Create business account and manage your assigned contests.": "أنشئ حساب أعمال وأدر المسابقات المخصصة لك.",
+  "Sign Up / Login first": "سجل أو أنشئ حساباً أولاً",
+  "Please sign up or login first to continue.": "يرجى إنشاء حساب أو تسجيل الدخول أولاً للمتابعة.",
+  "Sign Up": "إنشاء حساب",
+  "Select regions": "اختر المناطق",
+  "Regions": "المناطق",
+  "Done": "تم",
+  "Total Videos": "إجمالي الفيديوهات"
 }

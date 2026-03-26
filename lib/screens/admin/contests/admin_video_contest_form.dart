@@ -40,6 +40,7 @@ class _AdminVideoContestFormState extends State<AdminVideoContestForm> {
   String? _contestAdminId;
   String _contestAdminName = '';
   List<Map<String, String>> _admins = const [];
+  List<String> _selectedRegions = [];
   bool _loadingAdmins = true;
 
   bool _saving = false;
@@ -51,7 +52,21 @@ class _AdminVideoContestFormState extends State<AdminVideoContestForm> {
     if (data != null) {
       _title.text = (data['title'] ?? '').toString();
       _description.text = (data['description'] ?? '').toString();
-      _region.text = (data['region'] ?? '').toString();
+      final existingRegions = (data['regions'] as List?)
+          ?.map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+      if (existingRegions != null && existingRegions.isNotEmpty) {
+        _selectedRegions = existingRegions;
+      } else {
+        final regionText = (data['region'] ?? '').toString();
+        _selectedRegions = regionText
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
+      }
+      _region.text = _selectedRegions.join(', ');
       _maxVideos.text = (data['maxVideos'] ?? '').toString();
       _winnerPrize.text = (data['winnerPrize'] ?? '').toString();
       _startDate = _readDate(data['submissionStart']);
@@ -82,24 +97,111 @@ class _AdminVideoContestFormState extends State<AdminVideoContestForm> {
   }
 
   Future<void> _pickRegion() async {
-    Country? selected;
-    showCountryPicker(
+    final countries = CountryService().getAll()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    final initial = Set<String>.from(_selectedRegions);
+    final selected = await showModalBottomSheet<List<String>>(
       context: context,
-      showPhoneCode: false,
-      countryListTheme: CountryListThemeData(
-        backgroundColor: AppColors.card,
-        textStyle: const TextStyle(color: AppColors.textLight),
-        inputDecoration: InputDecoration(
-          labelText: context.tr('Search country'),
-          prefixIcon: const Icon(Icons.search),
-        ),
+      isScrollControlled: true,
+      backgroundColor: AppColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      onSelect: (country) {
-        selected = country;
-        if (!mounted) return;
-        setState(() => _region.text = selected!.name);
+      builder: (context) {
+        final temp = Set<String>.from(initial);
+        var query = '';
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final filtered = countries.where((country) {
+              final q = query.trim().toLowerCase();
+              if (q.isEmpty) return true;
+              return country.name.toLowerCase().contains(q);
+            }).toList();
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  top: 20,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            context.tr('Select regions'),
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: Text(context.tr('Cancel')),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      onChanged: (value) => setModalState(() => query = value),
+                      decoration: InputDecoration(
+                        labelText: context.tr('Search country'),
+                        prefixIcon: const Icon(Icons.search),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Flexible(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 420),
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: filtered.length,
+                          itemBuilder: (context, index) {
+                            final country = filtered[index];
+                            final checked = temp.contains(country.name);
+                            return CheckboxListTile(
+                              value: checked,
+                              activeColor: AppColors.hotPink,
+                              checkColor: Colors.white,
+                              title: Text(
+                                country.name,
+                                style: const TextStyle(color: AppColors.textLight),
+                              ),
+                              controlAffinity: ListTileControlAffinity.leading,
+                              onChanged: (value) {
+                                setModalState(() {
+                                  if (value ?? false) {
+                                    temp.add(country.name);
+                                  } else {
+                                    temp.remove(country.name);
+                                  }
+                                });
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    GradientButton(
+                      label: context.tr('Done'),
+                      onPressed: () =>
+                          Navigator.pop(context, temp.toList()..sort()),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
       },
     );
+    if (!mounted || selected == null) return;
+    setState(() {
+      _selectedRegions = selected;
+      _region.text = _selectedRegions.join(', ');
+    });
   }
 
   Future<void> _pickDate(
@@ -211,7 +313,8 @@ class _AdminVideoContestFormState extends State<AdminVideoContestForm> {
     final data = {
       'title': _title.text.trim(),
       'description': _description.text.trim(),
-      'region': _region.text.trim(),
+      'region': _selectedRegions.join(', '),
+      'regions': _selectedRegions,
       'maxVideos': int.tryParse(_maxVideos.text.trim()) ?? 0,
       'winnerPrize': winnerPrize,
       'contestType': 'video_contest',
@@ -362,7 +465,7 @@ class _AdminVideoContestFormState extends State<AdminVideoContestForm> {
                 readOnly: true,
                 onTap: _pickRegion,
                 decoration: InputDecoration(
-                  labelText: context.tr('Region'),
+                  labelText: context.tr('Regions'),
                   suffixIcon: IconButton(
                     onPressed: _pickRegion,
                     icon: const Icon(Icons.arrow_drop_down),

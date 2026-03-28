@@ -1,9 +1,14 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
+import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
@@ -13,6 +18,7 @@ import '../../theme/app_colors.dart';
 import '../../widgets/report_video_dialog.dart';
 import '../../widgets/settings_action_tile.dart';
 import '../shared/legal_center_screen.dart';
+import '../shared/support_chat_screen.dart';
 import '../user/contest_detail_screen.dart';
 
 class PublicFeedScreen extends StatefulWidget {
@@ -1787,6 +1793,7 @@ class _ParticipantDashboardTabState extends State<_ParticipantDashboardTab> {
             ? authUser!.displayName!.trim()
             : (fallbackName.isNotEmpty ? fallbackName : context.tr('Participant'));
         final profileEmail = (authUser?.email ?? '').trim();
+        final profilePhotoUrl = (authUser?.photoURL ?? '').trim();
 
         return RefreshIndicator(
           onRefresh: _refresh,
@@ -1813,11 +1820,22 @@ class _ParticipantDashboardTabState extends State<_ParticipantDashboardTab> {
                             color: AppColors.cardSoft,
                             border: Border.all(color: AppColors.border),
                           ),
-                          child: const Icon(
-                            Icons.person_rounded,
-                            color: AppColors.hotPink,
-                            size: 38,
-                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: profilePhotoUrl.isNotEmpty
+                              ? Image.network(
+                                  profilePhotoUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => const Icon(
+                                    Icons.person_rounded,
+                                    color: AppColors.hotPink,
+                                    size: 38,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.person_rounded,
+                                  color: AppColors.hotPink,
+                                  size: 38,
+                                ),
                         ),
                         const SizedBox(height: 12),
                         Text(
@@ -1916,10 +1934,14 @@ class _ParticipantDashboardTabState extends State<_ParticipantDashboardTab> {
                           onTap: videoUrl.isEmpty
                               ? null
                               : () async {
-                                  await showDialog<void>(
-                                    context: context,
-                                    barrierDismissible: true,
-                                    builder: (_) => _InlineVideoDialog(videoUrl: videoUrl),
+                                  await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => _DashboardVideoPlayerScreen(
+                                        videoUrl: videoUrl,
+                                        title: contestName,
+                                      ),
+                                    ),
                                   );
                                 },
                           child: Container(
@@ -1992,14 +2014,14 @@ class _ParticipantDashboardTabState extends State<_ParticipantDashboardTab> {
                                       Row(
                                         children: [
                                           const Icon(
-                                            Icons.favorite_rounded,
+                                            Icons.how_to_vote_rounded,
                                             color: AppColors.hotPink,
                                             size: 13,
                                           ),
                                           const SizedBox(width: 4),
                                           Expanded(
                                             child: Text(
-                                              '$votes',
+                                              '${_t(context, 'Votes', 'الأصوات')}: $votes',
                                               style: const TextStyle(
                                                 color: AppColors.textLight,
                                                 fontSize: 11,
@@ -2077,6 +2099,182 @@ class _ProfileStatBlock extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _DashboardVideoPlayerScreen extends StatefulWidget {
+  const _DashboardVideoPlayerScreen({
+    required this.videoUrl,
+    required this.title,
+  });
+
+  final String videoUrl;
+  final String title;
+
+  @override
+  State<_DashboardVideoPlayerScreen> createState() =>
+      _DashboardVideoPlayerScreenState();
+}
+
+class _DashboardVideoPlayerScreenState extends State<_DashboardVideoPlayerScreen> {
+  VideoPlayerController? _controller;
+  bool _showControls = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl))
+      ..initialize().then((_) async {
+        if (!mounted) return;
+        await _controller?.setLooping(true);
+        await _controller?.play();
+        setState(() {});
+      });
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _togglePlayback() async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    if (controller.value.isPlaying) {
+      await controller.pause();
+    } else {
+      await controller.play();
+    }
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          widget.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      body: Stack(
+        children: [
+          const _SpaceBackground(),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppColors.card,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: AppColors.border),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: controller != null && controller.value.isInitialized
+                    ? GestureDetector(
+                        onTap: () => setState(() => _showControls = !_showControls),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            FittedBox(
+                              fit: BoxFit.contain,
+                              child: SizedBox(
+                                width: controller.value.size.width,
+                                height: controller.value.size.height,
+                                child: VideoPlayer(controller),
+                              ),
+                            ),
+                            AnimatedOpacity(
+                              opacity: _showControls ? 1 : 0,
+                              duration: const Duration(milliseconds: 180),
+                              child: Container(
+                                color: Colors.black.withValues(alpha: 0.18),
+                                child: Column(
+                                  children: [
+                                    const Spacer(),
+                                    Center(
+                                      child: GestureDetector(
+                                        onTap: _togglePlayback,
+                                        child: Container(
+                                          width: 78,
+                                          height: 78,
+                                          decoration: BoxDecoration(
+                                            color: Colors.black.withValues(alpha: 0.42),
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: Colors.white.withValues(alpha: 0.2),
+                                            ),
+                                          ),
+                                          child: Icon(
+                                            controller.value.isPlaying
+                                                ? Icons.pause_rounded
+                                                : Icons.play_arrow_rounded,
+                                            color: Colors.white,
+                                            size: 42,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Padding(
+                                      padding: const EdgeInsets.all(16),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          VideoProgressIndicator(
+                                            controller,
+                                            allowScrubbing: true,
+                                            colors: const VideoProgressColors(
+                                              playedColor: AppColors.hotPink,
+                                              bufferedColor: AppColors.textMuted,
+                                              backgroundColor: AppColors.border,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Text(
+                                                controller.value.isPlaying
+                                                    ? context.tr('Pause')
+                                                    : context.tr('Play'),
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                              Text(
+                                                widget.title,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  color: AppColors.textLight,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : const Center(child: CircularProgressIndicator()),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2346,6 +2544,25 @@ class _PublicUserProfileTab extends StatelessWidget {
               },
             ),
             SettingsActionTile(
+              icon: Icons.support_agent_outlined,
+              title: context.tr('Support'),
+              subtitle: context.tr('Chat with support team.'),
+              onTap: () {
+                final user = FirebaseAuth.instance.currentUser;
+                if (user == null) return;
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SupportChatScreen(
+                      threadId: user.uid,
+                      title: context.tr('Support'),
+                      subtitle: user.email,
+                    ),
+                  ),
+                );
+              },
+            ),
+            SettingsActionTile(
               icon: Icons.privacy_tip_outlined,
               title: context.tr('Legal & Privacy'),
               subtitle: context.tr('Terms, guidelines, and privacy policy.'),
@@ -2449,18 +2666,18 @@ class _PublicUserProfileUpdateScreenState
   final TextEditingController _phoneCodeController =
       TextEditingController(text: '+1');
   final TextEditingController _phoneNumberController = TextEditingController();
-  final TextEditingController _currentPasswordController =
-      TextEditingController();
   String _phoneIso = 'US';
   bool _loading = true;
   bool _saving = false;
-  bool _obscureCurrentPassword = true;
+  Uint8List? _photoBytes;
+  String _photoUrl = '';
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.user.displayName ?? '');
     _emailController = TextEditingController(text: widget.user.email ?? '');
+    _photoUrl = widget.user.photoURL ?? '';
     _loadProfile();
   }
 
@@ -2476,6 +2693,7 @@ class _PublicUserProfileUpdateScreenState
     _phoneCodeController.text = (data['phoneCountryCode'] ?? '+1').toString();
     _phoneIso = (data['phoneCountryIso'] ?? 'US').toString();
     _phoneNumberController.text = (data['phoneNumber'] ?? '').toString();
+    _photoUrl = (data['photoUrl'] ?? _photoUrl).toString();
     setState(() => _loading = false);
   }
 
@@ -2485,8 +2703,29 @@ class _PublicUserProfileUpdateScreenState
     _emailController.dispose();
     _phoneCodeController.dispose();
     _phoneNumberController.dispose();
-    _currentPasswordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickProfilePhoto() async {
+    final picker = ImagePicker();
+    final file = await picker.pickImage(source: ImageSource.gallery);
+    if (file == null) return;
+    final rawBytes = await file.readAsBytes();
+    final compressed = await compute(_compressProfilePhotoBytes, rawBytes);
+    if (!mounted) return;
+    setState(() => _photoBytes = compressed);
+  }
+
+  Future<String> _uploadProfilePhoto(String uid) async {
+    if (_photoBytes == null) return _photoUrl;
+    final ref = FirebaseStorage.instance.ref().child(
+      'profile_photos/$uid/profile.jpg',
+    );
+    await ref.putData(
+      _photoBytes!,
+      SettableMetadata(contentType: 'image/jpeg'),
+    );
+    return ref.getDownloadURL();
   }
 
   Future<void> _saveProfile() async {
@@ -2498,31 +2737,27 @@ class _PublicUserProfileUpdateScreenState
       final newEmail = _emailController.text.trim();
       final willUpdateEmail =
           newEmail.isNotEmpty && newEmail != (user.email ?? '');
-      if (willUpdateEmail && _currentPasswordController.text.trim().isEmpty) {
-        _show(context, context.tr('Current password is required.'));
-        return;
-      }
       if (willUpdateEmail) {
-        final credential = EmailAuthProvider.credential(
-          email: user.email ?? '',
-          password: _currentPasswordController.text.trim(),
-        );
-        await user.reauthenticateWithCredential(credential);
         await user.verifyBeforeUpdateEmail(newEmail);
       }
+      final uploadedPhotoUrl = await _uploadProfilePhoto(user.uid);
       await user.updateDisplayName(newName);
+      if (uploadedPhotoUrl.isNotEmpty) {
+        await user.updatePhotoURL(uploadedPhotoUrl);
+      }
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'displayName': newName,
-        'email': user.email ?? '',
+        'email': willUpdateEmail ? newEmail : (user.email ?? ''),
         'phoneCountryCode': _phoneCodeController.text.trim(),
         'phoneCountryIso': _phoneIso,
         'phoneNumber': _phoneNumberController.text.trim(),
         'phoneE164': '${_phoneCodeController.text.trim()}${_phoneNumberController.text.trim()}',
-        if (willUpdateEmail) 'pendingEmail': newEmail,
+        'photoUrl': uploadedPhotoUrl,
         'updatedAt': DateTime.now().toUtc(),
       }, SetOptions(merge: true));
       if (!mounted) return;
-      _currentPasswordController.clear();
+      _photoUrl = uploadedPhotoUrl;
+      _photoBytes = null;
       _show(
         context,
         willUpdateEmail
@@ -2535,6 +2770,8 @@ class _PublicUserProfileUpdateScreenState
         _show(context, context.tr('Current password is incorrect.'));
       } else if (e.code == 'email-already-in-use') {
         _show(context, context.tr('This email is already in use.'));
+      } else if (e.code == 'requires-recent-login') {
+        _show(context, context.tr('Please login again before changing your email.'));
       } else {
         _show(context, context.tr('Profile update failed (${e.code}).'));
       }
@@ -2560,6 +2797,72 @@ class _PublicUserProfileUpdateScreenState
                       _FormCard(
                         child: Column(
                           children: [
+                            GestureDetector(
+                              onTap: _pickProfilePhoto,
+                              child: Column(
+                                children: [
+                                  Stack(
+                                    alignment: Alignment.bottomRight,
+                                    children: [
+                                      Container(
+                                        width: 96,
+                                        height: 96,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: AppColors.cardSoft,
+                                          border: Border.all(color: AppColors.border),
+                                        ),
+                                        clipBehavior: Clip.antiAlias,
+                                        child: _photoBytes != null
+                                            ? Image.memory(
+                                                _photoBytes!,
+                                                fit: BoxFit.cover,
+                                              )
+                                            : _photoUrl.isNotEmpty
+                                                ? Image.network(
+                                                    _photoUrl,
+                                                    fit: BoxFit.cover,
+                                                    errorBuilder: (_, __, ___) => const Icon(
+                                                      Icons.person_rounded,
+                                                      color: AppColors.hotPink,
+                                                      size: 42,
+                                                    ),
+                                                  )
+                                                : const Icon(
+                                                    Icons.person_rounded,
+                                                    color: AppColors.hotPink,
+                                                    size: 42,
+                                                  ),
+                                      ),
+                                      Container(
+                                        width: 34,
+                                        height: 34,
+                                        decoration: BoxDecoration(
+                                          color: AppColors.hotPink,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: AppColors.deepSpace, width: 2),
+                                        ),
+                                        child: const Icon(
+                                          Icons.camera_alt_rounded,
+                                          color: Colors.white,
+                                          size: 18,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    context.tr('Upload profile photo'),
+                                    style: const TextStyle(
+                                      color: AppColors.textMuted,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
                             TextField(
                               controller: _nameController,
                               decoration: InputDecoration(
@@ -2613,24 +2916,6 @@ class _PublicUserProfileUpdateScreenState
                                   ),
                                 ),
                               ],
-                            ),
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: _currentPasswordController,
-                              obscureText: _obscureCurrentPassword,
-                              decoration: InputDecoration(
-                                labelText: context.tr('Current Password (for email change)'),
-                                suffixIcon: IconButton(
-                                  onPressed: () => setState(
-                                    () => _obscureCurrentPassword = !_obscureCurrentPassword,
-                                  ),
-                                  icon: Icon(
-                                    _obscureCurrentPassword
-                                        ? Icons.visibility_off_outlined
-                                        : Icons.visibility_outlined,
-                                  ),
-                                ),
-                              ),
                             ),
                             const SizedBox(height: 16),
                             SizedBox(
@@ -3063,6 +3348,41 @@ class _InlineVideoDialogState extends State<_InlineVideoDialog> {
       ),
     );
   }
+}
+
+Uint8List _compressProfilePhotoBytes(Uint8List input) {
+  final decoded = img.decodeImage(input);
+  if (decoded == null) return input;
+
+  img.Image processed = decoded;
+  const maxDimension = 640;
+  if (processed.width > maxDimension || processed.height > maxDimension) {
+    processed = img.copyResize(
+      processed,
+      width: processed.width >= processed.height ? maxDimension : null,
+      height: processed.height > processed.width ? maxDimension : null,
+      interpolation: img.Interpolation.average,
+    );
+  }
+
+  var quality = 85;
+  Uint8List bytes = Uint8List.fromList(img.encodeJpg(processed, quality: quality));
+  while (bytes.lengthInBytes > 100 * 1024 && quality > 35) {
+    quality -= 10;
+    bytes = Uint8List.fromList(img.encodeJpg(processed, quality: quality));
+  }
+
+  while (bytes.lengthInBytes > 100 * 1024 &&
+      (processed.width > 240 || processed.height > 240)) {
+    processed = img.copyResize(
+      processed,
+      width: (processed.width * 0.85).round(),
+      height: (processed.height * 0.85).round(),
+      interpolation: img.Interpolation.average,
+    );
+    bytes = Uint8List.fromList(img.encodeJpg(processed, quality: quality));
+  }
+  return bytes;
 }
 
 class _SpaceBackground extends StatelessWidget {

@@ -91,6 +91,19 @@ service cloud.firestore {
       allow read, update, delete: if isStaff();
     }
 
+    match /support_threads/{threadId} {
+      allow create: if isStaff() || (signedIn() && request.auth.uid == threadId);
+      allow read: if isStaff() || (signedIn() && request.auth.uid == threadId);
+      allow update: if isStaff() || (signedIn() && request.auth.uid == threadId);
+      allow delete: if isStaff();
+
+      match /messages/{messageId} {
+        allow read: if isStaff() || (signedIn() && request.auth.uid == threadId);
+        allow create: if isStaff() || (signedIn() && request.auth.uid == threadId);
+        allow update, delete: if isStaff();
+      }
+    }
+
     match /sponsorshipApplications/{applicationId} {
       allow create: if signedIn();
       allow read: if isStaff() || isOwner(resource.data.sponsorId);

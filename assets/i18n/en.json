@@ -606,5 +606,17 @@
   "Select regions": "Select regions",
   "Regions": "Regions",
   "Done": "Done",
-  "Total Videos": "Total Videos"
+  "Total Videos": "Total Videos",
+  "Play": "Play",
+  "Pause": "Pause",
+  "Upload profile photo": "Upload profile photo",
+  "Please login again before changing your email.": "Please login again before changing your email.",
+  "Support": "Support",
+  "Chat with support team.": "Chat with support team.",
+  "Support Inbox": "Support Inbox",
+  "No support messages yet.": "No support messages yet.",
+  "User help messages": "User help messages",
+  "Start the conversation.": "Start the conversation.",
+  "Type your message": "Type your message",
+  "Sending...": "Sending..."
 }

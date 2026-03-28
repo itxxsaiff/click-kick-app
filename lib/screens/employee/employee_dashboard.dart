@@ -9,6 +9,7 @@ import '../../theme/app_colors.dart';
 import '../../widgets/settings_action_tile.dart';
 import '../admin/admin_videos_screen.dart';
 import '../shared/legal_center_screen.dart';
+import '../shared/support_chat_screen.dart';
 
 class EmployeeDashboard extends StatefulWidget {
   const EmployeeDashboard({super.key, required this.displayName});
@@ -485,6 +486,23 @@ class _EmployeeProfileTab extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (_) => const LanguageSelectionScreen(),
+                  ),
+                );
+              },
+            ),
+            SettingsActionTile(
+              icon: Icons.support_agent_outlined,
+              title: context.tr('Support'),
+              subtitle: context.tr('Chat with support team.'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SupportChatScreen(
+                      threadId: user.uid,
+                      title: context.tr('Support'),
+                      subtitle: user.email,
+                    ),
                   ),
                 );
               },

@@ -18,6 +18,7 @@ import '../../widgets/settings_action_tile.dart';
 import '../payments/sponsorship_payment_screen.dart';
 import '../shared/contest_video_review_screen.dart';
 import '../shared/legal_center_screen.dart';
+import '../shared/support_chat_screen.dart';
 
 class SponsorHome extends StatefulWidget {
   const SponsorHome({super.key, required this.displayName});
@@ -2672,6 +2673,23 @@ class _SponsorProfileTab extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (_) => const LanguageSelectionScreen(),
+                  ),
+                );
+              },
+            ),
+            SettingsActionTile(
+              icon: Icons.support_agent_outlined,
+              title: context.tr('Support'),
+              subtitle: context.tr('Chat with support team.'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SupportChatScreen(
+                      threadId: user.uid,
+                      title: context.tr('Support'),
+                      subtitle: user.email,
+                    ),
                   ),
                 );
               },

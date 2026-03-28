@@ -606,5 +606,17 @@
   "Select regions": "اختر المناطق",
   "Regions": "المناطق",
   "Done": "تم",
-  "Total Videos": "إجمالي الفيديوهات"
+  "Total Videos": "إجمالي الفيديوهات",
+  "Play": "تشغيل",
+  "Pause": "إيقاف",
+  "Upload profile photo": "رفع صورة الملف الشخصي",
+  "Please login again before changing your email.": "يرجى تسجيل الدخول مرة أخرى قبل تغيير بريدك الإلكتروني.",
+  "Support": "الدعم",
+  "Chat with support team.": "تحدث مع فريق الدعم.",
+  "Support Inbox": "صندوق الدعم",
+  "No support messages yet.": "لا توجد رسائل دعم بعد.",
+  "User help messages": "رسائل مساعدة المستخدمين",
+  "Start the conversation.": "ابدأ المحادثة.",
+  "Type your message": "اكتب رسالتك",
+  "Sending...": "جارٍ الإرسال..."
 }

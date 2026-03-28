@@ -13,6 +13,7 @@ import 'news/admin_news_screen.dart';
 import 'admin_employees_screen.dart';
 import 'ads/admin_ads_screen.dart';
 import 'admin_video_reports_screen.dart';
+import 'admin_support_screen.dart';
 import 'payments/admin_invoices_screen.dart';
 import 'payments/admin_payments_screen.dart';
 
@@ -190,6 +191,20 @@ class AdminDashboard extends StatelessWidget {
                               context,
                               MaterialPageRoute(
                                 builder: (_) => const AdminVideoReportsScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        _AdminTile(
+                          title: context.tr('Support'),
+                          subtitle: context.tr('User help messages'),
+                          icon: Icons.support_agent_outlined,
+                          accent: AppColors.neonGreen,
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const AdminSupportScreen(),
                               ),
                             );
                           },

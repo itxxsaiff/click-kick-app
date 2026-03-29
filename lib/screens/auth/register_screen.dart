@@ -287,13 +287,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     title: _isSponsor
                         ? context.tr('Create Business Account')
                         : context.tr('Join the Contest'),
-                    subtitle: _isSponsor
-                        ? context.tr(
-                            'Create business account and manage your assigned contests.',
-                          )
-                        : context.tr(
-                            'Upload, compete, and win amazing prizes.',
-                          ),
+                    subtitle: '',
                     children: [
                       Form(
                         key: _formKey,
@@ -336,90 +330,80 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               },
                             ),
                             const SizedBox(height: 16),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                SizedBox(
-                                  width: 150,
-                                  child: InkWell(
-                                    borderRadius: BorderRadius.circular(16),
-                                    onTap: () {
-                                      showCountryPicker(
-                                        context: context,
-                                        showPhoneCode: true,
-                                        countryListTheme: CountryListThemeData(
-                                          backgroundColor: AppColors.card,
-                                          textStyle: TextStyle(
-                                            color: AppColors.textLight,
-                                          ),
-                                          borderRadius: BorderRadius.vertical(
-                                            top: Radius.circular(18),
-                                          ),
-                                          bottomSheetHeight: 560,
-                                          inputDecoration: InputDecoration(
-                                            labelText: context.tr(
-                                              'Search country',
-                                            ),
-                                            prefixIcon: Icon(Icons.search),
-                                          ),
-                                        ),
-                                        onSelect: (country) {
-                                          setState(() {
-                                            _phoneCountryCode =
-                                                '+${country.phoneCode}';
-                                            _phoneCountryIso =
-                                                country.countryCode;
-                                          });
-                                        },
-                                      );
-                                    },
-                                    child: InputDecorator(
-                                      decoration: InputDecoration(
-                                        labelText: context.tr('Code'),
-                                        prefixIcon: Icon(Icons.flag_outlined),
-                                        prefixIconColor: AppColors.textMuted,
-                                      ),
-                                      child: Text(
-                                        '$_phoneCountryIso $_phoneCountryCode',
-                                        style: const TextStyle(
-                                          color: AppColors.textLight,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
+                            InkWell(
+                              borderRadius: BorderRadius.circular(16),
+                              onTap: () {
+                                showCountryPicker(
+                                  context: context,
+                                  showPhoneCode: true,
+                                  countryListTheme: CountryListThemeData(
+                                    backgroundColor: AppColors.card,
+                                    textStyle: const TextStyle(
+                                      color: AppColors.textLight,
+                                    ),
+                                    borderRadius: const BorderRadius.vertical(
+                                      top: Radius.circular(18),
+                                    ),
+                                    bottomSheetHeight: 560,
+                                    inputDecoration: InputDecoration(
+                                      labelText: context.tr('Search country'),
+                                      prefixIcon: const Icon(Icons.search),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: TextFormField(
-                                    controller: _phoneController,
-                                    keyboardType: TextInputType.phone,
-                                    decoration: InputDecoration(
-                                      labelText: context.tr('Phone number'),
-                                      prefixIcon: Icon(Icons.phone_outlined),
-                                      prefixIconColor: AppColors.textMuted,
-                                    ),
-                                    validator: (value) {
-                                      final raw = (value ?? '').trim();
-                                      if (raw.isEmpty) {
-                                        return context.tr(
-                                          'Phone number is required.',
-                                        );
-                                      }
-                                      final digitsOnly = raw.replaceAll(
-                                        RegExp(r'[^0-9]'),
-                                        '',
-                                      );
-                                      if (digitsOnly.length < 7) {
-                                        return context.tr(
-                                          'Enter valid phone number.',
-                                        );
-                                      }
-                                      return null;
-                                    },
+                                  onSelect: (country) {
+                                    setState(() {
+                                      _phoneCountryCode = '+${country.phoneCode}';
+                                      _phoneCountryIso = country.countryCode;
+                                    });
+                                  },
+                                );
+                              },
+                              child: InputDecorator(
+                                decoration: InputDecoration(
+                                  labelText: context.tr('Code'),
+                                  prefixIcon: const Icon(Icons.flag_outlined),
+                                  prefixIconColor: AppColors.textMuted,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 16,
                                   ),
                                 ),
-                              ],
+                                child: Text(
+                                  '$_phoneCountryIso $_phoneCountryCode',
+                                  style: const TextStyle(
+                                    color: AppColors.textLight,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _phoneController,
+                              keyboardType: TextInputType.phone,
+                              decoration: InputDecoration(
+                                labelText: context.tr('Phone number'),
+                                prefixIcon: const Icon(Icons.phone_outlined),
+                                prefixIconColor: AppColors.textMuted,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 18,
+                                ),
+                              ),
+                              validator: (value) {
+                                final raw = (value ?? '').trim();
+                                if (raw.isEmpty) {
+                                  return context.tr('Phone number is required.');
+                                }
+                                final digitsOnly = raw.replaceAll(
+                                  RegExp(r'[^0-9]'),
+                                  '',
+                                );
+                                if (digitsOnly.length < 7) {
+                                  return context.tr('Enter valid phone number.');
+                                }
+                                return null;
+                              },
                             ),
                             const SizedBox(height: 16),
                             if (_isSponsor) ...[
@@ -798,9 +782,12 @@ class _AuthCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(title, style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 6),
-          Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
-          const SizedBox(height: 18),
+          if (subtitle.trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
+            const SizedBox(height: 18),
+          ] else
+            const SizedBox(height: 12),
           ...children,
         ],
       ),

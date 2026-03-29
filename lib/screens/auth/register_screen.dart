@@ -54,6 +54,7 @@ class AccountTypeSelectionScreen extends StatelessWidget {
                     accent: const Color(0xFF47C8FF),
                     onTap: () =>
                         Navigator.pushNamed(context, '/register?type=business'),
+                    showArrow: true,
                   ),
                   const Spacer(),
                 ],

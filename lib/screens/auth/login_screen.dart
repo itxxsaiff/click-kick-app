@@ -139,13 +139,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 final content = Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    const Align(
-                      alignment: Alignment.centerRight,
-                      child: LanguageMenuButton(compact: true),
-                    ),
-                    SizedBox(height: isCompact ? 4 : 10),
                     _LogoBadge(compact: isCompact),
-                    SizedBox(height: isCompact ? 8 : 16),
+                    SizedBox(height: isCompact ? 6 : 12),
                     _AuthCard(
                       compact: isCompact,
                       title: context.tr('Welcome Back'),

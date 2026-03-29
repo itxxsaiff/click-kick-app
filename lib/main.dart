@@ -73,10 +73,15 @@ class VideoContestApp extends StatelessWidget {
             builder: (context, child) {
               return child ?? const SizedBox.shrink();
             },
-            home: const PublicFeedScreen(),
+            home: const LanguageSelectionScreen(showContinue: true),
             onGenerateRoute: (settings) {
               final routeName = settings.name ?? '/';
               final uri = Uri.parse(routeName);
+              if (uri.path == '/app') {
+                return MaterialPageRoute(
+                  builder: (_) => const PublicFeedScreen(),
+                );
+              }
               if (uri.path == '/register') {
                 final type = (uri.queryParameters['type'] ?? '').toLowerCase();
                 if (type == 'user' || type == 'personal') {

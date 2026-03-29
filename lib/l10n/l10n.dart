@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'app_locale_controller.dart';
 import 'app_strings.dart';
+import '../theme/app_colors.dart';
 
 class LanguageScope extends InheritedNotifier<AppLocaleController> {
   const LanguageScope({
@@ -67,7 +68,12 @@ class LanguageMenuButton extends StatelessWidget {
 }
 
 class LanguageSelectionScreen extends StatelessWidget {
-  const LanguageSelectionScreen({super.key});
+  const LanguageSelectionScreen({
+    super.key,
+    this.showContinue = false,
+  });
+
+  final bool showContinue;
 
   @override
   Widget build(BuildContext context) {
@@ -75,9 +81,11 @@ class LanguageSelectionScreen extends StatelessWidget {
     final language = controller.language;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(context.tr('Language')),
-      ),
+      appBar: showContinue
+          ? null
+          : AppBar(
+              title: Text(context.tr('Language')),
+            ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: RadialGradient(
@@ -90,63 +98,89 @@ class LanguageSelectionScreen extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.all(24),
             children: [
-              const SizedBox(height: 24),
+              SizedBox(height: showContinue ? 52 : 24),
               Center(
-                child: Container(
-                  width: 108,
-                  height: 108,
-                  decoration: BoxDecoration(
-                    color: const Color(0x2217D4FF),
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(color: const Color(0x55E14BC7)),
-                  ),
-                  child: const Icon(
-                    Icons.language_rounded,
-                    size: 54,
-                    color: Color(0xFF7FD9FF),
-                  ),
+                child: SizedBox(
+                  width: showContinue ? 220 : 108,
+                  height: showContinue ? 170 : 108,
+                  child: showContinue
+                      ? Image.asset('assets/images/logo.png', fit: BoxFit.contain)
+                      : Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0x2217D4FF),
+                            borderRadius: BorderRadius.circular(28),
+                            border: Border.all(color: const Color(0x55E14BC7)),
+                          ),
+                          child: const Icon(
+                            Icons.language_rounded,
+                            size: 54,
+                            color: Color(0xFF7FD9FF),
+                          ),
+                        ),
                 ),
               ),
               const SizedBox(height: 24),
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: const Color(0xCC24123E),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: const Color(0x66E14BC7)),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x332B9BFF),
-                      blurRadius: 22,
-                      offset: Offset(0, 10),
-                    ),
-                  ],
+              if (showContinue) ...[
+                Text(
+                  context.tr('Language'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 34,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.public,
-                      color: Color(0xFF6DD6FF),
-                      size: 28,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        context.tr('Choose language'),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
+                const SizedBox(height: 8),
+                Text(
+                  context.tr('Choose language'),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 26),
+              ] else
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: const Color(0xCC24123E),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: const Color(0x66E14BC7)),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x332B9BFF),
+                        blurRadius: 22,
+                        offset: Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.public,
+                        color: Color(0xFF6DD6FF),
+                        size: 28,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          context.tr('Choose language'),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
-                    ),
-                    const Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      color: Color(0xFFE14BC7),
-                    ),
-                  ],
+                      const Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: Color(0xFFE14BC7),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
               const SizedBox(height: 18),
               _LanguageOptionTile(
                 label: context.tr('Arabic'),
@@ -161,6 +195,23 @@ class LanguageSelectionScreen extends StatelessWidget {
                 selected: language == AppLanguage.english,
                 onTap: () => controller.setLanguage(AppLanguage.english),
               ),
+              if (showContinue) ...[
+                const SizedBox(height: 28),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.pushReplacementNamed(context, '/app');
+                  },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.hotPink,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                  ),
+                  child: Text(context.tr('Continue')),
+                ),
+              ],
             ],
           ),
         ),

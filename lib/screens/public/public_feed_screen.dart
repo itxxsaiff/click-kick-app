@@ -1438,23 +1438,28 @@ class _NewsFeedCardState extends State<_NewsFeedCard> {
                 ),
               ),
               Positioned(
-                top: 16,
                 right: 14,
-                child: IconButton(
-                  onPressed: () async {
-                    if (FirebaseAuth.instance.currentUser == null) {
-                      await _requireAuth(context);
-                      return;
-                    }
-                    final text = '${item.title}\n${item.description}';
-                    await Share.share(text, subject: item.title);
-                  },
-                  icon: const Icon(Icons.share_rounded),
+                bottom: 138,
+                child: _FeedActionRail(
+                  children: [
+                    _FeedActionButton(
+                      icon: Icons.share_rounded,
+                      label: context.tr('Share'),
+                      onTap: () async {
+                        if (FirebaseAuth.instance.currentUser == null) {
+                          await _requireAuth(context);
+                          return;
+                        }
+                        final text = '${item.title}\n${item.description}';
+                        await Share.share(text, subject: item.title);
+                      },
+                    ),
+                  ],
                 ),
               ),
               Positioned(
                 left: 16,
-                right: 16,
+                right: 84,
                 bottom: 18,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

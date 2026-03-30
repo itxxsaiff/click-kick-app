@@ -39,16 +39,24 @@ class GradientButton extends StatelessWidget {
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.transparent,
             shadowColor: Colors.transparent,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(28),
             ),
           ),
-          child: Text(
-            label.toUpperCase(),
-            style: const TextStyle(
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.2,
-              color: Colors.white,
+          child: Center(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label.toUpperCase(),
+                maxLines: 1,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.2,
+                  color: Colors.white,
+                ),
+              ),
             ),
           ),
         ),

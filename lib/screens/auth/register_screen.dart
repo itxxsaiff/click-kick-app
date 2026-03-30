@@ -511,6 +511,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                       ),
                       const SizedBox(height: 18),
+                      TextButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const LegalCenterScreen(),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.privacy_tip_outlined),
+                        label: Text(context.tr('Legal & Privacy')),
+                      ),
+                      const SizedBox(height: 8),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -558,19 +571,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   ? context.tr('Create Business Account')
                                   : context.tr('Create Account')),
                         onPressed: _isLoading ? () {} : _handleRegister,
-                      ),
-                      const SizedBox(height: 10),
-                      TextButton.icon(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const LegalCenterScreen(),
-                            ),
-                          );
-                        },
-                        icon: const Icon(Icons.privacy_tip_outlined),
-                        label: Text(context.tr('Legal & Privacy')),
                       ),
                     ],
                   ),

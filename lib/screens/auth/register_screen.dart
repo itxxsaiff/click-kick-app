@@ -7,6 +7,27 @@ import '../../theme/app_colors.dart';
 import '../../widgets/gradient_button.dart';
 import '../shared/legal_center_screen.dart';
 
+const _kCreateAccount = 'Create Account';
+const _kSelectAccountType = 'Select Account Type';
+const _kPersonalAccount = 'Personal Account';
+const _kBusinessAccount = 'Business Account';
+const _kCreateBusinessAccount = 'Create Business Account';
+const _kJoinTheContest = 'Join the Contest';
+const _kFullName = 'Full name';
+const _kEmail = 'Email';
+const _kSearchCountry = 'Search country';
+const _kCode = 'Code';
+const _kPhoneNumber = 'Phone number';
+const _kCountry = 'Country';
+const _kCompanyName = 'Company name';
+const _kPassword = 'Password';
+const _kConfirmPassword = 'Confirm password';
+const _kLegalPrivacy = 'Legal & Privacy';
+const _kAlreadyHaveAccount = 'Already have an account?';
+const _kLogin = 'Login';
+const _kTermsPrefix = 'I have read and agree to the ';
+const _kTerms = 'terms';
+
 class AccountTypeSelectionScreen extends StatelessWidget {
   const AccountTypeSelectionScreen({super.key});
 
@@ -29,12 +50,12 @@ class AccountTypeSelectionScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 28),
                   Text(
-                    context.tr('Create Account'),
+                    _kCreateAccount,
                     style: Theme.of(context).textTheme.headlineMedium,
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    context.tr('Select Account Type'),
+                    _kSelectAccountType,
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                       color: AppColors.textMuted,
                     ),
@@ -42,7 +63,7 @@ class AccountTypeSelectionScreen extends StatelessWidget {
                   const SizedBox(height: 28),
                   _AccountTypeTile(
                     icon: Icons.person_outline_rounded,
-                    title: context.tr('Personal Account'),
+                    title: _kPersonalAccount,
                     accent: AppColors.hotPink,
                     onTap: () => Navigator.pushNamed(context, '/register?type=user'),
                     showArrow: true,
@@ -50,7 +71,7 @@ class AccountTypeSelectionScreen extends StatelessWidget {
                   const SizedBox(height: 16),
                   _AccountTypeTile(
                     icon: Icons.business_center_outlined,
-                    title: context.tr('Business Account'),
+                    title: _kBusinessAccount,
                     accent: const Color(0xFF47C8FF),
                     onTap: () =>
                         Navigator.pushNamed(context, '/register?type=business'),
@@ -110,7 +131,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         backgroundColor: AppColors.card,
         textStyle: const TextStyle(color: AppColors.textLight),
         inputDecoration: InputDecoration(
-          labelText: context.tr('Search country'),
+          labelText: _kSearchCountry,
           prefixIcon: const Icon(Icons.search),
         ),
       ),
@@ -140,7 +161,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
     if (!_acceptedTerms) {
-      _showMessage(context.tr('Please accept the terms to continue.'));
+      _showMessage('Please accept the terms to continue.');
       return;
     }
 
@@ -178,9 +199,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         );
       }
       _showMessage(
-        _isSponsor
-            ? context.tr('Sponsor account created.')
-            : context.tr('Account created.'),
+        _isSponsor ? 'Business account created.' : 'Account created.',
       );
       if (mounted) {
         Navigator.pushNamedAndRemoveUntil(context, '/home', (_) => false);
@@ -205,9 +224,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _showAgreementModal() async {
-    final title = _isSponsor
-        ? context.tr('Sponsor Agreement')
-        : context.tr('User Agreement');
+    final title = _isSponsor ? 'Sponsor Agreement' : 'User Agreement';
     final body = _isSponsor
         ? context.tr('Sponsor Agreement Content')
         : context.tr('User Agreement Content');
@@ -225,7 +242,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(context.tr('Close')),
+            child: const Text('Close'),
           ),
         ],
       ),
@@ -235,21 +252,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String _friendlyError(Object e) {
     final text = e.toString();
     if (text.contains('email-already-in-use')) {
-      return context.tr('Email already registered.');
+      return 'Email already registered.';
     }
     if (text.contains('invalid-email')) {
-      return context.tr('Invalid email address.');
+      return 'Invalid email address.';
     }
     if (text.contains('weak-password')) {
-      return context.tr('Password is too weak.');
+      return 'Password is too weak.';
     }
     if (text.contains('operation-not-allowed')) {
-      return context.tr('Email/password sign-in not enabled in Firebase.');
+      return 'Email/password sign-in not enabled in Firebase.';
     }
     if (text.contains('permission-denied')) {
-      return context.tr('Firestore permission denied. Check rules.');
+      return 'Firestore permission denied. Check rules.';
     }
-    return context.tr('Registration failed. Please try again.');
+    return 'Registration failed. Please try again.';
   }
 
   @override
@@ -274,8 +291,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       const SizedBox(width: 8),
                       Text(
                         _isSponsor
-                            ? context.tr('Business Account')
-                            : context.tr('Personal Account'),
+                            ? _kBusinessAccount
+                            : _kPersonalAccount,
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const Spacer(),
@@ -286,8 +303,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   const SizedBox(height: 8),
                   _AuthCard(
                     title: _isSponsor
-                        ? context.tr('Create Business Account')
-                        : context.tr('Join the Contest'),
+                        ? _kCreateBusinessAccount
+                        : _kJoinTheContest,
                     subtitle: '',
                     children: [
                       Form(
@@ -300,13 +317,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             TextFormField(
                               controller: _nameController,
                               decoration: InputDecoration(
-                                labelText: context.tr('Full name'),
+                                labelText: _kFullName,
                                 prefixIcon: const Icon(Icons.person_outline),
                                 prefixIconColor: AppColors.textMuted,
                               ),
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) {
-                                  return context.tr('Full name is required.');
+                                  return 'Full name is required.';
                                 }
                                 return null;
                               },
@@ -316,16 +333,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               controller: _emailController,
                               keyboardType: TextInputType.emailAddress,
                               decoration: InputDecoration(
-                                labelText: context.tr('Email'),
+                                labelText: _kEmail,
                                 prefixIcon: const Icon(Icons.email_outlined),
                                 prefixIconColor: AppColors.textMuted,
                               ),
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) {
-                                  return context.tr('Email is required.');
+                                  return 'Email is required.';
                                 }
                                 if (!value.contains('@')) {
-                                  return context.tr('Enter a valid email.');
+                                  return 'Enter a valid email.';
                                 }
                                 return null;
                               },
@@ -347,7 +364,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                     ),
                                     bottomSheetHeight: 560,
                                     inputDecoration: InputDecoration(
-                                      labelText: context.tr('Search country'),
+                                      labelText: _kSearchCountry,
                                       prefixIcon: const Icon(Icons.search),
                                     ),
                                   ),
@@ -361,7 +378,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               },
                               child: InputDecorator(
                                 decoration: InputDecoration(
-                                  labelText: context.tr('Code'),
+                                  labelText: _kCode,
                                   prefixIcon: const Icon(Icons.flag_outlined),
                                   prefixIconColor: AppColors.textMuted,
                                   contentPadding: const EdgeInsets.symmetric(
@@ -383,7 +400,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               controller: _phoneController,
                               keyboardType: TextInputType.phone,
                               decoration: InputDecoration(
-                                labelText: context.tr('Phone number'),
+                                labelText: _kPhoneNumber,
                                 prefixIcon: const Icon(Icons.phone_outlined),
                                 prefixIconColor: AppColors.textMuted,
                                 contentPadding: const EdgeInsets.symmetric(
@@ -394,14 +411,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               validator: (value) {
                                 final raw = (value ?? '').trim();
                                 if (raw.isEmpty) {
-                                  return context.tr('Phone number is required.');
+                                  return 'Phone number is required.';
                                 }
                                 final digitsOnly = raw.replaceAll(
                                   RegExp(r'[^0-9]'),
                                   '',
                                 );
                                 if (digitsOnly.length < 7) {
-                                  return context.tr('Enter valid phone number.');
+                                  return 'Enter valid phone number.';
                                 }
                                 return null;
                               },
@@ -413,7 +430,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 readOnly: true,
                                 onTap: _pickSponsorCountry,
                                 decoration: InputDecoration(
-                                  labelText: context.tr('Country'),
+                                  labelText: _kCountry,
                                   prefixIcon: const Icon(Icons.public),
                                   suffixIcon: IconButton(
                                     onPressed: _pickSponsorCountry,
@@ -424,7 +441,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 validator: (value) {
                                   if (!_isSponsor) return null;
                                   if (value == null || value.trim().isEmpty) {
-                                    return context.tr('Country is required.');
+                                    return 'Country is required.';
                                   }
                                   return null;
                                 },
@@ -433,16 +450,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               TextFormField(
                                 controller: _companyController,
                                 decoration: InputDecoration(
-                                  labelText: context.tr('Company name'),
+                                  labelText: _kCompanyName,
                                   prefixIcon: const Icon(Icons.business),
                                   prefixIconColor: AppColors.textMuted,
                                 ),
                                 validator: (value) {
                                   if (!_isSponsor) return null;
                                   if (value == null || value.trim().isEmpty) {
-                                    return context.tr(
-                                      'Company name is required.',
-                                    );
+                                    return 'Company name is required.';
                                   }
                                   return null;
                                 },
@@ -453,7 +468,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               controller: _passwordController,
                               obscureText: _obscurePassword,
                               decoration: InputDecoration(
-                                labelText: context.tr('Password'),
+                                labelText: _kPassword,
                                 prefixIcon: const Icon(Icons.lock_outline),
                                 prefixIconColor: AppColors.textMuted,
                                 suffixIcon: IconButton(
@@ -469,10 +484,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return context.tr('Password is required.');
+                                  return 'Password is required.';
                                 }
                                 if (value.length < 6) {
-                                  return context.tr('Minimum 6 characters.');
+                                  return 'Minimum 6 characters.';
                                 }
                                 return null;
                               },
@@ -482,7 +497,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               controller: _confirmController,
                               obscureText: _obscureConfirmPassword,
                               decoration: InputDecoration(
-                                labelText: context.tr('Confirm password'),
+                                labelText: _kConfirmPassword,
                                 prefixIcon: const Icon(Icons.lock_outline),
                                 prefixIconColor: AppColors.textMuted,
                                 suffixIcon: IconButton(
@@ -499,10 +514,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return context.tr('Confirm your password.');
+                                  return 'Confirm your password.';
                                 }
                                 if (value != _passwordController.text) {
-                                  return context.tr('Passwords do not match.');
+                                  return 'Passwords do not match.';
                                 }
                                 return null;
                               },
@@ -521,7 +536,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           );
                         },
                         icon: const Icon(Icons.privacy_tip_outlined),
-                        label: Text(context.tr('Legal & Privacy')),
+                        label: const Text(_kLegalPrivacy),
                       ),
                       const SizedBox(height: 8),
                       Row(
@@ -541,12 +556,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   style: Theme.of(context).textTheme.bodyMedium,
                                   children: [
                                     TextSpan(
-                                      text: context.tr(
-                                        'I have read and agree to the ',
-                                      ),
+                                      text: _kTermsPrefix,
                                     ),
                                     TextSpan(
-                                      text: context.tr('terms'),
+                                      text: _kTerms,
                                       style: const TextStyle(
                                         color: AppColors.hotPink,
                                         decoration: TextDecoration.underline,
@@ -555,7 +568,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                       recognizer: TapGestureRecognizer()
                                         ..onTap = _showAgreementModal,
                                     ),
-                                    TextSpan(text: context.tr('.')),
+                                    const TextSpan(text: '.'),
                                   ],
                                 ),
                               ),
@@ -566,10 +579,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       const SizedBox(height: 12),
                       GradientButton(
                         label: _isLoading
-                            ? context.tr('Creating...')
+                            ? 'Creating...'
                             : (_isSponsor
-                                  ? context.tr('Create Business Account')
-                                  : context.tr('Create Account')),
+                                  ? _kCreateBusinessAccount
+                                  : _kCreateAccount),
                         onPressed: _isLoading ? () {} : _handleRegister,
                       ),
                     ],
@@ -579,14 +592,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        context.tr('Already have an account?'),
+                        _kAlreadyHaveAccount,
                         style: TextStyle(color: AppColors.textMuted),
                       ),
                       const SizedBox(width: 8),
                       TextButton(
                         onPressed: () =>
                             Navigator.pushReplacementNamed(context, '/login'),
-                        child: Text(context.tr('Login')),
+                        child: const Text(_kLogin),
                       ),
                     ],
                   ),

@@ -20,6 +20,7 @@ import '../../widgets/settings_action_tile.dart';
 import '../shared/legal_center_screen.dart';
 import '../shared/support_chat_screen.dart';
 import '../user/contest_detail_screen.dart';
+import '../auth/login_screen.dart';
 
 class PublicFeedScreen extends StatefulWidget {
   const PublicFeedScreen({super.key});
@@ -2578,6 +2579,66 @@ class _PublicUserProfileTab extends StatelessWidget {
                     builder: (_) => const LegalCenterScreen(),
                   ),
                 );
+              },
+            ),
+            SettingsActionTile(
+              icon: Icons.delete_outline_rounded,
+              title: context.tr('Delete Account'),
+              subtitle: context.tr('Permanently remove your account.'),
+              isDanger: true,
+              onTap: () async {
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (dialogContext) => AlertDialog(
+                    title: Text(context.tr('Delete Account')),
+                    content: Text(
+                      context.tr(
+                        'Are you sure you want to delete your account? This action cannot be undone.',
+                      ),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(dialogContext, false),
+                        child: Text(context.tr('Cancel')),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(dialogContext, true),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.hotPink,
+                        ),
+                        child: Text(context.tr('Delete')),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirmed != true) return;
+                try {
+                  await AuthService().deleteCurrentAccount();
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(context.tr('Account deleted successfully.')),
+                    ),
+                  );
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(
+                      builder: (_) => const LoginScreen(),
+                    ),
+                    (_) => false,
+                  );
+                } catch (e) {
+                  if (!context.mounted) return;
+                  final message = e.toString().contains('requires-recent-login')
+                      ? context.tr(
+                          'Please login again before deleting your account.',
+                        )
+                      : context.tr(
+                          'Unable to delete account right now. Please try again.',
+                        );
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(message)),
+                  );
+                }
               },
             ),
             SettingsActionTile(

@@ -158,6 +158,35 @@ class AuthService {
 
   Future<void> signOut() => _auth.signOut();
 
+  Future<void> deleteCurrentAccount() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(code: 'not-authenticated');
+    }
+
+    final now = DateTime.now().toUtc();
+    await _firestore.collection('users').doc(user.uid).set({
+      'accountStatus': 'deleted',
+      'deletedAt': now,
+      'updatedAt': now,
+      'deletedBy': user.uid,
+    }, SetOptions(merge: true));
+
+    try {
+      await user.delete();
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'requires-recent-login') {
+        throw FirebaseAuthException(
+          code: 'requires-recent-login',
+          message: 'Please login again before deleting your account.',
+        );
+      }
+      rethrow;
+    }
+
+    await _auth.signOut();
+  }
+
   Future<void> createEmployeeAccount({
     required String email,
     required String password,

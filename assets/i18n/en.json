@@ -619,5 +619,11 @@
   "Start the conversation.": "Start the conversation.",
   "Type your message": "Type your message",
   "Sending...": "Sending...",
-  "Continue": "Continue"
+  "Continue": "Continue",
+  "Delete Account": "Delete Account",
+  "Permanently remove your account.": "Permanently remove your account.",
+  "Are you sure you want to delete your account? This action cannot be undone.": "Are you sure you want to delete your account? This action cannot be undone.",
+  "Delete": "Delete",
+  "Account deleted successfully.": "Account deleted successfully.",
+  "Unable to delete account right now. Please try again.": "Unable to delete account right now. Please try again."
 }

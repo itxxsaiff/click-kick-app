@@ -10,6 +10,19 @@ import 'sponsor_home.dart';
 class HomeRouter extends StatelessWidget {
   const HomeRouter({super.key});
 
+  Future<Map<String, dynamic>> _loadUserData(String uid) async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get()
+          .timeout(const Duration(seconds: 8));
+      return snap.data() ?? const <String, dynamic>{};
+    } catch (_) {
+      return const <String, dynamic>{};
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -17,23 +30,23 @@ class HomeRouter extends StatelessWidget {
       return const PublicFeedScreen();
     }
 
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .snapshots(),
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _loadUserData(user.uid),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) {
+        if (snapshot.connectionState != ConnectionState.done &&
+            !snapshot.hasData) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
-        final data = snapshot.data!.data() ?? {};
+        final data = snapshot.data ?? const <String, dynamic>{};
         final role = (data['role'] as String?) ?? 'user';
         final displayName = (data['displayName'] as String?) ?? 'User';
         final accountStatus = (data['accountStatus'] as String?) ?? 'active';
         final isBlocked =
-            accountStatus == 'disabled' || accountStatus == 'removed';
+            accountStatus == 'disabled' ||
+            accountStatus == 'removed' ||
+            accountStatus == 'deleted';
 
         if (isBlocked &&
             (role == 'employee' ||

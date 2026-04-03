@@ -619,5 +619,11 @@
   "Start the conversation.": "ابدأ المحادثة.",
   "Type your message": "اكتب رسالتك",
   "Sending...": "جارٍ الإرسال...",
-  "Continue": "متابعة"
+  "Continue": "متابعة",
+  "Delete Account": "حذف الحساب",
+  "Permanently remove your account.": "احذف حسابك نهائيًا.",
+  "Are you sure you want to delete your account? This action cannot be undone.": "هل أنت متأكد أنك تريد حذف حسابك؟ لا يمكن التراجع عن هذا الإجراء.",
+  "Delete": "حذف",
+  "Account deleted successfully.": "تم حذف الحساب بنجاح.",
+  "Unable to delete account right now. Please try again.": "تعذر حذف الحساب الآن. حاول مرة أخرى."
 }

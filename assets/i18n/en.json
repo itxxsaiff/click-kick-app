@@ -625,5 +625,15 @@
   "Are you sure you want to delete your account? This action cannot be undone.": "Are you sure you want to delete your account? This action cannot be undone.",
   "Delete": "Delete",
   "Account deleted successfully.": "Account deleted successfully.",
-  "Unable to delete account right now. Please try again.": "Unable to delete account right now. Please try again."
+  "Unable to delete account right now. Please try again.": "Unable to delete account right now. Please try again.",
+  "Contest Draw Winners": "Contest Draw Winners",
+  "Lucky draw results": "Lucky draw results",
+  "Lucky Draw Winners": "Lucky Draw Winners",
+  "Eligible Voters": "Eligible Voters",
+  "Draw Completed At": "Draw Completed At",
+  "No contest draw winners yet.": "No contest draw winners yet.",
+  "Five random voters win $10 each for this contest.": "Five random voters win $10 each for this contest.",
+  "Lucky draw winners will appear after the contest ends.": "Lucky draw winners will appear after the contest ends.",
+  "Your vote has been counted successfully. You are now entered into the lucky draw.": "Your vote has been counted successfully. You are now entered into the lucky draw.",
+  "User ID": "User ID"
 }

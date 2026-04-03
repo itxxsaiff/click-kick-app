@@ -625,5 +625,15 @@
   "Are you sure you want to delete your account? This action cannot be undone.": "هل أنت متأكد أنك تريد حذف حسابك؟ لا يمكن التراجع عن هذا الإجراء.",
   "Delete": "حذف",
   "Account deleted successfully.": "تم حذف الحساب بنجاح.",
-  "Unable to delete account right now. Please try again.": "تعذر حذف الحساب الآن. حاول مرة أخرى."
+  "Unable to delete account right now. Please try again.": "تعذر حذف الحساب الآن. حاول مرة أخرى.",
+  "Contest Draw Winners": "فائزو سحب المسابقات",
+  "Lucky draw results": "نتائج السحب",
+  "Lucky Draw Winners": "فائزو السحب",
+  "Eligible Voters": "المصوتون المؤهلون",
+  "Draw Completed At": "اكتمل السحب في",
+  "No contest draw winners yet.": "لا يوجد فائزو سحب لهذه المسابقة بعد.",
+  "Five random voters win $10 each for this contest.": "يفوز 5 مصوتين عشوائيين بمبلغ 10$ لكل واحد في هذه المسابقة.",
+  "Lucky draw winners will appear after the contest ends.": "سيظهر فائزو السحب بعد انتهاء المسابقة.",
+  "Your vote has been counted successfully. You are now entered into the lucky draw.": "تم احتساب صوتك بنجاح. لقد دخلت الآن في السحب.",
+  "User ID": "معرف المستخدم"
 }

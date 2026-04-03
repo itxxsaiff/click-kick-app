@@ -1,11 +1,14 @@
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {onRequest} = require("firebase-functions/v2/https");
+const {onSchedule} = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
 const Stripe = require("stripe");
 const crypto = require("crypto");
 
 admin.initializeApp();
 const db = admin.firestore();
+const DRAW_WINNER_COUNT = 5;
+const DRAW_PRIZE_AMOUNT = 10;
 
 /**
  * Creates Stripe client.
@@ -50,6 +53,96 @@ function pdfEscape(value) {
       .replace(/\\/g, "\\\\")
       .replace(/\(/g, "\\(")
       .replace(/\)/g, "\\)");
+}
+
+/**
+ * Parses Firestore timestamp/string/date to Date.
+ * @param {*} value
+ * @return {Date|null}
+ */
+function parseDate(value) {
+  if (!value) return null;
+  if (value instanceof admin.firestore.Timestamp) {
+    return value.toDate();
+  }
+  if (value instanceof Date) return value;
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+}
+
+/**
+ * Returns a shuffled copy of values.
+ * @param {Array<*>} values
+ * @return {Array<*>}
+ */
+function shuffle(values) {
+  const copy = [...values];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(0, i + 1);
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+/**
+ * Selects lucky draw winners for a single contest.
+ * @param {FirebaseFirestore.QueryDocumentSnapshot<
+ *   FirebaseFirestore.DocumentData
+ * >} contestDoc
+ * @return {Promise<void>}
+ */
+async function runLuckyDrawForContest(contestDoc) {
+  const data = contestDoc.data() || {};
+  if (data.drawCompleted === true) return;
+
+  const votingEnd = parseDate(data.votingEnd);
+  if (!votingEnd || votingEnd.getTime() > Date.now()) return;
+
+  const votesSnap = await contestDoc.ref.collection("votes").get();
+  const uniqueVoterIds = [...new Set(votesSnap.docs
+      .map((doc) => (doc.data().voterId || doc.id || "").toString())
+      .filter(Boolean))];
+
+  const drawAt = admin.firestore.Timestamp.now();
+  const winnerCount = Math.min(DRAW_WINNER_COUNT, uniqueVoterIds.length);
+  const selectedIds = shuffle(uniqueVoterIds).slice(0, winnerCount);
+
+  const userDocs = await Promise.all(
+      selectedIds.map((uid) => db.collection("users").doc(uid).get()),
+  );
+
+  const batch = db.batch();
+  selectedIds.forEach((uid, index) => {
+    const userData = userDocs[index].data() || {};
+    const winnerRef = contestDoc.ref.collection("draw_winners").doc(uid);
+    batch.set(winnerRef, {
+      userId: uid,
+      contestId: contestDoc.id,
+      contestTitle: (data.title || "").toString(),
+      drawAt,
+      prizeAmount: DRAW_PRIZE_AMOUNT,
+      position: index + 1,
+      userName: (userData.displayName || userData.email || "User").toString(),
+      userEmail: (userData.email || "").toString(),
+      voteEntryId: uid,
+      createdAt: drawAt,
+      updatedAt: drawAt,
+    });
+  });
+
+  batch.set(contestDoc.ref, {
+    drawCompleted: true,
+    drawCompletedAt: drawAt,
+    drawEligibleVoterCount: uniqueVoterIds.length,
+    drawWinnerCount: winnerCount,
+    drawPrizeAmount: DRAW_PRIZE_AMOUNT,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, {merge: true});
+
+  await batch.commit();
 }
 
 /**
@@ -556,5 +649,18 @@ exports.stripeWebhook = onRequest(
       }
 
       res.json({received: true});
+    },
+);
+
+exports.runContestLuckyDraws = onSchedule(
+    {
+      schedule: "* * * * *",
+      timeZone: "UTC",
+    },
+    async () => {
+      const contestsSnap = await db.collection("contests").get();
+      for (const contestDoc of contestsSnap.docs) {
+        await runLuckyDrawForContest(contestDoc);
+      }
     },
 );

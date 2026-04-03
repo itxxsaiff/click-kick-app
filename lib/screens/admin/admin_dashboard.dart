@@ -13,6 +13,7 @@ import 'news/admin_news_screen.dart';
 import 'admin_employees_screen.dart';
 import 'ads/admin_ads_screen.dart';
 import 'admin_video_reports_screen.dart';
+import 'admin_contest_draw_winners_screen.dart';
 import 'admin_support_screen.dart';
 import 'payments/admin_invoices_screen.dart';
 import 'payments/admin_payments_screen.dart';
@@ -191,6 +192,21 @@ class AdminDashboard extends StatelessWidget {
                               context,
                               MaterialPageRoute(
                                 builder: (_) => const AdminVideoReportsScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        _AdminTile(
+                          title: context.tr('Contest Draw Winners'),
+                          subtitle: context.tr('Lucky draw results'),
+                          icon: Icons.card_giftcard_rounded,
+                          accent: AppColors.sunset,
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    const AdminContestDrawWinnersScreen(),
                               ),
                             );
                           },

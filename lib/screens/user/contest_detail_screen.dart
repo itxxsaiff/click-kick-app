@@ -319,10 +319,16 @@ class _WinnersPage extends StatelessWidget {
               );
             }
             if (index == 1) {
-              return _HeroCard(
-                title: title,
-                description: description,
-                logoUrl: logoUrl,
+              return Column(
+                children: [
+                  _HeroCard(
+                    title: title,
+                    description: description,
+                    logoUrl: logoUrl,
+                  ),
+                  const SizedBox(height: 12),
+                  _LuckyDrawWinnersSection(contestId: contestId),
+                ],
               );
             }
             final doc = winners[index - 2];
@@ -456,6 +462,122 @@ class _WinnerCard extends StatelessWidget {
           _InlineWinnerVideo(videoUrl: videoUrl),
         ],
       ),
+    );
+  }
+}
+
+class _LuckyDrawWinnersSection extends StatelessWidget {
+  const _LuckyDrawWinnersSection({required this.contestId});
+
+  final String contestId;
+
+  @override
+  Widget build(BuildContext context) {
+    final stream = FirebaseFirestore.instance
+        .collection('contests')
+        .doc(contestId)
+        .collection('draw_winners')
+        .orderBy('position')
+        .snapshots();
+
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: stream,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: const Center(child: CircularProgressIndicator()),
+          );
+        }
+        final docs = snapshot.data!.docs;
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                context.tr('Lucky Draw Winners'),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                context.tr('Five random voters win \$10 each for this contest.'),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 12),
+              if (docs.isEmpty)
+                Text(
+                  context.tr('Lucky draw winners will appear after the contest ends.'),
+                  style: const TextStyle(color: AppColors.textMuted),
+                )
+              else
+                ...docs.map((doc) {
+                  final data = doc.data();
+                  final position = ((data['position'] ?? 0) as num).toInt();
+                  final userName = (data['userName'] ?? context.tr('User'))
+                      .toString();
+                  final prize = ((data['prizeAmount'] ?? 10) as num)
+                      .toDouble()
+                      .toStringAsFixed(0);
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: AppColors.hotPink.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            '$position',
+                            style: const TextStyle(
+                              color: AppColors.hotPink,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            userName,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '\$$prize',
+                          style: const TextStyle(
+                            color: AppColors.sunset,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -993,7 +1115,12 @@ class _VotingGrid extends StatelessWidget {
         });
       });
 
-      _snack(context, context.tr('Vote submitted successfully.'));
+      _snack(
+        context,
+        context.tr(
+          'Your vote has been counted successfully. You are now entered into the lucky draw.',
+        ),
+      );
     } catch (e) {
       final msg = e.toString();
       if (msg.contains('already-voted')) {

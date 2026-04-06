@@ -338,6 +338,8 @@ class _HomeFeedTab extends StatefulWidget {
 
 class _HomeFeedTabState extends State<_HomeFeedTab> {
   final _pageController = PageController();
+  final Map<String, VideoPlayerController> _controllerCache = {};
+  final Map<String, Future<VideoPlayerController?>> _controllerLoads = {};
   int _activeIndex = 0;
   VideoPlayerController? _videoController;
   String _currentVideoUrl = '';
@@ -346,44 +348,103 @@ class _HomeFeedTabState extends State<_HomeFeedTab> {
 
   @override
   void dispose() {
-    _videoController?.dispose();
+    for (final controller in _controllerCache.values) {
+      controller.dispose();
+    }
     _pageController.dispose();
     super.dispose();
   }
 
+  Future<VideoPlayerController?> _ensureController(String url) {
+    if (url.isEmpty) return Future.value(null);
+    final cached = _controllerCache[url];
+    if (cached != null) return Future.value(cached);
+    final loading = _controllerLoads[url];
+    if (loading != null) return loading;
+
+    final future = () async {
+      final controller = VideoPlayerController.networkUrl(Uri.parse(url));
+      try {
+        await controller.initialize();
+        await controller.setLooping(true);
+        controller.addListener(() {
+          if (!mounted || _currentVideoUrl != url) return;
+          setState(() {});
+        });
+        _controllerCache[url] = controller;
+        return controller;
+      } catch (_) {
+        await controller.dispose();
+        return null;
+      } finally {
+        _controllerLoads.remove(url);
+      }
+    }();
+
+    _controllerLoads[url] = future;
+    return future;
+  }
+
+  Future<void> _pruneControllers(Set<String> keepUrls) async {
+    final removable = _controllerCache.keys
+        .where((url) => !keepUrls.contains(url))
+        .toList();
+    for (final url in removable) {
+      final controller = _controllerCache.remove(url);
+      await controller?.pause();
+      await controller?.dispose();
+    }
+  }
+
+  void _preloadAround(List<_FeedItem> items, int index) {
+    final urls = <String>{
+      if (index >= 0 &&
+          index < items.length &&
+          items[index].hasVideo &&
+          items[index].videoUrl.isNotEmpty)
+        items[index].videoUrl,
+      if (index + 1 < items.length &&
+          items[index + 1].hasVideo &&
+          items[index + 1].videoUrl.isNotEmpty)
+        items[index + 1].videoUrl,
+      if (index - 1 >= 0 &&
+          items[index - 1].hasVideo &&
+          items[index - 1].videoUrl.isNotEmpty)
+        items[index - 1].videoUrl,
+    };
+
+    for (final url in urls) {
+      unawaited(_ensureController(url));
+    }
+    unawaited(_pruneControllers(urls));
+  }
+
   Future<void> _setActiveVideo(String url, {bool autoplay = true}) async {
     if (url.isEmpty || url == _currentVideoUrl) return;
-    final old = _videoController;
-    _videoController = null;
     _currentVideoUrl = url;
-    if (mounted) setState(() {});
-    await old?.pause();
-    await old?.dispose();
-    final controller = VideoPlayerController.networkUrl(Uri.parse(url));
-    await controller.initialize();
-    await controller.setLooping(true);
-    controller.addListener(() {
-      if (!mounted) return;
-      if (_currentVideoUrl != url) return;
-      setState(() {});
-    });
+    for (final entry in _controllerCache.entries) {
+      if (entry.key != url) {
+        await entry.value.pause();
+      }
+    }
+    final controller = await _ensureController(url);
+    if (controller == null) return;
     if (autoplay) {
       await controller.play();
+    } else {
+      await controller.pause();
     }
-    if (!mounted) {
-      await controller.dispose();
-      return;
-    }
+    if (!mounted) return;
     setState(() => _videoController = controller);
   }
 
   Future<void> _clearActiveVideo() async {
     if (_currentVideoUrl.isEmpty && _videoController == null) return;
     _currentVideoUrl = '';
-    final old = _videoController;
     _videoController = null;
-    await old?.pause();
-    await old?.dispose();
+    for (final controller in _controllerCache.values) {
+      await controller.pause();
+    }
     if (mounted) setState(() {});
   }
 
@@ -472,6 +533,7 @@ class _HomeFeedTabState extends State<_HomeFeedTab> {
 
             final safeIndex = _activeIndex.clamp(0, feedItems.length - 1);
             final activeItem = feedItems[safeIndex];
+            _preloadAround(feedItems, safeIndex);
             _scheduleActiveVideoSync(activeItem, autoplay: false);
 
             return PageView.builder(
@@ -536,6 +598,8 @@ class _PublicContestsTab extends StatefulWidget {
 
 class _PublicContestsTabState extends State<_PublicContestsTab> {
   final _pageController = PageController();
+  final Map<String, VideoPlayerController> _controllerCache = {};
+  final Map<String, Future<VideoPlayerController?>> _controllerLoads = {};
   int _activeIndex = 0;
   VideoPlayerController? _videoController;
   String _currentVideoUrl = '';
@@ -543,39 +607,89 @@ class _PublicContestsTabState extends State<_PublicContestsTab> {
 
   @override
   void dispose() {
-    _videoController?.dispose();
+    for (final controller in _controllerCache.values) {
+      controller.dispose();
+    }
     _pageController.dispose();
     super.dispose();
   }
 
+  Future<VideoPlayerController?> _ensureController(String url) {
+    if (url.isEmpty) return Future.value(null);
+    final cached = _controllerCache[url];
+    if (cached != null) return Future.value(cached);
+    final loading = _controllerLoads[url];
+    if (loading != null) return loading;
+
+    final future = () async {
+      final controller = VideoPlayerController.networkUrl(Uri.parse(url));
+      try {
+        await controller.initialize();
+        await controller.setLooping(true);
+        controller.addListener(() {
+          if (!mounted || _currentVideoUrl != url) return;
+          setState(() {});
+        });
+        _controllerCache[url] = controller;
+        return controller;
+      } catch (_) {
+        await controller.dispose();
+        return null;
+      } finally {
+        _controllerLoads.remove(url);
+      }
+    }();
+
+    _controllerLoads[url] = future;
+    return future;
+  }
+
+  Future<void> _pruneControllers(Set<String> keepUrls) async {
+    final removable = _controllerCache.keys
+        .where((url) => !keepUrls.contains(url))
+        .toList();
+    for (final url in removable) {
+      final controller = _controllerCache.remove(url);
+      await controller?.pause();
+      await controller?.dispose();
+    }
+  }
+
+  void _preloadAround(List<_ContestFeedItem> items, int index) {
+    final urls = <String>{
+      if (index >= 0 && index < items.length && items[index].videoUrl.isNotEmpty)
+        items[index].videoUrl,
+      if (index + 1 < items.length && items[index + 1].videoUrl.isNotEmpty)
+        items[index + 1].videoUrl,
+      if (index - 1 >= 0 && items[index - 1].videoUrl.isNotEmpty)
+        items[index - 1].videoUrl,
+    };
+    for (final url in urls) {
+      unawaited(_ensureController(url));
+    }
+    unawaited(_pruneControllers(urls));
+  }
+
   Future<void> _setActiveVideo(String url) async {
     if (url.isEmpty || url == _currentVideoUrl) return;
-    final old = _videoController;
-    _videoController = null;
     _currentVideoUrl = url;
-    if (mounted) setState(() {});
-    await old?.pause();
-    await old?.dispose();
-    final controller = VideoPlayerController.networkUrl(Uri.parse(url));
-    await controller.initialize();
-    await controller.setLooping(true);
-    controller.addListener(() {
-      if (!mounted || _currentVideoUrl != url) return;
-      setState(() {});
-    });
-    if (!mounted) {
-      await controller.dispose();
-      return;
+    for (final entry in _controllerCache.entries) {
+      if (entry.key != url) {
+        await entry.value.pause();
+      }
     }
+    final controller = await _ensureController(url);
+    if (controller == null) return;
+    if (!mounted) return;
     setState(() => _videoController = controller);
   }
 
   Future<void> _clearActiveVideo() async {
     _currentVideoUrl = '';
-    final old = _videoController;
     _videoController = null;
-    await old?.pause();
-    await old?.dispose();
+    for (final controller in _controllerCache.values) {
+      await controller.pause();
+    }
     if (mounted) setState(() {});
   }
 
@@ -645,6 +759,7 @@ class _PublicContestsTabState extends State<_PublicContestsTab> {
         final items = docs.map(_ContestFeedItem.fromDoc).toList();
         final safeIndex = _activeIndex.clamp(0, items.length - 1);
         final activeItem = items[safeIndex];
+        _preloadAround(items, safeIndex);
         _scheduleActiveVideoSync(activeItem);
 
         return PageView.builder(

@@ -75,7 +75,7 @@ async function sendWhatsAppOtp({toPhoneE164, code}) {
 
   const graphVersion = process.env.WHATSAPP_GRAPH_VERSION || "v25.0";
   const templateName = process.env.WHATSAPP_OTP_TEMPLATE || "otp_code";
-  const templateLanguage = process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en_US";
+  const templateLanguage = process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en";
   const response = await fetch(
       `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`,
       {

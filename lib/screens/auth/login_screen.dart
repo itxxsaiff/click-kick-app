@@ -4,6 +4,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/gradient_button.dart';
 import '../../widgets/social_icon_button.dart';
+import 'otp_verification_screen.dart';
 import '../shared/legal_center_screen.dart';
 
 enum _SocialProvider { google, apple, facebook }
@@ -42,9 +43,20 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
     try {
       await _authService.signInWithEmail(email: email, password: password);
-      _showMessage(context.tr('Login successful.'));
-      if (mounted) Navigator.pushReplacementNamed(context, '/home');
+      final otpData = await _authService.sendLoginOtp();
+      if (!mounted) return;
+      _showMessage(context.tr('OTP sent on WhatsApp.'));
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OtpVerificationScreen(
+            maskedPhone: (otpData['maskedPhone'] ?? '').toString(),
+          ),
+        ),
+      );
     } catch (e) {
+      await _authService.signOut();
+      if (!mounted) return;
       _showMessage(_friendlyError(e));
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -73,8 +85,9 @@ class _LoginScreenState extends State<LoginScreen> {
       } else {
         await _authService.signInWithFacebook();
       }
+      if (!mounted) return;
       _showMessage(context.tr('Login successful.'));
-      if (mounted) Navigator.pushReplacementNamed(context, '/home');
+      Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
       _showMessage(_friendlySocialError(e));
     } finally {
@@ -121,6 +134,18 @@ class _LoginScreenState extends State<LoginScreen> {
     if (text.contains('permission-denied')) {
       return context.tr('Firestore permission denied. Check rules.');
     }
+    if (text.contains('No phone number')) {
+      return context.tr('No phone number found for this account.');
+    }
+    if (text.contains('WhatsApp OTP is not configured')) {
+      return context.tr('WhatsApp OTP is not configured.');
+    }
+    if (text.contains('Unable to send OTP')) {
+      return context.tr('Unable to send OTP. Please try again.');
+    }
+    if (text.contains('Please wait')) {
+      return context.tr('Please wait before requesting another OTP.');
+    }
     return context.tr('Login failed. Please try again.');
   }
 
@@ -144,7 +169,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     _AuthCard(
                       compact: isCompact,
                       title: context.tr('Welcome Back'),
-                      subtitle: context.tr('Login to continue the contest fun.'),
+                      subtitle: context.tr(
+                        'Login to continue the contest fun.',
+                      ),
                       children: [
                         Form(
                           key: _formKey,
@@ -181,7 +208,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                   prefixIconColor: AppColors.textMuted,
                                   suffixIcon: IconButton(
                                     onPressed: () => setState(
-                                      () => _obscurePassword = !_obscurePassword,
+                                      () =>
+                                          _obscurePassword = !_obscurePassword,
                                     ),
                                     icon: Icon(
                                       _obscurePassword
@@ -229,7 +257,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         SocialIconButton(
                           onPressed: _isLoading
                               ? () {}
-                              : () => _handleSocialLogin(_SocialProvider.google),
+                              : () =>
+                                    _handleSocialLogin(_SocialProvider.google),
                           child: const Text(
                             'G',
                             style: TextStyle(
@@ -254,8 +283,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         SocialIconButton(
                           onPressed: _isLoading
                               ? () {}
-                              : () =>
-                                    _handleSocialLogin(_SocialProvider.facebook),
+                              : () => _handleSocialLogin(
+                                  _SocialProvider.facebook,
+                                ),
                           child: const Icon(
                             Icons.facebook,
                             color: Colors.white,
@@ -303,7 +333,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 );
                 return SingleChildScrollView(
                   padding: padding,
-                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
                   child: ConstrainedBox(
                     constraints: BoxConstraints(
                       minHeight: constraints.maxHeight - (padding.vertical),
@@ -365,7 +396,7 @@ class _GlowOrb extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: RadialGradient(
-          colors: [color.withOpacity(0.7), color.withOpacity(0.0)],
+          colors: [color.withValues(alpha: 0.7), color.withValues(alpha: 0.0)],
         ),
       ),
     );
@@ -422,8 +453,8 @@ class _LogoImage extends StatelessWidget {
             borderRadius: BorderRadius.circular(24),
             gradient: RadialGradient(
               colors: [
-                AppColors.hotPink.withOpacity(0.35),
-                AppColors.hotPink.withOpacity(0.0),
+                AppColors.hotPink.withValues(alpha: 0.35),
+                AppColors.hotPink.withValues(alpha: 0.0),
               ],
             ),
           ),

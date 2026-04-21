@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
@@ -157,6 +158,24 @@ class AuthService {
   }
 
   Future<void> signOut() => _auth.signOut();
+
+  Future<Map<String, dynamic>> sendLoginOtp() async {
+    final callable = FirebaseFunctions.instance.httpsCallable('sendLoginOtp');
+    final result = await callable.call<Map<String, dynamic>>();
+    return Map<String, dynamic>.from(result.data);
+  }
+
+  Future<void> verifyLoginOtp({required String code}) async {
+    final callable = FirebaseFunctions.instance.httpsCallable('verifyLoginOtp');
+    final result = await callable.call<Map<String, dynamic>>({'code': code});
+    final data = Map<String, dynamic>.from(result.data);
+    if (data['verified'] != true) {
+      throw FirebaseFunctionsException(
+        code: 'permission-denied',
+        message: 'Invalid OTP.',
+      );
+    }
+  }
 
   Future<void> deleteCurrentAccount() async {
     final user = _auth.currentUser;

@@ -9,6 +9,10 @@ admin.initializeApp();
 const db = admin.firestore();
 const DRAW_WINNER_COUNT = 5;
 const DRAW_PRIZE_AMOUNT = 10;
+const LOGIN_OTP_DIGITS = 6;
+const LOGIN_OTP_EXPIRY_MINUTES = 10;
+const LOGIN_OTP_RESEND_SECONDS = 60;
+const LOGIN_OTP_MAX_ATTEMPTS = 5;
 
 /**
  * Creates Stripe client.
@@ -16,6 +20,96 @@ const DRAW_PRIZE_AMOUNT = 10;
  */
 function getStripeClient() {
   return new Stripe(process.env.STRIPE_SECRET);
+}
+
+/**
+ * Creates a sha256 hash for OTP storage.
+ * @param {string} uid
+ * @param {string} code
+ * @return {string}
+ */
+function otpHash(uid, code) {
+  return crypto
+      .createHash("sha256")
+      .update(`${uid}:${code}:${process.env.META_WHATSAPP_TOKEN || ""}`)
+      .digest("hex");
+}
+
+/**
+ * Normalizes phone to WhatsApp E.164 without the plus.
+ * @param {string} phone
+ * @return {string}
+ */
+function whatsappPhone(phone) {
+  return String(phone || "").replace(/[^\d]/g, "");
+}
+
+/**
+ * Builds user's stored phone.
+ * @param {Object} userData
+ * @return {string}
+ */
+function userPhoneE164(userData) {
+  const e164 = (userData.phoneE164 || "").toString().trim();
+  if (e164) return e164;
+  const code = (userData.phoneCountryCode || "").toString().trim();
+  const number = (userData.phoneNumber || "").toString().trim();
+  if (!code || !number) return "";
+  return `${code}${number}`;
+}
+
+/**
+ * Sends a WhatsApp OTP message through Meta Cloud API.
+ * @param {Object} params
+ * @return {Promise<void>}
+ */
+async function sendWhatsAppOtp({toPhoneE164, code}) {
+  const token = process.env.META_WHATSAPP_TOKEN;
+  const phoneNumberId = process.env.META_WHATSAPP_PHONE_NUMBER_ID;
+  if (!token || !phoneNumberId) {
+    throw new HttpsError(
+        "failed-precondition",
+        "WhatsApp OTP is not configured.",
+    );
+  }
+
+  const graphVersion = process.env.WHATSAPP_GRAPH_VERSION || "v25.0";
+  const templateName = process.env.WHATSAPP_OTP_TEMPLATE || "otp_code";
+  const templateLanguage = process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en_US";
+  const response = await fetch(
+      `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to: whatsappPhone(toPhoneE164),
+          type: "template",
+          template: {
+            name: templateName,
+            language: {code: templateLanguage},
+            components: [
+              {
+                type: "body",
+                parameters: [{type: "text", text: code}],
+              },
+            ],
+          },
+        }),
+      },
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Meta WhatsApp OTP failed", response.status, errorText);
+    throw new HttpsError(
+        "internal",
+        "Unable to send OTP. Please try again.",
+    );
+  }
 }
 
 /**
@@ -474,6 +568,126 @@ async function markApplicationPaid({
     sponsorId: sponsorId || appData.sponsorId || "",
   });
 }
+
+exports.sendLoginOtp = onCall(
+    {
+      secrets: ["META_WHATSAPP_TOKEN", "META_WHATSAPP_PHONE_NUMBER_ID"],
+    },
+    async (request) => {
+      const uid = request.auth && request.auth.uid;
+      if (!uid) throw new HttpsError("unauthenticated", "Login required.");
+
+      const userSnap = await db.collection("users").doc(uid).get();
+      if (!userSnap.exists) {
+        throw new HttpsError("not-found", "User profile not found.");
+      }
+
+      const userData = userSnap.data() || {};
+      const phoneE164 = userPhoneE164(userData);
+      if (!phoneE164 || whatsappPhone(phoneE164).length < 8) {
+        throw new HttpsError(
+            "failed-precondition",
+            "No phone number found for this account.",
+        );
+      }
+
+      const otpRef = db.collection("login_otps").doc(uid);
+      const otpSnap = await otpRef.get();
+      const previous = otpSnap.data() || {};
+      const lastSentAt = parseDate(previous.lastSentAt);
+      if (
+        lastSentAt &&
+        Date.now() - lastSentAt.getTime() < LOGIN_OTP_RESEND_SECONDS * 1000
+      ) {
+        const waitSeconds = Math.ceil(
+            (LOGIN_OTP_RESEND_SECONDS * 1000 -
+              (Date.now() - lastSentAt.getTime())) / 1000,
+        );
+        throw new HttpsError(
+            "failed-precondition",
+            `Please wait ${waitSeconds}s before requesting another OTP.`,
+        );
+      }
+
+      const min = 10 ** (LOGIN_OTP_DIGITS - 1);
+      const max = 10 ** LOGIN_OTP_DIGITS;
+      const code = String(crypto.randomInt(min, max));
+      const now = admin.firestore.Timestamp.now();
+      const expiresAt = admin.firestore.Timestamp.fromMillis(
+          Date.now() + LOGIN_OTP_EXPIRY_MINUTES * 60 * 1000,
+      );
+
+      await sendWhatsAppOtp({toPhoneE164: phoneE164, code});
+
+      await otpRef.set({
+        uid,
+        phoneE164,
+        codeHash: otpHash(uid, code),
+        attempts: 0,
+        verifiedAt: null,
+        createdAt: now,
+        lastSentAt: now,
+        expiresAt,
+      }, {merge: true});
+
+      return {
+        sent: true,
+        digits: LOGIN_OTP_DIGITS,
+        resendAfterSeconds: LOGIN_OTP_RESEND_SECONDS,
+        maskedPhone: `****${whatsappPhone(phoneE164).slice(-4)}`,
+      };
+    },
+);
+
+exports.verifyLoginOtp = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Login required.");
+
+  const code = String((request.data && request.data.code) || "").trim();
+  if (!/^\d{6}$/.test(code)) {
+    throw new HttpsError("invalid-argument", "Enter the 6 digit code.");
+  }
+
+  const otpRef = db.collection("login_otps").doc(uid);
+  const otpSnap = await otpRef.get();
+  if (!otpSnap.exists) {
+    throw new HttpsError("not-found", "Please request a new OTP.");
+  }
+
+  const data = otpSnap.data() || {};
+  const expiresAt = parseDate(data.expiresAt);
+  if (!expiresAt || expiresAt.getTime() < Date.now()) {
+    throw new HttpsError("deadline-exceeded", "OTP expired.");
+  }
+
+  const attempts = Number(data.attempts || 0);
+  if (attempts >= LOGIN_OTP_MAX_ATTEMPTS) {
+    throw new HttpsError(
+        "resource-exhausted",
+        "Too many attempts. Please request a new OTP.",
+    );
+  }
+
+  if (data.codeHash !== otpHash(uid, code)) {
+    await otpRef.set({
+      attempts: admin.firestore.FieldValue.increment(1),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, {merge: true});
+    throw new HttpsError("permission-denied", "Invalid OTP.");
+  }
+
+  await otpRef.set({
+    verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, {merge: true});
+
+  await db.collection("users").doc(uid).set({
+    lastOtpVerifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, {merge: true});
+
+  return {verified: true};
+});
 
 exports.createSponsorshipPaymentIntent = onCall(
     {secrets: ["STRIPE_SECRET"]},

@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:country_picker/country_picker.dart';
 import '../../l10n/l10n.dart';
 import '../../services/auth_service.dart';
@@ -27,6 +28,7 @@ const _kAlreadyHaveAccount = 'Already have an account?';
 const _kLogin = 'Login';
 const _kTermsPrefix = 'I have read and agree to the ';
 const _kTerms = 'terms';
+final _arabicScriptRegExp = RegExp(r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]');
 
 class AccountTypeSelectionScreen extends StatelessWidget {
   const AccountTypeSelectionScreen({super.key});
@@ -266,6 +268,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (text.contains('permission-denied')) {
       return 'Firestore permission denied. Check rules.';
     }
+    if (text.contains('invalid-phone-number')) {
+      return 'Phone number is required.';
+    }
     return 'Registration failed. Please try again.';
   }
 
@@ -316,6 +321,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           children: [
                             TextFormField(
                               controller: _nameController,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.deny(_arabicScriptRegExp),
+                              ],
                               decoration: InputDecoration(
                                 labelText: _kFullName,
                                 prefixIcon: const Icon(Icons.person_outline),
@@ -324,6 +332,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) {
                                   return 'Full name is required.';
+                                }
+                                if (_arabicScriptRegExp.hasMatch(value)) {
+                                  return 'Use English only.';
                                 }
                                 return null;
                               },
@@ -449,6 +460,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               const SizedBox(height: 16),
                               TextFormField(
                                 controller: _companyController,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.deny(_arabicScriptRegExp),
+                                ],
                                 decoration: InputDecoration(
                                   labelText: _kCompanyName,
                                   prefixIcon: const Icon(Icons.business),
@@ -458,6 +472,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   if (!_isSponsor) return null;
                                   if (value == null || value.trim().isEmpty) {
                                     return 'Company name is required.';
+                                  }
+                                  if (_arabicScriptRegExp.hasMatch(value)) {
+                                    return 'Use English only.';
                                   }
                                   return null;
                                 },

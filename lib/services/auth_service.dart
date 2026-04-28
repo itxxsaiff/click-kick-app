@@ -13,6 +13,21 @@ class AuthService {
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
 
+  String _normalizedPhone({
+    required String phoneCountryCode,
+    required String phoneNumber,
+  }) {
+    final code = phoneCountryCode.trim();
+    final digits = phoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
+    if (code.isEmpty || digits.length < 7) {
+      throw FirebaseAuthException(
+        code: 'invalid-phone-number',
+        message: 'A valid phone number is required.',
+      );
+    }
+    return digits;
+  }
+
   Future<UserCredential> registerWithEmail({
     required String email,
     required String password,
@@ -21,6 +36,10 @@ class AuthService {
     required String phoneNumber,
     required bool acceptedTerms,
   }) async {
+    final normalizedPhone = _normalizedPhone(
+      phoneCountryCode: phoneCountryCode,
+      phoneNumber: phoneNumber,
+    );
     final credential = await _auth.createUserWithEmailAndPassword(
       email: email,
       password: password,
@@ -36,8 +55,8 @@ class AuthService {
       'displayName': displayName,
       'role': enumToName(UserRole.user),
       'phoneCountryCode': phoneCountryCode,
-      'phoneNumber': phoneNumber,
-      'phoneE164': '$phoneCountryCode$phoneNumber',
+      'phoneNumber': normalizedPhone,
+      'phoneE164': '$phoneCountryCode$normalizedPhone',
       'createdAt': now,
       'updatedAt': now,
       'termsAcceptedAt': acceptedTerms ? now : null,
@@ -56,6 +75,10 @@ class AuthService {
     required String companyName,
     required bool acceptedTerms,
   }) async {
+    final normalizedPhone = _normalizedPhone(
+      phoneCountryCode: phoneCountryCode,
+      phoneNumber: phoneNumber,
+    );
     final credential = await _auth.createUserWithEmailAndPassword(
       email: email,
       password: password,
@@ -71,8 +94,8 @@ class AuthService {
       'displayName': displayName,
       'role': enumToName(UserRole.sponsor),
       'phoneCountryCode': phoneCountryCode,
-      'phoneNumber': phoneNumber,
-      'phoneE164': '$phoneCountryCode$phoneNumber',
+      'phoneNumber': normalizedPhone,
+      'phoneE164': '$phoneCountryCode$normalizedPhone',
       'country': country,
       'companyName': companyName,
       'createdAt': now,

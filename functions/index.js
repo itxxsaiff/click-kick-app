@@ -76,6 +76,22 @@ async function sendWhatsAppOtp({toPhoneE164, code}) {
   const graphVersion = process.env.WHATSAPP_GRAPH_VERSION || "v25.0";
   const templateName = process.env.WHATSAPP_OTP_TEMPLATE || "otp_code";
   const templateLanguage = process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en";
+  const templateComponents = [
+    {
+      type: "body",
+      parameters: [{type: "text", text: code}],
+    },
+  ];
+
+  // Copy-code authentication templates are stored by Meta as URL buttons
+  // and require the OTP code in both the body and button components.
+  templateComponents.push({
+    type: "button",
+    sub_type: "url",
+    index: "0",
+    parameters: [{type: "text", text: code}],
+  });
+
   const response = await fetch(
       `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`,
       {
@@ -91,12 +107,7 @@ async function sendWhatsAppOtp({toPhoneE164, code}) {
           template: {
             name: templateName,
             language: {code: templateLanguage},
-            components: [
-              {
-                type: "body",
-                parameters: [{type: "text", text: code}],
-              },
-            ],
+            components: templateComponents,
           },
         }),
       },
@@ -571,7 +582,12 @@ async function markApplicationPaid({
 
 exports.sendLoginOtp = onCall(
     {
-      secrets: ["META_WHATSAPP_TOKEN", "META_WHATSAPP_PHONE_NUMBER_ID"],
+      secrets: [
+        "META_WHATSAPP_TOKEN",
+        "META_WHATSAPP_PHONE_NUMBER_ID",
+        "WHATSAPP_OTP_TEMPLATE",
+        "WHATSAPP_TEMPLATE_LANGUAGE",
+      ],
     },
     async (request) => {
       const uid = request.auth && request.auth.uid;
@@ -639,55 +655,60 @@ exports.sendLoginOtp = onCall(
     },
 );
 
-exports.verifyLoginOtp = onCall(async (request) => {
-  const uid = request.auth && request.auth.uid;
-  if (!uid) throw new HttpsError("unauthenticated", "Login required.");
+exports.verifyLoginOtp = onCall(
+    {
+      secrets: ["META_WHATSAPP_TOKEN"],
+    },
+    async (request) => {
+      const uid = request.auth && request.auth.uid;
+      if (!uid) throw new HttpsError("unauthenticated", "Login required.");
 
-  const code = String((request.data && request.data.code) || "").trim();
-  if (!/^\d{6}$/.test(code)) {
-    throw new HttpsError("invalid-argument", "Enter the 6 digit code.");
-  }
+      const code = String((request.data && request.data.code) || "").trim();
+      if (!/^\d{6}$/.test(code)) {
+        throw new HttpsError("invalid-argument", "Enter the 6 digit code.");
+      }
 
-  const otpRef = db.collection("login_otps").doc(uid);
-  const otpSnap = await otpRef.get();
-  if (!otpSnap.exists) {
-    throw new HttpsError("not-found", "Please request a new OTP.");
-  }
+      const otpRef = db.collection("login_otps").doc(uid);
+      const otpSnap = await otpRef.get();
+      if (!otpSnap.exists) {
+        throw new HttpsError("not-found", "Please request a new OTP.");
+      }
 
-  const data = otpSnap.data() || {};
-  const expiresAt = parseDate(data.expiresAt);
-  if (!expiresAt || expiresAt.getTime() < Date.now()) {
-    throw new HttpsError("deadline-exceeded", "OTP expired.");
-  }
+      const data = otpSnap.data() || {};
+      const expiresAt = parseDate(data.expiresAt);
+      if (!expiresAt || expiresAt.getTime() < Date.now()) {
+        throw new HttpsError("deadline-exceeded", "OTP expired.");
+      }
 
-  const attempts = Number(data.attempts || 0);
-  if (attempts >= LOGIN_OTP_MAX_ATTEMPTS) {
-    throw new HttpsError(
-        "resource-exhausted",
-        "Too many attempts. Please request a new OTP.",
-    );
-  }
+      const attempts = Number(data.attempts || 0);
+      if (attempts >= LOGIN_OTP_MAX_ATTEMPTS) {
+        throw new HttpsError(
+            "resource-exhausted",
+            "Too many attempts. Please request a new OTP.",
+        );
+      }
 
-  if (data.codeHash !== otpHash(uid, code)) {
-    await otpRef.set({
-      attempts: admin.firestore.FieldValue.increment(1),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    }, {merge: true});
-    throw new HttpsError("permission-denied", "Invalid OTP.");
-  }
+      if (data.codeHash !== otpHash(uid, code)) {
+        await otpRef.set({
+          attempts: admin.firestore.FieldValue.increment(1),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, {merge: true});
+        throw new HttpsError("permission-denied", "Invalid OTP.");
+      }
 
-  await otpRef.set({
-    verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  }, {merge: true});
+      await otpRef.set({
+        verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, {merge: true});
 
-  await db.collection("users").doc(uid).set({
-    lastOtpVerifiedAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  }, {merge: true});
+      await db.collection("users").doc(uid).set({
+        lastOtpVerifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, {merge: true});
 
-  return {verified: true};
-});
+      return {verified: true};
+    },
+);
 
 exports.createSponsorshipPaymentIntent = onCall(
     {secrets: ["STRIPE_SECRET"]},

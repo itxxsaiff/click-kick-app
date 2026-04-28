@@ -4,7 +4,6 @@ import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/gradient_button.dart';
 import '../../widgets/social_icon_button.dart';
-import 'otp_verification_screen.dart';
 import '../shared/legal_center_screen.dart';
 
 enum _SocialProvider { google, apple, facebook }
@@ -43,19 +42,10 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
     try {
       await _authService.signInWithEmail(email: email, password: password);
-      final otpData = await _authService.sendLoginOtp();
       if (!mounted) return;
-      _showMessage(context.tr('OTP sent on WhatsApp.'));
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => OtpVerificationScreen(
-            maskedPhone: (otpData['maskedPhone'] ?? '').toString(),
-          ),
-        ),
-      );
+      _showMessage(context.tr('Login successful.'));
+      Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
-      await _authService.signOut();
       if (!mounted) return;
       _showMessage(_friendlyError(e));
     } finally {
@@ -133,18 +123,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     if (text.contains('permission-denied')) {
       return context.tr('Firestore permission denied. Check rules.');
-    }
-    if (text.contains('No phone number')) {
-      return context.tr('No phone number found for this account.');
-    }
-    if (text.contains('WhatsApp OTP is not configured')) {
-      return context.tr('WhatsApp OTP is not configured.');
-    }
-    if (text.contains('Unable to send OTP')) {
-      return context.tr('Unable to send OTP. Please try again.');
-    }
-    if (text.contains('Please wait')) {
-      return context.tr('Please wait before requesting another OTP.');
     }
     return context.tr('Login failed. Please try again.');
   }

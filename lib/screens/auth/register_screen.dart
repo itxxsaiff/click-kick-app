@@ -6,6 +6,7 @@ import '../../l10n/l10n.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/gradient_button.dart';
+import 'otp_verification_screen.dart';
 import '../shared/legal_center_screen.dart';
 
 const _kCreateAccount = 'Create Account';
@@ -200,11 +201,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
           acceptedTerms: _acceptedTerms,
         );
       }
-      _showMessage(
-        _isSponsor ? 'Business account created.' : 'Account created.',
-      );
+      final otpData = await _authService.sendLoginOtp();
+      _showMessage(context.tr('OTP sent on WhatsApp.'));
       if (mounted) {
-        Navigator.pushNamedAndRemoveUntil(context, '/home', (_) => false);
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => OtpVerificationScreen(
+              maskedPhone: (otpData['maskedPhone'] ?? '').toString(),
+            ),
+          ),
+        );
       }
     } catch (e) {
       _showMessage(_friendlyError(e));
@@ -270,6 +277,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
     if (text.contains('invalid-phone-number')) {
       return 'Phone number is required.';
+    }
+    if (text.contains('No phone number')) {
+      return 'No phone number found for this account.';
+    }
+    if (text.contains('WhatsApp OTP is not configured')) {
+      return 'WhatsApp OTP is not configured.';
+    }
+    if (text.contains('Unable to send OTP')) {
+      return 'Unable to send OTP. Please try again.';
+    }
+    if (text.contains('Please wait')) {
+      return 'Please wait before requesting another OTP.';
     }
     return 'Registration failed. Please try again.';
   }

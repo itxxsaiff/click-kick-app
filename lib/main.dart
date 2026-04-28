@@ -41,10 +41,11 @@ class VideoContestApp extends StatelessWidget {
           options: DefaultFirebaseOptions.currentPlatform,
         ),
         builder: (context, snapshot) {
+          final isArabic = localeController.language == AppLanguage.arabic;
           if (snapshot.hasError) {
             return MaterialApp(
               debugShowCheckedModeBanner: false,
-              theme: AppTheme.darkTheme,
+              theme: AppTheme.darkTheme(useArabicFont: isArabic),
               home: Scaffold(
                 body: Center(child: Text(context.tr('Firebase init failed.'))),
               ),
@@ -53,7 +54,7 @@ class VideoContestApp extends StatelessWidget {
           if (snapshot.connectionState != ConnectionState.done) {
             return MaterialApp(
               debugShowCheckedModeBanner: false,
-              theme: AppTheme.darkTheme,
+              theme: AppTheme.darkTheme(useArabicFont: isArabic),
               home: const Scaffold(
                 body: Center(child: CircularProgressIndicator()),
               ),
@@ -62,7 +63,7 @@ class VideoContestApp extends StatelessWidget {
           return MaterialApp(
             debugShowCheckedModeBanner: false,
             title: context.tr('Video Contest'),
-            theme: AppTheme.darkTheme,
+            theme: AppTheme.darkTheme(useArabicFont: isArabic),
             locale: localeController.locale,
             supportedLocales: const [Locale('en'), Locale('ar')],
             localizationsDelegates: const [

@@ -200,7 +200,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                         ),
                         const SizedBox(height: 18),
                         Text(
-                          context.tr('Verify your phone'),
+                          context.tr('Verify your account'),
                           textAlign: TextAlign.center,
                           style: Theme.of(context).textTheme.headlineSmall
                               ?.copyWith(
@@ -210,7 +210,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          '${context.tr('We sent a WhatsApp code to your registered number.')} ${widget.maskedPhone}',
+                          '${context.tr('We sent a WhatsApp code to your phone number.')} ${widget.maskedPhone}',
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             color: AppColors.textMuted,

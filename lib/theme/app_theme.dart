@@ -3,8 +3,15 @@ import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 
 class AppTheme {
-  static ThemeData get darkTheme {
+  static ThemeData darkTheme({bool useArabicFont = false}) {
     final base = ThemeData.dark(useMaterial3: true);
+    final textTheme = useArabicFont
+        ? base.textTheme.apply(
+            fontFamily: 'Arial',
+            bodyColor: AppColors.textLight,
+            displayColor: AppColors.textLight,
+          )
+        : GoogleFonts.rubikTextTheme(base.textTheme);
     return base.copyWith(
       scaffoldBackgroundColor: AppColors.deepSpace,
       colorScheme: base.colorScheme.copyWith(
@@ -12,19 +19,19 @@ class AppTheme {
         secondary: AppColors.neonGreen,
         surface: AppColors.card,
       ),
-      textTheme: GoogleFonts.rubikTextTheme(base.textTheme).copyWith(
-        headlineLarge: GoogleFonts.rubik(
+      textTheme: textTheme.copyWith(
+        headlineLarge: (textTheme.headlineLarge ?? const TextStyle()).copyWith(
           fontWeight: FontWeight.w800,
           color: AppColors.textLight,
         ),
-        titleLarge: GoogleFonts.rubik(
+        titleLarge: (textTheme.titleLarge ?? const TextStyle()).copyWith(
           fontWeight: FontWeight.w700,
           color: AppColors.textLight,
         ),
-        bodyLarge: GoogleFonts.rubik(
+        bodyLarge: (textTheme.bodyLarge ?? const TextStyle()).copyWith(
           color: AppColors.textLight,
         ),
-        bodyMedium: GoogleFonts.rubik(
+        bodyMedium: (textTheme.bodyMedium ?? const TextStyle()).copyWith(
           color: AppColors.textMuted,
         ),
       ),

@@ -32,6 +32,14 @@ class VideoContestApp extends StatelessWidget {
 
   final AppLocaleController localeController;
 
+  double _mobileTextScale(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    if (kIsWeb) return 1;
+    if (width <= 430) return 0.92;
+    if (width <= 600) return 0.96;
+    return 1;
+  }
+
   @override
   Widget build(BuildContext context) {
     return LanguageScope(
@@ -72,7 +80,13 @@ class VideoContestApp extends StatelessWidget {
               GlobalCupertinoLocalizations.delegate,
             ],
             builder: (context, child) {
-              return child ?? const SizedBox.shrink();
+              final media = MediaQuery.of(context);
+              return MediaQuery(
+                data: media.copyWith(
+                  textScaler: TextScaler.linear(_mobileTextScale(context)),
+                ),
+                child: child ?? const SizedBox.shrink(),
+              );
             },
             home: const LanguageSelectionScreen(showContinue: true),
             onGenerateRoute: (settings) {

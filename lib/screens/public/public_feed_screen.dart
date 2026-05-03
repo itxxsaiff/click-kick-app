@@ -217,60 +217,64 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
     required List<Widget> pages,
   }) {
     final safeIndex = _tabIndex.clamp(0, labels.length - 1);
+    final isImmersiveFeed = safeIndex == 0 || labels[safeIndex] == 'Contests';
     if (_tabIndex != safeIndex) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() => _tabIndex = safeIndex);
       });
     }
 
-    return Scaffold(
-      body: Stack(
-        children: [
-          const _SpaceBackground(),
-          SafeArea(
-            child: Column(
+    final bodyContent = Column(
+      children: [
+        if (!isImmersiveFeed)
+          Container(
+            margin: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 12,
+            ),
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Row(
               children: [
-                if (safeIndex != 0 && labels[safeIndex] != 'Contests')
-                  Container(
-                    margin: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.card,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          activeIcons[safeIndex],
-                          color: AppColors.hotPink,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            _headerTitle(context, labels, safeIndex),
-                            style: const TextStyle(
-                              color: AppColors.textLight,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                Icon(
+                  activeIcons[safeIndex],
+                  color: AppColors.hotPink,
+                ),
+                const SizedBox(width: 10),
                 Expanded(
-                  child: IndexedStack(
-                    index: safeIndex,
-                    children: pages,
+                  child: Text(
+                    _headerTitle(context, labels, safeIndex),
+                    style: const TextStyle(
+                      color: AppColors.textLight,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
+        Expanded(
+          child: IndexedStack(
+            index: safeIndex,
+            children: pages,
+          ),
+        ),
+      ],
+    );
+
+    return Scaffold(
+      body: Stack(
+        children: [
+          const _SpaceBackground(),
+          if (isImmersiveFeed)
+            bodyContent
+          else
+            SafeArea(child: bodyContent),
         ],
       ),
       bottomNavigationBar: Container(
@@ -338,114 +342,91 @@ class _HomeFeedTab extends StatefulWidget {
 
 class _HomeFeedTabState extends State<_HomeFeedTab> {
   final _pageController = PageController();
-  final Map<String, VideoPlayerController> _controllerCache = {};
-  final Map<String, Future<VideoPlayerController?>> _controllerLoads = {};
   int _activeIndex = 0;
   VideoPlayerController? _videoController;
   String _currentVideoUrl = '';
   String? _pendingVideoUrl;
   bool _pendingAutoplay = false;
+  bool _isVideoLoading = false;
+  int _videoRequestId = 0;
 
   @override
   void dispose() {
-    for (final controller in _controllerCache.values) {
-      controller.dispose();
-    }
+    _videoController?.dispose();
     _pageController.dispose();
     super.dispose();
   }
 
-  Future<VideoPlayerController?> _ensureController(String url) {
-    if (url.isEmpty) return Future.value(null);
-    final cached = _controllerCache[url];
-    if (cached != null) return Future.value(cached);
-    final loading = _controllerLoads[url];
-    if (loading != null) return loading;
-
-    final future = () async {
-      final controller = VideoPlayerController.networkUrl(Uri.parse(url));
-      try {
-        await controller.initialize();
-        await controller.setLooping(true);
-        controller.addListener(() {
-          if (!mounted || _currentVideoUrl != url) return;
-          setState(() {});
-        });
-        _controllerCache[url] = controller;
-        return controller;
-      } catch (_) {
-        await controller.dispose();
-        return null;
-      } finally {
-        _controllerLoads.remove(url);
-      }
-    }();
-
-    _controllerLoads[url] = future;
-    return future;
-  }
-
-  Future<void> _pruneControllers(Set<String> keepUrls) async {
-    final removable = _controllerCache.keys
-        .where((url) => !keepUrls.contains(url))
-        .toList();
-    for (final url in removable) {
-      final controller = _controllerCache.remove(url);
-      await controller?.pause();
-      await controller?.dispose();
-    }
-  }
-
-  void _preloadAround(List<_FeedItem> items, int index) {
-    final urls = <String>{
-      if (index >= 0 &&
-          index < items.length &&
-          items[index].hasVideo &&
-          items[index].videoUrl.isNotEmpty)
-        items[index].videoUrl,
-      if (index + 1 < items.length &&
-          items[index + 1].hasVideo &&
-          items[index + 1].videoUrl.isNotEmpty)
-        items[index + 1].videoUrl,
-      if (index - 1 >= 0 &&
-          items[index - 1].hasVideo &&
-          items[index - 1].videoUrl.isNotEmpty)
-        items[index - 1].videoUrl,
-    };
-
-    for (final url in urls) {
-      unawaited(_ensureController(url));
-    }
-    unawaited(_pruneControllers(urls));
-  }
-
   Future<void> _setActiveVideo(String url, {bool autoplay = true}) async {
-    if (url.isEmpty || url == _currentVideoUrl) return;
-    _currentVideoUrl = url;
-    for (final entry in _controllerCache.entries) {
-      if (entry.key != url) {
-        await entry.value.pause();
-      }
+    if (url.isEmpty) return;
+    final requestId = ++_videoRequestId;
+    if (mounted) {
+      setState(() => _isVideoLoading = true);
     }
-    final controller = await _ensureController(url);
-    if (controller == null) return;
-    if (autoplay) {
-      await controller.play();
-    } else {
-      await controller.pause();
+    if (url == _currentVideoUrl && _videoController != null) {
+      final controller = _videoController!;
+      await controller.setVolume(1);
+      if (autoplay) {
+        await controller.play();
+      } else {
+        await controller.pause();
+      }
+      if (mounted && requestId == _videoRequestId) {
+        setState(() => _isVideoLoading = false);
+      }
+      return;
+    }
+
+    final previous = _videoController;
+    _videoController = null;
+    _currentVideoUrl = url;
+    await previous?.pause();
+    await previous?.dispose();
+
+    final controller = VideoPlayerController.networkUrl(Uri.parse(url));
+    try {
+      await controller.initialize();
+      await controller.setLooping(true);
+      await controller.setVolume(1);
+      controller.addListener(() {
+        if (!mounted || _currentVideoUrl != url || controller != _videoController) {
+          return;
+        }
+        setState(() {});
+      });
+      if (requestId != _videoRequestId || !mounted) {
+        await controller.pause();
+        await controller.dispose();
+        return;
+      }
+      if (autoplay) {
+        await controller.play();
+      } else {
+        await controller.pause();
+      }
+    } catch (_) {
+      await controller.dispose();
+      if (mounted) setState(() => _isVideoLoading = false);
+      return;
     }
     if (!mounted) return;
-    setState(() => _videoController = controller);
+    setState(() {
+      _videoController = controller;
+      _isVideoLoading = false;
+    });
   }
 
   Future<void> _clearActiveVideo() async {
     if (_currentVideoUrl.isEmpty && _videoController == null) return;
+    _videoRequestId++;
     _currentVideoUrl = '';
+    final controller = _videoController;
     _videoController = null;
-    for (final controller in _controllerCache.values) {
-      await controller.pause();
+    await controller?.pause();
+    await controller?.dispose();
+    if (mounted) {
+      setState(() => _isVideoLoading = false);
     }
-    if (mounted) setState(() {});
   }
 
   void _scheduleActiveVideoSync(_FeedItem item, {required bool autoplay}) {
@@ -533,8 +514,7 @@ class _HomeFeedTabState extends State<_HomeFeedTab> {
 
             final safeIndex = _activeIndex.clamp(0, feedItems.length - 1);
             final activeItem = feedItems[safeIndex];
-            _preloadAround(feedItems, safeIndex);
-            _scheduleActiveVideoSync(activeItem, autoplay: false);
+            _scheduleActiveVideoSync(activeItem, autoplay: true);
 
             return PageView.builder(
               scrollDirection: Axis.vertical,
@@ -544,7 +524,7 @@ class _HomeFeedTabState extends State<_HomeFeedTab> {
                 setState(() => _activeIndex = i);
                 final item = feedItems[i];
                 if (item.hasVideo && item.videoUrl.isNotEmpty) {
-                  await _setActiveVideo(item.videoUrl, autoplay: false);
+                  await _setActiveVideo(item.videoUrl, autoplay: true);
                 } else {
                   await _clearActiveVideo();
                 }
@@ -566,7 +546,8 @@ class _HomeFeedTabState extends State<_HomeFeedTab> {
                   item: item,
                   isShowingActiveVideo: isShowingActiveVideo,
                   isPlaying: isPlaying,
-                  controller: _videoController,
+                  isLoading: isActive && item.hasVideo && _isVideoLoading,
+                  controller: isShowingActiveVideo ? _videoController : null,
                   onTapVideo: isShowingActiveVideo ? _togglePlayback : null,
                 );
               },
@@ -598,99 +579,81 @@ class _PublicContestsTab extends StatefulWidget {
 
 class _PublicContestsTabState extends State<_PublicContestsTab> {
   final _pageController = PageController();
-  final Map<String, VideoPlayerController> _controllerCache = {};
-  final Map<String, Future<VideoPlayerController?>> _controllerLoads = {};
   int _activeIndex = 0;
   VideoPlayerController? _videoController;
   String _currentVideoUrl = '';
   String? _pendingVideoUrl;
+  bool _isVideoLoading = false;
+  int _videoRequestId = 0;
 
   @override
   void dispose() {
-    for (final controller in _controllerCache.values) {
-      controller.dispose();
-    }
+    _videoController?.dispose();
     _pageController.dispose();
     super.dispose();
   }
 
-  Future<VideoPlayerController?> _ensureController(String url) {
-    if (url.isEmpty) return Future.value(null);
-    final cached = _controllerCache[url];
-    if (cached != null) return Future.value(cached);
-    final loading = _controllerLoads[url];
-    if (loading != null) return loading;
-
-    final future = () async {
-      final controller = VideoPlayerController.networkUrl(Uri.parse(url));
-      try {
-        await controller.initialize();
-        await controller.setLooping(true);
-        controller.addListener(() {
-          if (!mounted || _currentVideoUrl != url) return;
-          setState(() {});
-        });
-        _controllerCache[url] = controller;
-        return controller;
-      } catch (_) {
-        await controller.dispose();
-        return null;
-      } finally {
-        _controllerLoads.remove(url);
-      }
-    }();
-
-    _controllerLoads[url] = future;
-    return future;
-  }
-
-  Future<void> _pruneControllers(Set<String> keepUrls) async {
-    final removable = _controllerCache.keys
-        .where((url) => !keepUrls.contains(url))
-        .toList();
-    for (final url in removable) {
-      final controller = _controllerCache.remove(url);
-      await controller?.pause();
-      await controller?.dispose();
-    }
-  }
-
-  void _preloadAround(List<_ContestFeedItem> items, int index) {
-    final urls = <String>{
-      if (index >= 0 && index < items.length && items[index].videoUrl.isNotEmpty)
-        items[index].videoUrl,
-      if (index + 1 < items.length && items[index + 1].videoUrl.isNotEmpty)
-        items[index + 1].videoUrl,
-      if (index - 1 >= 0 && items[index - 1].videoUrl.isNotEmpty)
-        items[index - 1].videoUrl,
-    };
-    for (final url in urls) {
-      unawaited(_ensureController(url));
-    }
-    unawaited(_pruneControllers(urls));
-  }
-
   Future<void> _setActiveVideo(String url) async {
-    if (url.isEmpty || url == _currentVideoUrl) return;
-    _currentVideoUrl = url;
-    for (final entry in _controllerCache.entries) {
-      if (entry.key != url) {
-        await entry.value.pause();
-      }
+    if (url.isEmpty) return;
+    final requestId = ++_videoRequestId;
+    if (mounted) {
+      setState(() => _isVideoLoading = true);
     }
-    final controller = await _ensureController(url);
-    if (controller == null) return;
+    if (url == _currentVideoUrl && _videoController != null) {
+      final controller = _videoController!;
+      await controller.setVolume(1);
+      await controller.play();
+      if (mounted && requestId == _videoRequestId) {
+        setState(() => _isVideoLoading = false);
+      }
+      return;
+    }
+
+    final previous = _videoController;
+    _videoController = null;
+    _currentVideoUrl = url;
+    await previous?.pause();
+    await previous?.dispose();
+
+    final controller = VideoPlayerController.networkUrl(Uri.parse(url));
+    try {
+      await controller.initialize();
+      await controller.setLooping(true);
+      await controller.setVolume(1);
+      controller.addListener(() {
+        if (!mounted || _currentVideoUrl != url || controller != _videoController) {
+          return;
+        }
+        setState(() {});
+      });
+      if (requestId != _videoRequestId || !mounted) {
+        await controller.pause();
+        await controller.dispose();
+        return;
+      }
+      await controller.play();
+    } catch (_) {
+      await controller.dispose();
+      if (mounted) setState(() => _isVideoLoading = false);
+      return;
+    }
     if (!mounted) return;
-    setState(() => _videoController = controller);
+    setState(() {
+      _videoController = controller;
+      _isVideoLoading = false;
+    });
   }
 
   Future<void> _clearActiveVideo() async {
+    _videoRequestId++;
     _currentVideoUrl = '';
+    final controller = _videoController;
     _videoController = null;
-    for (final controller in _controllerCache.values) {
-      await controller.pause();
+    await controller?.pause();
+    await controller?.dispose();
+    if (mounted) {
+      setState(() => _isVideoLoading = false);
     }
-    if (mounted) setState(() {});
   }
 
   void _scheduleActiveVideoSync(_ContestFeedItem item) {
@@ -759,7 +722,6 @@ class _PublicContestsTabState extends State<_PublicContestsTab> {
         final items = docs.map(_ContestFeedItem.fromDoc).toList();
         final safeIndex = _activeIndex.clamp(0, items.length - 1);
         final activeItem = items[safeIndex];
-        _preloadAround(items, safeIndex);
         _scheduleActiveVideoSync(activeItem);
 
         return PageView.builder(
@@ -782,9 +744,10 @@ class _PublicContestsTabState extends State<_PublicContestsTab> {
                 isShowingActiveVideo && _videoController!.value.isPlaying;
             return _ContestFeedCard(
               item: item,
-              controller: _videoController,
+              controller: isShowingActiveVideo ? _videoController : null,
               isShowingActiveVideo: isShowingActiveVideo,
               isPlaying: isPlaying,
+              isLoading: isActive && _isVideoLoading,
               onTapVideo: isShowingActiveVideo ? _togglePlayback : null,
             );
           },
@@ -841,6 +804,7 @@ class _ContestFeedCard extends StatelessWidget {
     required this.controller,
     required this.isShowingActiveVideo,
     required this.isPlaying,
+    required this.isLoading,
     this.onTapVideo,
   });
 
@@ -848,6 +812,7 @@ class _ContestFeedCard extends StatelessWidget {
   final VideoPlayerController? controller;
   final bool isShowingActiveVideo;
   final bool isPlaying;
+  final bool isLoading;
   final VoidCallback? onTapVideo;
 
   Future<void> _requireAuth(BuildContext context) async {
@@ -897,16 +862,12 @@ class _ContestFeedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: GestureDetector(
-          onTap: onTapVideo,
-          behavior: HitTestBehavior.opaque,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
+    return GestureDetector(
+      onTap: onTapVideo,
+      behavior: HitTestBehavior.opaque,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
               if (isShowingActiveVideo && controller != null)
                 FittedBox(
                   fit: BoxFit.cover,
@@ -925,6 +886,13 @@ class _ContestFeedCard extends StatelessWidget {
                       color: AppColors.hotPink,
                       size: 72,
                     ),
+                  ),
+                ),
+              if (isLoading)
+                const Center(
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2.8,
                   ),
                 ),
               Container(
@@ -1106,9 +1074,7 @@ class _ContestFeedCard extends StatelessWidget {
                   ],
                 ),
               ),
-            ],
-          ),
-        ),
+        ],
       ),
     );
   }
@@ -1182,6 +1148,7 @@ class _AdminVideoFeedCard extends StatelessWidget {
     required this.item,
     required this.isShowingActiveVideo,
     required this.isPlaying,
+    required this.isLoading,
     required this.controller,
     this.onTapVideo,
   });
@@ -1189,6 +1156,7 @@ class _AdminVideoFeedCard extends StatelessWidget {
   final _FeedItem item;
   final bool isShowingActiveVideo;
   final bool isPlaying;
+  final bool isLoading;
   final VideoPlayerController? controller;
   final VoidCallback? onTapVideo;
 
@@ -1222,16 +1190,12 @@ class _AdminVideoFeedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: GestureDetector(
-          onTap: onTapVideo,
-          behavior: HitTestBehavior.opaque,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
+    return GestureDetector(
+      onTap: onTapVideo,
+      behavior: HitTestBehavior.opaque,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
               if (isShowingActiveVideo && controller != null)
                 FittedBox(
                   fit: BoxFit.cover,
@@ -1250,6 +1214,13 @@ class _AdminVideoFeedCard extends StatelessWidget {
                       color: AppColors.hotPink,
                       size: 72,
                     ),
+                  ),
+                ),
+              if (isLoading)
+                const Center(
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2.8,
                   ),
                 ),
               Container(
@@ -1337,9 +1308,7 @@ class _AdminVideoFeedCard extends StatelessWidget {
                   ],
                 ),
               ),
-            ],
-          ),
-        ),
+        ],
       ),
     );
   }
@@ -3180,7 +3149,7 @@ class _PublicUserPasswordScreenState extends State<_PublicUserPasswordScreen> {
       await user.reauthenticateWithCredential(credential);
       await user.updatePassword(_newPasswordController.text.trim());
       if (!mounted) return;
-      _show(context, context.tr('Password updated.'));
+      _show(context, context.tr('Password updated successfully.'));
       Navigator.pop(context);
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
@@ -3215,10 +3184,12 @@ class _PublicUserPasswordScreenState extends State<_PublicUserPasswordScreen> {
                         controller: _currentPasswordController,
                         obscureText: _obscureCurrentPassword,
                         decoration: InputDecoration(
-                          labelText: context.tr('Current Password'),
+                          hintText: context.tr('Current Password'),
+                          floatingLabelBehavior: FloatingLabelBehavior.never,
                           suffixIcon: IconButton(
                             onPressed: () => setState(
-                              () => _obscureCurrentPassword = !_obscureCurrentPassword,
+                              () => _obscureCurrentPassword =
+                                  !_obscureCurrentPassword,
                             ),
                             icon: Icon(
                               _obscureCurrentPassword
@@ -3233,7 +3204,8 @@ class _PublicUserPasswordScreenState extends State<_PublicUserPasswordScreen> {
                         controller: _newPasswordController,
                         obscureText: _obscureNewPassword,
                         decoration: InputDecoration(
-                          labelText: context.tr('New password'),
+                          hintText: context.tr('New Password'),
+                          floatingLabelBehavior: FloatingLabelBehavior.never,
                           suffixIcon: IconButton(
                             onPressed: () => setState(
                               () => _obscureNewPassword = !_obscureNewPassword,
@@ -3251,7 +3223,8 @@ class _PublicUserPasswordScreenState extends State<_PublicUserPasswordScreen> {
                         controller: _confirmPasswordController,
                         obscureText: _obscureConfirmPassword,
                         decoration: InputDecoration(
-                          labelText: context.tr('Confirm New Password'),
+                          hintText: context.tr('Confirm Password'),
+                          floatingLabelBehavior: FloatingLabelBehavior.never,
                           suffixIcon: IconButton(
                             onPressed: () => setState(
                               () => _obscureConfirmPassword = !_obscureConfirmPassword,

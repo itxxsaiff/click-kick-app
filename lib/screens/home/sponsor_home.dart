@@ -3099,7 +3099,7 @@ class _SponsorSecurityTabState extends State<_SponsorSecurityScreen> {
       );
       await user.reauthenticateWithCredential(credential);
       await user.updatePassword(_newPass.text.trim());
-      _show(context.tr('Password updated.'));
+      _show(context.tr('Password updated successfully.'));
       _current.clear();
       _newPass.clear();
       _confirm.clear();
@@ -3132,79 +3132,140 @@ class _SponsorSecurityTabState extends State<_SponsorSecurityScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.card,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.border),
+    return Scaffold(
+      body: Stack(
+        children: [
+          const _SpaceBackground(),
+          SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                _ScreenHeader(title: context.tr('Change Password')),
+                const SizedBox(height: 16),
+                _FormCard(
+                  child: Column(
+                    children: [
+                      _PasswordField(
+                        controller: _current,
+                        hintText: context.tr('Current Password'),
+                        obscureText: _obscureCurrent,
+                        onToggle: () => setState(
+                          () => _obscureCurrent = !_obscureCurrent,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _PasswordField(
+                        controller: _newPass,
+                        hintText: context.tr('New Password'),
+                        obscureText: _obscureNew,
+                        onToggle: () =>
+                            setState(() => _obscureNew = !_obscureNew),
+                      ),
+                      const SizedBox(height: 12),
+                      _PasswordField(
+                        controller: _confirm,
+                        hintText: context.tr('Confirm Password'),
+                        obscureText: _obscureConfirm,
+                        onToggle: () => setState(
+                          () => _obscureConfirm = !_obscureConfirm,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      GradientButton(
+                        label: _saving
+                            ? context.tr('Updating...')
+                            : context.tr('Update Password'),
+                        onPressed: _saving ? () {} : _changePassword,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-          child: Column(
-            children: [
-              TextField(
-                controller: _current,
-                obscureText: _obscureCurrent,
-                decoration: InputDecoration(
-                  labelText: context.tr('Current Password'),
-                  suffixIcon: IconButton(
-                    onPressed: () =>
-                        setState(() => _obscureCurrent = !_obscureCurrent),
-                    icon: Icon(
-                      _obscureCurrent
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _newPass,
-                obscureText: _obscureNew,
-                decoration: InputDecoration(
-                  labelText: context.tr('New Password'),
-                  suffixIcon: IconButton(
-                    onPressed: () =>
-                        setState(() => _obscureNew = !_obscureNew),
-                    icon: Icon(
-                      _obscureNew
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _confirm,
-                obscureText: _obscureConfirm,
-                decoration: InputDecoration(
-                  labelText: context.tr('Confirm New Password'),
-                  suffixIcon: IconButton(
-                    onPressed: () =>
-                        setState(() => _obscureConfirm = !_obscureConfirm),
-                    icon: Icon(
-                      _obscureConfirm
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              GradientButton(
-                label: _saving
-                    ? context.tr('Updating...')
-                    : context.tr('Update Password'),
-                onPressed: _saving ? () {} : _changePassword,
-              ),
-            ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ScreenHeader extends StatelessWidget {
+  const _ScreenHeader({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        IconButton(
+          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+        ),
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+              color: AppColors.textLight,
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _FormCard extends StatelessWidget {
+  const _FormCard({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _PasswordField extends StatelessWidget {
+  const _PasswordField({
+    required this.controller,
+    required this.hintText,
+    required this.obscureText,
+    required this.onToggle,
+  });
+
+  final TextEditingController controller;
+  final String hintText;
+  final bool obscureText;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      obscureText: obscureText,
+      decoration: InputDecoration(
+        hintText: hintText,
+        floatingLabelBehavior: FloatingLabelBehavior.never,
+        suffixIcon: IconButton(
+          onPressed: onToggle,
+          icon: Icon(
+            obscureText
+                ? Icons.visibility_off_outlined
+                : Icons.visibility_outlined,
+          ),
+        ),
+      ),
     );
   }
 }

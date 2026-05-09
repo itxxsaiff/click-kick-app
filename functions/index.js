@@ -59,6 +59,33 @@ function userPhoneE164(userData) {
 }
 
 /**
+ * Normalizes email for duplicate checking.
+ * @param {string} email
+ * @return {string}
+ */
+function normalizeEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+/**
+ * Normalizes phone digits for duplicate checking.
+ * @param {string} phoneCountryCode
+ * @param {string} phoneNumber
+ * @return {string}
+ */
+function normalizePhoneE164(phoneCountryCode, phoneNumber) {
+  const code = String(phoneCountryCode || "").trim();
+  const digits = String(phoneNumber || "").replace(/[^\d]/g, "");
+  if (!code || digits.length < 7) {
+    throw new HttpsError(
+        "invalid-argument",
+        "A valid phone number is required.",
+    );
+  }
+  return `${code}${digits}`;
+}
+
+/**
  * Sends a WhatsApp OTP message through Meta Cloud API.
  * @param {Object} params
  * @return {Promise<void>}
@@ -122,6 +149,49 @@ async function sendWhatsAppOtp({toPhoneE164, code}) {
     );
   }
 }
+
+exports.checkRegistrationAvailability = onCall(async (request) => {
+  const data = request.data || {};
+  const email = normalizeEmail(data.email);
+  const phoneE164 = normalizePhoneE164(
+      data.phoneCountryCode,
+      data.phoneNumber,
+  );
+
+  if (!email) {
+    throw new HttpsError("invalid-argument", "Email is required.");
+  }
+
+  const [emailLowerSnap, emailExactSnap, phoneSnap] = await Promise.all([
+    db.collection("users").where("emailLower", "==", email).limit(1).get(),
+    db.collection("users").where("email", "==", email).limit(1).get(),
+    db.collection("users").where("phoneE164", "==", phoneE164).limit(1).get(),
+  ]);
+
+  return {
+    emailAvailable:
+      emailLowerSnap.empty && emailExactSnap.empty,
+    phoneAvailable: phoneSnap.empty,
+  };
+});
+
+exports.checkPasswordResetAvailability = onCall(async (request) => {
+  const data = request.data || {};
+  const email = normalizeEmail(data.email);
+
+  if (!email) {
+    throw new HttpsError("invalid-argument", "Email is required.");
+  }
+
+  const [emailLowerSnap, emailExactSnap] = await Promise.all([
+    db.collection("users").where("emailLower", "==", email).limit(1).get(),
+    db.collection("users").where("email", "==", email).limit(1).get(),
+  ]);
+
+  return {
+    emailExists: !(emailLowerSnap.empty && emailExactSnap.empty),
+  };
+});
 
 /**
  * Builds invoice number.

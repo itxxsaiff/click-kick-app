@@ -20,7 +20,6 @@ class _AdminParticipantsScreenState extends State<AdminParticipantsScreen> {
   final _searchController = TextEditingController();
   final _reportService = ParticipantReportService();
   String _search = '';
-  bool _sortDesc = true;
   String _filter = 'all';
 
   @override
@@ -31,374 +30,436 @@ class _AdminParticipantsScreenState extends State<AdminParticipantsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final stream = FirebaseFirestore.instance
+    final usersStream = FirebaseFirestore.instance
         .collection('users')
         .where('role', isEqualTo: 'participant')
+        .snapshots();
+    final submissionsStream = FirebaseFirestore.instance
+        .collectionGroup('submissions')
         .snapshots();
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(context.tr('Participants')),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(context.tr('Participants')),
+            Text(
+              context.tr('Creators list'),
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
         backgroundColor: AppColors.deepSpace,
-        actions: [
-          IconButton(
-            tooltip: context.tr('All Participants Report'),
-            onPressed: _openAllParticipantsReport,
-            icon: const Icon(Icons.picture_as_pdf),
-          ),
-        ],
       ),
       body: Stack(
         children: [
           const _SpaceBackground(),
-          Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.card,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: usersStream,
+            builder: (context, usersSnapshot) {
+              if (!usersSnapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: submissionsStream,
+                builder: (context, submissionsSnapshot) {
+                  if (!submissionsSnapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  final uploadCounts = <String, int>{};
+                  for (final submission in submissionsSnapshot.data!.docs) {
+                    final userId = (submission.data()['userId'] ?? '')
+                        .toString();
+                    if (userId.isEmpty) continue;
+                    uploadCounts[userId] = (uploadCounts[userId] ?? 0) + 1;
+                  }
+
+                  final docs = usersSnapshot.data!.docs.toList()
+                    ..sort((a, b) {
+                      final at =
+                          (a.data()['createdAt'] as Timestamp?)
+                              ?.millisecondsSinceEpoch ??
+                          0;
+                      final bt =
+                          (b.data()['createdAt'] as Timestamp?)
+                              ?.millisecondsSinceEpoch ??
+                          0;
+                      return bt.compareTo(at);
+                    });
+
+                  final filtered = docs.where((doc) {
+                    final data = doc.data();
+                    final isBlocked =
+                        (data['accountStatus'] ?? 'active').toString() ==
+                        'disabled';
+                    if (_filter == 'blocked' && !isBlocked) return false;
+                    if (_filter == 'active' && isBlocked) return false;
+                    if (_search.isEmpty) return true;
+                    final name = (data['displayName'] ?? 'user')
+                        .toString()
+                        .toLowerCase();
+                    final email = (data['email'] ?? '')
+                        .toString()
+                        .toLowerCase();
+                    final phone = (data['phoneE164'] ?? '')
+                        .toString()
+                        .toLowerCase();
+                    return name.contains(_search) ||
+                        email.contains(_search) ||
+                        phone.contains(_search);
+                  }).toList();
+
+                  return Column(
                     children: [
-                      TextField(
-                        controller: _searchController,
-                        onChanged: (v) =>
-                            setState(() => _search = v.trim().toLowerCase()),
-                        decoration: InputDecoration(
-                          hintText: context.tr(
-                            'Search participant by name or email',
-                          ),
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: _searchController.text.isEmpty
-                              ? null
-                              : IconButton(
-                                  onPressed: () {
-                                    _searchController.clear();
-                                    setState(() => _search = '');
-                                  },
-                                  icon: const Icon(Icons.close),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _searchController,
+                                onChanged: (v) => setState(
+                                  () => _search = v.trim().toLowerCase(),
                                 ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          ChoiceChip(
-                            label: Text(context.tr('Newest First')),
-                            selected: _sortDesc,
-                            onSelected: (_) => setState(() => _sortDesc = true),
-                          ),
-                          ChoiceChip(
-                            label: Text(context.tr('Oldest First')),
-                            selected: !_sortDesc,
-                            onSelected: (_) =>
-                                setState(() => _sortDesc = false),
-                          ),
-                          FilterChip(
-                            label: Text(context.tr('All')),
-                            selected: _filter == 'all',
-                            onSelected: (_) => setState(() => _filter = 'all'),
-                          ),
-                          FilterChip(
-                            label: Text(context.tr('Active')),
-                            selected: _filter == 'active',
-                            onSelected: (_) =>
-                                setState(() => _filter = 'active'),
-                          ),
-                          FilterChip(
-                            label: Text(context.tr('Blocked')),
-                            selected: _filter == 'blocked',
-                            onSelected: (_) =>
-                                setState(() => _filter = 'blocked'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Expanded(
-                child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                  stream: stream,
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-
-                    final docs = snapshot.data!.docs.toList()
-                      ..sort((a, b) {
-                        final at =
-                            (a.data()['createdAt'] as Timestamp?)
-                                ?.millisecondsSinceEpoch ??
-                            0;
-                        final bt =
-                            (b.data()['createdAt'] as Timestamp?)
-                                ?.millisecondsSinceEpoch ??
-                            0;
-                        return _sortDesc ? bt.compareTo(at) : at.compareTo(bt);
-                      });
-
-                    final totalParticipants = docs.length;
-                    final blockedParticipants = docs
-                        .where(
-                          (doc) =>
-                              (doc.data()['accountStatus'] ?? 'active')
-                                  .toString() ==
-                              'disabled',
-                        )
-                        .length;
-
-                    final filtered = docs.where((doc) {
-                      final data = doc.data();
-                      final isBlocked =
-                          (data['accountStatus'] ?? 'active').toString() ==
-                          'disabled';
-                      if (_filter == 'blocked' && !isBlocked) return false;
-                      if (_filter == 'active' && isBlocked) return false;
-                      if (_search.isEmpty) return true;
-                      final name = (data['displayName'] ?? 'user')
-                          .toString()
-                          .toLowerCase();
-                      final email = (data['email'] ?? '')
-                          .toString()
-                          .toLowerCase();
-                      final phone = (data['phoneE164'] ?? '')
-                          .toString()
-                          .toLowerCase();
-                      return name.contains(_search) ||
-                          email.contains(_search) ||
-                          phone.contains(_search);
-                    }).toList();
-
-                    return Column(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                          child: Row(
-                            children: [
-                              _CountCard(
-                                label: context.tr('Total Participants'),
-                                value: totalParticipants.toString(),
-                                color: AppColors.neonGreen,
-                                icon: Icons.groups,
-                              ),
-                              const SizedBox(width: 10),
-                              _CountCard(
-                                label: context.tr('Visible'),
-                                value: filtered.length.toString(),
-                                color: AppColors.hotPink,
-                                icon: Icons.visibility,
-                              ),
-                              const SizedBox(width: 10),
-                              _CountCard(
-                                label: context.tr('Blocked'),
-                                value: blockedParticipants.toString(),
-                                color: Colors.redAccent,
-                                icon: Icons.block,
-                              ),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: filtered.isEmpty
-                              ? Center(
-                                  child: Text(
-                                    context.tr('No matching participants.'),
-                                  ),
-                                )
-                              : ListView.separated(
-                                  padding: const EdgeInsets.all(16),
-                                  itemCount: filtered.length,
-                                  separatorBuilder: (_, __) =>
-                                      const SizedBox(height: 12),
-                                  itemBuilder: (context, index) {
-                                    final doc = filtered[index];
-                                    final data = doc.data();
-                                    final name = (data['displayName'] ?? 'User')
-                                        .toString();
-                                    final email = (data['email'] ?? '')
-                                        .toString();
-                                    final phone = (data['phoneE164'] ?? '')
-                                        .toString();
-                                    final isBlocked =
-                                        (data['accountStatus'] ?? 'active')
-                                            .toString() ==
-                                        'disabled';
-                                    return Container(
-                                      padding: const EdgeInsets.all(14),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.card,
-                                        borderRadius: BorderRadius.circular(20),
-                                        border: Border.all(
-                                          color: AppColors.border,
+                                decoration: InputDecoration(
+                                  hintText: context.tr('Search participants'),
+                                  prefixIcon: const Icon(Icons.search),
+                                  suffixIcon: _searchController.text.isEmpty
+                                      ? null
+                                      : IconButton(
+                                          onPressed: () {
+                                            _searchController.clear();
+                                            setState(() => _search = '');
+                                          },
+                                          icon: const Icon(Icons.close),
                                         ),
-                                        boxShadow: const [
-                                          BoxShadow(
-                                            color: Color(0x40000000),
-                                            blurRadius: 12,
-                                            offset: Offset(0, 6),
-                                          ),
-                                        ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF18152A),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: AppColors.border),
+                              ),
+                              child: PopupMenuButton<String>(
+                                tooltip: context.tr('Filter'),
+                                initialValue: _filter,
+                                color: AppColors.card,
+                                icon: const Icon(
+                                  Icons.filter_list_rounded,
+                                  color: Colors.white,
+                                ),
+                                onSelected: (value) =>
+                                    setState(() => _filter = value),
+                                itemBuilder: (context) => [
+                                  PopupMenuItem(
+                                    value: 'all',
+                                    child: Text(context.tr('All')),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'active',
+                                    child: Text(context.tr('Active')),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'blocked',
+                                    child: Text(context.tr('Blocked')),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: filtered.isEmpty
+                            ? Center(
+                                child: Text(
+                                  context.tr('No matching participants.'),
+                                  style: const TextStyle(
+                                    color: AppColors.textMuted,
+                                  ),
+                                ),
+                              )
+                            : ListView.separated(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  0,
+                                  16,
+                                  10,
+                                ),
+                                itemCount: filtered.length + 1,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: 10),
+                                itemBuilder: (context, index) {
+                                  if (index == filtered.length) {
+                                    return Padding(
+                                      padding: const EdgeInsets.only(
+                                        top: 4,
+                                        bottom: 12,
                                       ),
-                                      child: Row(
-                                        children: [
-                                          Container(
-                                            width: 46,
-                                            height: 46,
-                                            decoration: BoxDecoration(
-                                              color: isBlocked
-                                                  ? Colors.redAccent
-                                                        .withOpacity(0.18)
-                                                  : AppColors.neonGreen
-                                                        .withOpacity(0.2),
-                                              borderRadius:
-                                                  BorderRadius.circular(14),
-                                            ),
-                                            child: Icon(
-                                              isBlocked
-                                                  ? Icons.block
-                                                  : Icons.person,
-                                              color: isBlocked
-                                                  ? Colors.redAccent
-                                                  : AppColors.neonGreen,
-                                            ),
+                                      child: Center(
+                                        child: Text(
+                                          context.tr('No more participants'),
+                                          style: const TextStyle(
+                                            color: AppColors.textMuted,
+                                            fontSize: 12,
                                           ),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  name,
-                                                  style: Theme.of(
-                                                    context,
-                                                  ).textTheme.titleMedium,
-                                                ),
-                                                const SizedBox(height: 2),
-                                                Text(
-                                                  email,
-                                                  style: Theme.of(
-                                                    context,
-                                                  ).textTheme.bodySmall,
-                                                ),
-                                                if (phone.isNotEmpty)
-                                                  Text(
-                                                    phone,
-                                                    style: Theme.of(
-                                                      context,
-                                                    ).textTheme.bodySmall,
-                                                  ),
-                                                const SizedBox(height: 6),
-                                                Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                        horizontal: 8,
-                                                        vertical: 4,
-                                                      ),
-                                                  decoration: BoxDecoration(
-                                                    color: isBlocked
-                                                        ? Colors.redAccent
-                                                              .withOpacity(0.18)
-                                                        : AppColors.neonGreen
-                                                              .withOpacity(0.18),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          999,
-                                                        ),
-                                                  ),
+                                        ),
+                                      ),
+                                    );
+                                  }
+
+                                  final doc = filtered[index];
+                                  final data = doc.data();
+                                  final name = (data['displayName'] ?? 'User')
+                                      .toString();
+                                  final email = (data['email'] ?? '')
+                                      .toString();
+                                  final phone = (data['phoneE164'] ?? '')
+                                      .toString();
+                                  final photoUrl = (data['photoUrl'] ?? '')
+                                      .toString();
+                                  final isBlocked =
+                                      (data['accountStatus'] ?? 'active')
+                                          .toString() ==
+                                      'disabled';
+                                  final uploads = uploadCounts[doc.id] ?? 0;
+                                  final statusColor = isBlocked
+                                      ? const Color(0xFFD64B6A)
+                                      : const Color(0xFF38E27B);
+
+                                  return Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF151324),
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: AppColors.border,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Container(
+                                          width: 58,
+                                          height: 58,
+                                          decoration: BoxDecoration(
+                                            color: AppColors.cardSoft,
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                            image: photoUrl.isNotEmpty
+                                                ? DecorationImage(
+                                                    image: NetworkImage(
+                                                      photoUrl,
+                                                    ),
+                                                    fit: BoxFit.cover,
+                                                  )
+                                                : null,
+                                            gradient: photoUrl.isEmpty
+                                                ? const LinearGradient(
+                                                    begin: Alignment.topLeft,
+                                                    end: Alignment.bottomRight,
+                                                    colors: [
+                                                      Color(0xFF4B1A7E),
+                                                      Color(0xFF12101C),
+                                                    ],
+                                                  )
+                                                : null,
+                                          ),
+                                          child: photoUrl.isEmpty
+                                              ? Center(
                                                   child: Text(
-                                                    context.tr(
-                                                      isBlocked
-                                                          ? 'Blocked'
-                                                          : 'Active',
-                                                    ),
-                                                    style: TextStyle(
-                                                      color: isBlocked
-                                                          ? Colors.redAccent
-                                                          : AppColors.neonGreen,
+                                                    name.isEmpty
+                                                        ? 'U'
+                                                        : name
+                                                              .trim()
+                                                              .split(
+                                                                RegExp(r'\s+'),
+                                                              )
+                                                              .take(2)
+                                                              .map(
+                                                                (e) => e[0]
+                                                                    .toUpperCase(),
+                                                              )
+                                                              .join(),
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 18,
                                                       fontWeight:
-                                                          FontWeight.w700,
-                                                      fontSize: 11,
+                                                          FontWeight.w800,
                                                     ),
                                                   ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          IconButton(
-                                            tooltip: context.tr('View Details'),
-                                            onPressed: () => _openDetails(
-                                              participantId: doc.id,
-                                              data: data,
-                                            ),
-                                            icon: const Icon(
-                                              Icons.visibility_outlined,
-                                              color: AppColors.hotPink,
-                                            ),
-                                          ),
-                                          IconButton(
-                                            tooltip: context.tr(
-                                              'Participant Report',
-                                            ),
-                                            onPressed: () =>
-                                                _openParticipantReport(
-                                                  participantId: doc.id,
-                                                  data: data,
-                                                ),
-                                            icon: const Icon(
-                                              Icons.picture_as_pdf,
-                                              color: AppColors.sunset,
-                                            ),
-                                          ),
-                                          PopupMenuButton<String>(
-                                            onSelected: (value) async {
-                                              if (value == 'block') {
-                                                await _setParticipantStatus(
-                                                  participantId: doc.id,
-                                                  status: 'disabled',
-                                                );
-                                              } else if (value == 'unblock') {
-                                                await _setParticipantStatus(
-                                                  participantId: doc.id,
-                                                  status: 'active',
-                                                );
-                                              }
-                                            },
-                                            itemBuilder: (context) => [
-                                              PopupMenuItem(
-                                                value: isBlocked
-                                                    ? 'unblock'
-                                                    : 'block',
-                                                child: Text(
-                                                  context.tr(
-                                                    isBlocked
-                                                        ? 'Unblock Participant'
-                                                        : 'Block Participant',
+                                                )
+                                              : null,
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(
+                                                      name,
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 19,
+                                                        fontWeight:
+                                                            FontWeight.w800,
+                                                      ),
+                                                    ),
                                                   ),
+                                                  const SizedBox(width: 8),
+                                                  Container(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 10,
+                                                          vertical: 5,
+                                                        ),
+                                                    decoration: BoxDecoration(
+                                                      color: statusColor
+                                                          .withOpacity(0.16),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            999,
+                                                          ),
+                                                    ),
+                                                    child: Text(
+                                                      context.tr(
+                                                        isBlocked
+                                                            ? 'Blocked'
+                                                            : 'Active',
+                                                      ),
+                                                      style: TextStyle(
+                                                        color: statusColor,
+                                                        fontSize: 11,
+                                                        fontWeight:
+                                                            FontWeight.w800,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                email,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  color: AppColors.textMuted,
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w500,
                                                 ),
+                                              ),
+                                              const SizedBox(height: 10),
+                                              Wrap(
+                                                spacing: 12,
+                                                runSpacing: 6,
+                                                children: [
+                                                  _ParticipantMeta(
+                                                    icon: Icons
+                                                        .video_library_outlined,
+                                                    label: 'Uploads: $uploads',
+                                                  ),
+                                                  if (phone.isNotEmpty)
+                                                    _ParticipantMeta(
+                                                      icon:
+                                                          Icons.phone_outlined,
+                                                      label: phone,
+                                                    ),
+                                                ],
                                               ),
                                             ],
                                           ),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ],
+                                        ),
+                                        PopupMenuButton<String>(
+                                          padding: EdgeInsets.zero,
+                                          icon: const Icon(
+                                            Icons.more_vert,
+                                            color: AppColors.textMuted,
+                                          ),
+                                          onSelected: (value) async {
+                                            if (value == 'details') {
+                                              await _openDetails(
+                                                participantId: doc.id,
+                                                data: data,
+                                              );
+                                            } else if (value == 'report') {
+                                              await _openParticipantReport(
+                                                participantId: doc.id,
+                                                data: data,
+                                              );
+                                            } else if (value == 'block') {
+                                              await _setParticipantStatus(
+                                                participantId: doc.id,
+                                                status: 'disabled',
+                                              );
+                                            } else if (value == 'unblock') {
+                                              await _setParticipantStatus(
+                                                participantId: doc.id,
+                                                status: 'active',
+                                              );
+                                            }
+                                          },
+                                          itemBuilder: (context) => [
+                                            PopupMenuItem(
+                                              value: 'details',
+                                              child: Text(
+                                                context.tr('View Details'),
+                                              ),
+                                            ),
+                                            PopupMenuItem(
+                                              value: 'report',
+                                              child: Text(
+                                                context.tr(
+                                                  'Participant Report',
+                                                ),
+                                              ),
+                                            ),
+                                            PopupMenuItem(
+                                              value: isBlocked
+                                                  ? 'unblock'
+                                                  : 'block',
+                                              child: Text(
+                                                context.tr(
+                                                  isBlocked
+                                                      ? 'Unblock Participant'
+                                                      : 'Block Participant',
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
           ),
         ],
       ),
@@ -409,12 +470,15 @@ class _AdminParticipantsScreenState extends State<AdminParticipantsScreen> {
     required String participantId,
     required String status,
   }) async {
-    await FirebaseFirestore.instance.collection('users').doc(participantId).set({
-      'accountStatus': status,
-      'updatedAt': DateTime.now().toUtc(),
-      if (status == 'disabled') 'accessBlockedAt': DateTime.now().toUtc(),
-      if (status == 'active') 'accessBlockedAt': FieldValue.delete(),
-    }, SetOptions(merge: true));
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(participantId)
+        .set({
+          'accountStatus': status,
+          'updatedAt': DateTime.now().toUtc(),
+          if (status == 'disabled') 'accessBlockedAt': DateTime.now().toUtc(),
+          if (status == 'active') 'accessBlockedAt': FieldValue.delete(),
+        }, SetOptions(merge: true));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -458,7 +522,8 @@ class _AdminParticipantsScreenState extends State<AdminParticipantsScreen> {
         .collectionGroup('submissions')
         .get();
 
-    final byParticipant = <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+    final byParticipant =
+        <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
     for (final doc in submissionsSnap.docs) {
       final participantId = (doc.data()['userId'] ?? '').toString();
       if (participantId.isEmpty) continue;
@@ -480,7 +545,9 @@ class _AdminParticipantsScreenState extends State<AdminParticipantsScreen> {
           .where((e) => (e.data()['status'] ?? '').toString() == 'rejected')
           .length;
       final pending = submissions
-          .where((e) => (e.data()['status'] ?? 'pending').toString() == 'pending')
+          .where(
+            (e) => (e.data()['status'] ?? 'pending').toString() == 'pending',
+          )
           .length;
       return ParticipantSummaryRow(
         name: (data['displayName'] ?? '').toString(),
@@ -571,8 +638,7 @@ class _AdminParticipantsScreenState extends State<AdminParticipantsScreen> {
         rejectionReason: reason.isEmpty ? '-' : reason,
         createdAtText: dateText(data['createdAt'] as Timestamp?),
       );
-    }).toList()
-      ..sort((a, b) => b.createdAtText.compareTo(a.createdAtText));
+    }).toList()..sort((a, b) => b.createdAtText.compareTo(a.createdAtText));
 
     return _ParticipantStats(
       joinedContests: contestIds.length,
@@ -583,7 +649,10 @@ class _AdminParticipantsScreenState extends State<AdminParticipantsScreen> {
           .where((doc) => (doc.data()['status'] ?? '').toString() == 'rejected')
           .length,
       pendingCount: submissions
-          .where((doc) => (doc.data()['status'] ?? 'pending').toString() == 'pending')
+          .where(
+            (doc) =>
+                (doc.data()['status'] ?? 'pending').toString() == 'pending',
+          )
           .length,
       contests: rows,
     );
@@ -677,8 +746,10 @@ class _ParticipantDetailScreen extends StatelessWidget {
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     const SizedBox(height: 6),
-                    Text('ID: $participantId',
-                        style: const TextStyle(color: AppColors.textMuted)),
+                    Text(
+                      'ID: $participantId',
+                      style: const TextStyle(color: AppColors.textMuted),
+                    ),
                   ],
                 ),
               ),
@@ -751,7 +822,9 @@ class _ParticipantDetailScreen extends StatelessWidget {
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         const SizedBox(height: 6),
-                        Text('${context.tr('Status')}: ${context.tr(row.status)}'),
+                        Text(
+                          '${context.tr('Status')}: ${context.tr(row.status)}',
+                        ),
                         if (row.rejectionReason != '-')
                           Text(
                             '${context.tr('Reason')}: ${row.rejectionReason}',
@@ -791,7 +864,8 @@ class _PdfPreviewScreen extends StatelessWidget {
         actions: [
           IconButton(
             tooltip: context.tr('Download'),
-            onPressed: () => Printing.sharePdf(bytes: bytes, filename: filename),
+            onPressed: () =>
+                Printing.sharePdf(bytes: bytes, filename: filename),
             icon: const Icon(Icons.download),
           ),
         ],
@@ -821,6 +895,32 @@ class _SpaceBackground extends StatelessWidget {
           colors: [AppColors.cosmicPurple, AppColors.deepSpace],
         ),
       ),
+    );
+  }
+}
+
+class _ParticipantMeta extends StatelessWidget {
+  const _ParticipantMeta({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 13, color: AppColors.textMuted),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: const TextStyle(
+            color: AppColors.textMuted,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }

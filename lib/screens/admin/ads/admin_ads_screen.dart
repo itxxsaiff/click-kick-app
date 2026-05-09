@@ -18,9 +18,21 @@ class AdminAdsScreen extends StatefulWidget {
 class _AdminAdsScreenState extends State<AdminAdsScreen> {
   final _feeController = TextEditingController();
   final _winnerPrizeController = TextEditingController();
+  final _searchController = TextEditingController();
   final _contestReportService = ContestReportService();
   bool _savingSettings = false;
   bool _showLinkedContests = false;
+  String _statusFilter = 'all';
+
+  String _applicationCardSubtitle(Map<String, dynamic> data) {
+    final brand = (data['brandName'] ?? '').toString().trim();
+    final product = (data['productName'] ?? '').toString().trim();
+    final category = (data['category'] ?? '').toString().trim();
+    if (brand.isNotEmpty) return brand;
+    if (product.isNotEmpty) return product;
+    if (category.isNotEmpty) return category;
+    return 'Partner';
+  }
 
   String _statusLabel(BuildContext context, String status) {
     switch (status) {
@@ -232,6 +244,7 @@ class _AdminAdsScreenState extends State<AdminAdsScreen> {
   void dispose() {
     _feeController.dispose();
     _winnerPrizeController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -555,6 +568,80 @@ class _AdminAdsScreenState extends State<AdminAdsScreen> {
     );
   }
 
+  void _openSettingsSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.deepSpace,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            20,
+            20,
+            20 + MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                context.tr('Sponsorship Settings'),
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _feeController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: InputDecoration(
+                  labelText: context.tr('Platform Fee (USD)'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _winnerPrizeController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: InputDecoration(
+                  labelText: context.tr('Winner Prize (USD)'),
+                ),
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _savingSettings
+                      ? null
+                      : () async {
+                          await _saveSettings();
+                          if (mounted) Navigator.pop(context);
+                        },
+                  icon: const Icon(Icons.save_outlined),
+                  label: Text(
+                    _savingSettings
+                        ? context.tr('Saving...')
+                        : context.tr('Save Settings'),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF7B3FF2),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _openContestReport({required String contestId}) async {
     final contestDoc = await FirebaseFirestore.instance
         .collection('contests')
@@ -591,12 +678,161 @@ class _AdminAdsScreenState extends State<AdminAdsScreen> {
     return '${local.year}-$m-$day';
   }
 
+  void _showApplicationDetailsSheet(
+    BuildContext context,
+    Map<String, dynamic> data,
+  ) {
+    final questions = ((data['questionOptions'] as List?) ?? const [])
+        .map((e) => e.toString())
+        .where((e) => e.trim().isNotEmpty)
+        .toList();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.deepSpace,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+          children: [
+            Text(
+              context.tr('Application Details'),
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 16),
+            ...[
+                  [
+                    'Company',
+                    (data['companySponsorName'] ??
+                            data['applicationName'] ??
+                            '')
+                        .toString(),
+                  ],
+                  ['Contact Person', (data['sponsorName'] ?? '').toString()],
+                  ['Email', (data['sponsorEmail'] ?? '').toString()],
+                  ['Region', (data['targetCountry'] ?? '').toString()],
+                  ['Brand', (data['brandName'] ?? '').toString()],
+                  ['Product', (data['productName'] ?? '').toString()],
+                  [
+                    'Status',
+                    _statusLabel(
+                      context,
+                      (data['applicationStatus'] ?? 'pending').toString(),
+                    ),
+                  ],
+                  [
+                    'Payment',
+                    _paymentLabel(
+                      context,
+                      (data['paymentStatus'] ?? 'unpaid').toString(),
+                    ),
+                  ],
+                  ['Admin note', (data['adminReviewNote'] ?? '').toString()],
+                ]
+                .where((row) => row[1]!.trim().isNotEmpty)
+                .map(
+                  (row) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          context.tr(row[0]!),
+                          style: const TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          row[1]!,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            if (questions.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                context.tr('Questions'),
+                style: const TextStyle(
+                  color: AppColors.textMuted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...questions.map(
+                (question) => Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.card,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Text(
+                    question,
+                    style: const TextStyle(color: Colors.white, height: 1.4),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(context.tr('Sponsorship Applications')),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(context.tr('Sponsorships')),
+            Text(
+              context.tr('Applications & settings'),
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
         backgroundColor: AppColors.deepSpace,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: FilledButton.icon(
+              onPressed: () => _openSettingsSheet(context),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF7B3FF2),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: const Icon(Icons.add, size: 18),
+              label: Text(context.tr('Add Sponsorship')),
+            ),
+          ),
+        ],
       ),
       body: Stack(
         children: [
@@ -612,577 +848,759 @@ class _AdminAdsScreenState extends State<AdminAdsScreen> {
               }
 
               final docs = snapshot.data!.docs;
-              final total = docs.length;
-              final pending = docs
-                  .where(
-                    (d) =>
-                        (d.data()['applicationStatus'] ?? '').toString() ==
-                        'pending',
-                  )
-                  .length;
-              final approved = docs
-                  .where(
-                    (d) =>
-                        (d.data()['applicationStatus'] ?? '').toString() ==
-                        'approved',
-                  )
-                  .length;
-              final contestCreated = docs
-                  .where(
-                    (d) =>
-                        (d.data()['applicationStatus'] ?? '').toString() ==
-                        'contest_created',
-                  )
-                  .length;
-              final live = docs
-                  .where(
-                    (d) =>
-                        (d.data()['applicationStatus'] ?? '').toString() ==
-                        'live',
-                  )
-                  .length;
-              final needsImprovement = docs
-                  .where(
-                    (d) =>
-                        (d.data()['applicationStatus'] ?? '').toString() ==
-                        'needs_improvement',
-                  )
-                  .length;
-              final rejected = docs
-                  .where(
-                    (d) =>
-                        (d.data()['applicationStatus'] ?? '').toString() ==
-                        'rejected',
-                  )
-                  .length;
-              final paid = docs
-                  .where(
-                    (d) =>
-                        (d.data()['paymentStatus'] ?? '').toString() == 'paid',
-                  )
-                  .length;
-              final unpaid = total - paid;
+              final filteredDocs = docs.where((doc) {
+                final data = doc.data();
+                final status = (data['applicationStatus'] ?? 'pending')
+                    .toString();
+                if (_statusFilter != 'all' && status != _statusFilter) {
+                  return false;
+                }
+                final query = _searchController.text.trim().toLowerCase();
+                if (query.isEmpty) return true;
+                final haystack = [
+                  data['companySponsorName'],
+                  data['applicationName'],
+                  data['sponsorName'],
+                  data['sponsorEmail'],
+                  data['targetCountry'],
+                ].map((e) => (e ?? '').toString().toLowerCase()).join(' ');
+                return haystack.contains(query);
+              }).toList();
 
-              return ListView.separated(
+              return ListView(
                 padding: const EdgeInsets.all(16),
-                itemCount: _showLinkedContests ? 3 : docs.length + 2,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  if (index == 0) {
-                    return Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: AppColors.card,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppColors.border),
+                children: [
+                  Row(
+                    children: [
+                      ChoiceChip(
+                        label: Text(context.tr('Applications')),
+                        selected: !_showLinkedContests,
+                        onSelected: (_) =>
+                            setState(() => _showLinkedContests = false),
                       ),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: _feeController,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
-                                      ),
-                                  decoration: InputDecoration(
-                                    labelText: context.tr('Platform Fee (USD)'),
-                                  ),
-                                ),
+                      const SizedBox(width: 10),
+                      ChoiceChip(
+                        label: Text(context.tr('Created Contests')),
+                        selected: _showLinkedContests,
+                        onSelected: (_) =>
+                            setState(() => _showLinkedContests = true),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (_showLinkedContests)
+                    _AdminTableShell(
+                      title: context.tr('Created Contests'),
+                      child: SizedBox(
+                        height: 460,
+                        child: _buildLinkedContestsPanel(context),
+                      ),
+                    )
+                  else ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _searchController,
+                            onChanged: (_) => setState(() {}),
+                            decoration: InputDecoration(
+                              hintText: context.tr('Search sponsorships'),
+                              prefixIcon: const Icon(Icons.search),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF18152A),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: PopupMenuButton<String>(
+                            tooltip: context.tr('Filter'),
+                            initialValue: _statusFilter,
+                            color: AppColors.card,
+                            icon: const Icon(
+                              Icons.filter_list_rounded,
+                              color: Colors.white,
+                            ),
+                            onSelected: (value) =>
+                                setState(() => _statusFilter = value),
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(
+                                value: 'all',
+                                child: Text('All'),
                               ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: TextField(
-                                  controller: _winnerPrizeController,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
-                                      ),
-                                  decoration: InputDecoration(
-                                    labelText: context.tr('Winner Prize (USD)'),
-                                  ),
-                                ),
+                              const PopupMenuItem(
+                                value: 'pending',
+                                child: Text('Pending'),
+                              ),
+                              const PopupMenuItem(
+                                value: 'approved',
+                                child: Text('Approved'),
+                              ),
+                              const PopupMenuItem(
+                                value: 'contest_created',
+                                child: Text('Contest Created'),
+                              ),
+                              const PopupMenuItem(
+                                value: 'needs_improvement',
+                                child: Text('Needs Improvement'),
+                              ),
+                              const PopupMenuItem(
+                                value: 'rejected',
+                                child: Text('Rejected'),
+                              ),
+                              const PopupMenuItem(
+                                value: 'live',
+                                child: Text('Live'),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 10),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: FilledButton.icon(
-                              onPressed: _savingSettings ? null : _saveSettings,
-                              icon: const Icon(Icons.save),
-                              label: Text(
-                                _savingSettings
-                                    ? context.tr('Saving...')
-                                    : context.tr('Save Sponsorship Settings'),
-                              ),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: AppColors.hotPink,
-                                foregroundColor: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  if (index == 1) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        LayoutBuilder(
-                          builder: (context, constraints) {
-                            final width = constraints.maxWidth;
-                            final crossAxisCount = width >= 1040
-                                ? 4
-                                : width >= 780
-                                ? 3
-                                : width >= 390
-                                ? 3
-                                : 2;
-                            final ratio = width >= 1040
-                                ? 2.1
-                                : width >= 780
-                                ? 1.7
-                                : crossAxisCount == 3
-                                ? 1.12
-                                : 1.35;
-                            return GridView.count(
-                              crossAxisCount: crossAxisCount,
-                              crossAxisSpacing: 10,
-                              mainAxisSpacing: 10,
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              childAspectRatio: ratio,
-                              children: [
-                                _StatCard(
-                                  label: context.tr('Total'),
-                                  value: total.toString(),
-                                  color: AppColors.hotPink,
-                                  icon: Icons.inventory_2,
-                                ),
-                                _StatCard(
-                                  label: context.tr('Pending'),
-                                  value: pending.toString(),
-                                  color: AppColors.sunset,
-                                  icon: Icons.hourglass_top,
-                                ),
-                                _StatCard(
-                                  label: context.tr('Approved'),
-                                  value: approved.toString(),
-                                  color: AppColors.neonGreen,
-                                  icon: Icons.check_circle,
-                                ),
-                                _StatCard(
-                                  label: context.tr('Contest Created'),
-                                  value: contestCreated.toString(),
-                                  color: const Color(0xFF5AB4FF),
-                                  icon: Icons.pending_actions,
-                                ),
-                                _StatCard(
-                                  label: context.tr('Live'),
-                                  value: live.toString(),
-                                  color: const Color(0xFF2EDB85),
-                                  icon: Icons.bolt,
-                                ),
-                                _StatCard(
-                                  label: context.tr('Needs Improvement'),
-                                  value: needsImprovement.toString(),
-                                  color: AppColors.sunset,
-                                  icon: Icons.edit_note,
-                                ),
-                                _StatCard(
-                                  label: context.tr('Rejected'),
-                                  value: rejected.toString(),
-                                  color: const Color(0xFFD64B6A),
-                                  icon: Icons.cancel,
-                                ),
-                                _StatCard(
-                                  label: context.tr('Paid'),
-                                  value: paid.toString(),
-                                  color: const Color(0xFF32C37A),
-                                  icon: Icons.payments,
-                                ),
-                                _StatCard(
-                                  label: context.tr('Unpaid'),
-                                  value: unpaid.toString(),
-                                  color: const Color(0xFFC53D5D),
-                                  icon: Icons.money_off,
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            ChoiceChip(
-                              label: Text(context.tr('Applications')),
-                              selected: !_showLinkedContests,
-                              onSelected: (_) => setState(() {
-                                _showLinkedContests = false;
-                              }),
-                            ),
-                            const SizedBox(width: 10),
-                            ChoiceChip(
-                              label: Text(context.tr('Created Contests')),
-                              selected: _showLinkedContests,
-                              onSelected: (_) => setState(() {
-                                _showLinkedContests = true;
-                              }),
-                            ),
-                          ],
                         ),
                       ],
-                    );
-                  }
-
-                  if (_showLinkedContests) {
-                    if (index == 2) {
-                      return SizedBox(
-                        height: 440,
-                        child: _buildLinkedContestsPanel(context),
-                      );
-                    }
-                    return const SizedBox.shrink();
-                  }
-
-                  final doc = docs[index - 2];
-                  final data = doc.data();
-                  final appName =
-                      (data['companySponsorName'] ??
-                              data['applicationName'] ??
-                              'Application')
-                          .toString();
-                  final sponsorName =
-                      (data['sponsorName'] ?? data['sponsorId'] ?? '')
-                          .toString();
-                  final sponsorEmail = (data['sponsorEmail'] ?? '').toString();
-                  final country = (data['targetCountry'] ?? '').toString();
-                  final status = (data['applicationStatus'] ?? 'pending')
-                      .toString();
-                  final paymentStatus = (data['paymentStatus'] ?? 'unpaid')
-                      .toString();
-                  final paymentStatusLabel = _paymentLabel(
-                    context,
-                    paymentStatus,
-                  );
-                  final fee = ((data['applicationFee'] ?? 1000) as num)
-                      .toDouble();
-                  final winnerPrize = ((data['winnerPrize'] ?? 100) as num)
-                      .toDouble();
-                  final logoUrl = (data['logoUrl'] ?? '').toString();
-                  final reviewNote = (data['adminReviewNote'] ?? '').toString();
-                  final selectedQuestion = (data['selectedQuestion'] ?? '')
-                      .toString();
-                  final brandName = (data['brandName'] ?? '').toString();
-                  final questions =
-                      ((data['questionOptions'] as List?) ?? const [])
-                          .map((e) => e.toString())
-                          .toList();
-                  final productName = (data['productName'] ?? '').toString();
-                  final extraPrize = (data['additionalPrizes'] ?? '')
-                      .toString();
-                  final linkedContestId = (data['linkedContestId'] ?? '')
-                      .toString();
-                  final isLockedAfterApproval =
-                      status == 'approved' ||
-                      status == 'contest_created' ||
-                      status == 'live';
-                  final canReview = !isLockedAfterApproval;
-                  final proposedSubmissionStart =
-                      (data['proposedSubmissionStart'] as Timestamp?)?.toDate();
-                  final proposedSubmissionEnd =
-                      (data['proposedSubmissionEnd'] as Timestamp?)?.toDate();
-                  final proposedVotingStart =
-                      (data['proposedVotingStart'] as Timestamp?)?.toDate();
-                  final proposedVotingEnd =
-                      (data['proposedVotingEnd'] as Timestamp?)?.toDate();
-
-                  return Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: AppColors.card,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.border),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              width: 54,
-                              height: 54,
-                              decoration: BoxDecoration(
-                                color: AppColors.cardSoft,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: logoUrl.isNotEmpty
-                                  ? ClipRRect(
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: Image.network(
-                                        logoUrl,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) =>
-                                            const Icon(
-                                              Icons.image_not_supported,
-                                              color: AppColors.textMuted,
+                    const SizedBox(height: 14),
+                    if (filteredDocs.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF151324),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Center(
+                          child: Text(
+                            context.tr('No sponsorship applications found.'),
+                            style: const TextStyle(color: AppColors.textMuted),
+                          ),
+                        ),
+                      )
+                    else
+                      ...filteredDocs.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final doc = entry.value;
+                        final data = doc.data();
+                        final title =
+                            (data['companySponsorName'] ??
+                                    data['applicationName'] ??
+                                    'Sponsorship')
+                                .toString();
+                        final subtitle = _applicationCardSubtitle(data);
+                        final logoUrl = (data['logoUrl'] ?? '').toString();
+                        final status = (data['applicationStatus'] ?? 'pending')
+                            .toString();
+                        final paymentStatus =
+                            (data['paymentStatus'] ?? 'unpaid').toString();
+                        final fee = ((data['applicationFee'] ?? 1000) as num)
+                            .toDouble();
+                        final createdAt = (data['createdAt'] as Timestamp?)
+                            ?.toDate();
+                        final sponsorName = (data['sponsorName'] ?? '')
+                            .toString();
+                        final linkedContestId = (data['linkedContestId'] ?? '')
+                            .toString();
+                        final statusColor = _statusColor(status);
+                        final isLockedAfterApproval =
+                            status == 'approved' ||
+                            status == 'contest_created' ||
+                            status == 'live';
+                        final canReview = !isLockedAfterApproval;
+
+                        return Padding(
+                          padding: EdgeInsets.only(
+                            bottom: index == filteredDocs.length - 1 ? 0 : 10,
+                          ),
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF151324),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 82,
+                                  height: 82,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(14),
+                                    gradient: logoUrl.isEmpty
+                                        ? const LinearGradient(
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                            colors: [
+                                              Color(0xFF4B1A7E),
+                                              Color(0xFF12101C),
+                                            ],
+                                          )
+                                        : null,
+                                    color: AppColors.cardSoft,
+                                  ),
+                                  child: logoUrl.isNotEmpty
+                                      ? ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                          child: Image.network(
+                                            logoUrl,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) =>
+                                                const Icon(
+                                                  Icons.storefront_outlined,
+                                                  color: Colors.white70,
+                                                ),
+                                          ),
+                                        )
+                                      : Center(
+                                          child: Text(
+                                            title.isEmpty
+                                                ? 'SP'
+                                                : title
+                                                      .trim()
+                                                      .split(RegExp(r'\s+'))
+                                                      .take(2)
+                                                      .map(
+                                                        (e) =>
+                                                            e[0].toUpperCase(),
+                                                      )
+                                                      .join(),
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 22,
+                                              fontWeight: FontWeight.w900,
                                             ),
-                                      ),
-                                    )
-                                  : const Icon(
-                                      Icons.storefront,
-                                      color: AppColors.hotPink,
-                                    ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    appName,
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.titleMedium,
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    sponsorName,
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.bodySmall,
-                                  ),
-                                  if (sponsorEmail.isNotEmpty)
-                                    Text(
-                                      sponsorEmail,
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodySmall,
-                                    ),
-                                ],
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _statusColor(status).withOpacity(0.16),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                _statusLabel(context, status),
-                                style: TextStyle(
-                                  color: _statusColor(status),
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 11,
+                                          ),
+                                        ),
                                 ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                      Text(
-                          '${context.tr('Platform Fee')}: \$${fee.toStringAsFixed(0)} | ${context.tr('Payment')}: $paymentStatusLabel',
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${context.tr('Winner Prize')}: \$${winnerPrize.toStringAsFixed(0)}',
-                        ),
-                        if (country.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text('${context.tr('Region')}: $country'),
-                        ],
-                        if (brandName.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text('${context.tr('Brand')}: $brandName'),
-                        ],
-                        if (productName.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text('${context.tr('Product')}: $productName'),
-                        ],
-                        if (extraPrize.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            '${context.tr('Additional prizes')}: $extraPrize',
-                          ),
-                        ],
-                        if (selectedQuestion.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            '${context.tr('Selected Question')}: $selectedQuestion',
-                            style: const TextStyle(color: AppColors.neonGreen),
-                          ),
-                        ],
-                        if (proposedSubmissionStart != null &&
-                            proposedSubmissionEnd != null) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            '${context.tr('Proposed Submission')}: ${_formatDate(proposedSubmissionStart)} ${context.tr('to')} ${_formatDate(proposedSubmissionEnd)}',
-                          ),
-                        ],
-                        if (proposedVotingStart != null &&
-                            proposedVotingEnd != null) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            '${context.tr('Proposed Voting')}: ${_formatDate(proposedVotingStart)} ${context.tr('to')} ${_formatDate(proposedVotingEnd)}',
-                          ),
-                        ],
-                        if (questions.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                          '${context.tr('Questions')}: ${questions.join(' | ')}',
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                        if (reviewNote.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            '${context.tr('Admin note')}: $reviewNote',
-                            style: const TextStyle(color: AppColors.sunset),
-                          ),
-                        ],
-                        const SizedBox(height: 10),
-                        if (isLockedAfterApproval)
-                          Padding(
-                            padding: EdgeInsets.only(bottom: 8),
-                            child: Text(
-                              context.tr(
-                                'Application is locked after approval. Use Edit Contest / Set Live only.',
-                              ),
-                              style: TextStyle(
-                                color: AppColors.neonGreen,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            if (linkedContestId.isNotEmpty) ...[
-                              OutlinedButton.icon(
-                                onPressed: () async {
-                                  if (!mounted) return;
-                                  await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => ContestVideoReviewScreen(
-                                        contestId: linkedContestId,
-                                        onEditContest: () async {
-                                          final contestDoc = await FirebaseFirestore
-                                              .instance
-                                              .collection('contests')
-                                              .doc(linkedContestId)
-                                              .get();
-                                          final existing = contestDoc.data();
-                                          if (existing == null) {
-                                            _show('Linked contest not found.');
-                                            return;
-                                          }
-                                          if (!mounted) return;
-                                          await Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) => AdminContestForm(
-                                                contestId: linkedContestId,
-                                                existing: existing,
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  title,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 19,
+                                                    fontWeight: FontWeight.w800,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  subtitle,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    color: AppColors.textMuted,
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 5,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: statusColor.withOpacity(
+                                                0.16,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
+                                            ),
+                                            child: Text(
+                                              _statusLabel(context, status),
+                                              style: TextStyle(
+                                                color: statusColor,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w800,
                                               ),
                                             ),
-                                          );
-                                        },
+                                          ),
+                                        ],
                                       ),
-                                    ),
-                                  );
-                                },
-                                icon: const Icon(Icons.forum_outlined),
-                                label: Text(context.tr('Open Review')),
-                              ),
-                              OutlinedButton.icon(
-                                onPressed: () => _openContestReport(
-                                  contestId: linkedContestId,
+                                      const SizedBox(height: 10),
+                                      Wrap(
+                                        spacing: 12,
+                                        runSpacing: 6,
+                                        children: [
+                                          _SponsorshipMeta(
+                                            icon: Icons
+                                                .workspace_premium_outlined,
+                                            label: sponsorName.isNotEmpty
+                                                ? sponsorName
+                                                : subtitle,
+                                          ),
+                                          _SponsorshipMeta(
+                                            icon: Icons.attach_money_outlined,
+                                            label:
+                                                '\$${fee.toStringAsFixed(0)}',
+                                          ),
+                                          _SponsorshipMeta(
+                                            icon: Icons.calendar_today_outlined,
+                                            label: createdAt == null
+                                                ? '--'
+                                                : _formatDate(createdAt),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                                icon: const Icon(Icons.picture_as_pdf),
-                                label: Text(context.tr('Contest Report')),
-                              ),
-                              OutlinedButton.icon(
-                                onPressed: () async {
-                                  final contestDoc = await FirebaseFirestore
-                                      .instance
-                                      .collection('contests')
-                                      .doc(linkedContestId)
-                                      .get();
-                                  final existing = contestDoc.data();
-                                  if (existing == null) {
-                                    _show('Linked contest not found.');
-                                    return;
-                                  }
-                                  if (!mounted) return;
-                                  await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => AdminContestForm(
-                                        contestId: linkedContestId,
-                                        existing: existing,
+                                PopupMenuButton<String>(
+                                  padding: EdgeInsets.zero,
+                                  icon: const Icon(
+                                    Icons.more_vert,
+                                    color: AppColors.textMuted,
+                                  ),
+                                  onSelected: (value) async {
+                                    switch (value) {
+                                      case 'details':
+                                        _showApplicationDetailsSheet(
+                                          context,
+                                          data,
+                                        );
+                                        break;
+                                      case 'approve':
+                                        if (canReview &&
+                                            paymentStatus == 'paid') {
+                                          await _approveApplication(
+                                            context,
+                                            doc,
+                                          );
+                                        }
+                                        break;
+                                      case 'improve':
+                                        if (canReview) {
+                                          await _requestImprovement(
+                                            context,
+                                            doc,
+                                          );
+                                        }
+                                        break;
+                                      case 'reject':
+                                        if (canReview) {
+                                          await _rejectApplication(
+                                            context,
+                                            doc,
+                                          );
+                                        }
+                                        break;
+                                      case 'report':
+                                        if (linkedContestId.isNotEmpty) {
+                                          await _openContestReport(
+                                            contestId: linkedContestId,
+                                          );
+                                        }
+                                        break;
+                                    }
+                                  },
+                                  itemBuilder: (context) => [
+                                    PopupMenuItem(
+                                      value: 'details',
+                                      child: Text(context.tr('View Details')),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'approve',
+                                      enabled:
+                                          canReview && paymentStatus == 'paid',
+                                      child: Text(context.tr('Approve')),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'improve',
+                                      enabled: canReview,
+                                      child: Text(
+                                        context.tr('Need Improvement'),
                                       ),
                                     ),
-                                  );
-                                },
-                                icon: const Icon(Icons.edit_outlined),
-                                label: Text(context.tr('Edit Contest')),
-                              ),
-                            ],
-                            FilledButton(
-                              onPressed: canReview && paymentStatus == 'paid'
-                                  ? () => _approveApplication(context, doc)
-                                  : null,
-                              style: FilledButton.styleFrom(
-                                backgroundColor: AppColors.neonGreen,
-                                foregroundColor: Colors.white,
-                              ),
-                              child: Text(
-                                context.tr('Approve + Pick Question'),
-                              ),
+                                    PopupMenuItem(
+                                      value: 'reject',
+                                      enabled: canReview,
+                                      child: Text(context.tr('Reject')),
+                                    ),
+                                    if (linkedContestId.isNotEmpty)
+                                      PopupMenuItem(
+                                        value: 'report',
+                                        child: Text(
+                                          context.tr('Contest Report'),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
                             ),
-                            FilledButton(
-                              onPressed: canReview
-                                  ? () => _requestImprovement(context, doc)
-                                  : null,
-                              style: FilledButton.styleFrom(
-                                backgroundColor: AppColors.sunset,
-                                foregroundColor: Colors.white,
-                              ),
-                              child: Text(context.tr('Need Improvement')),
-                            ),
-                            FilledButton(
-                              onPressed: canReview
-                                  ? () => _rejectApplication(context, doc)
-                                  : null,
-                              style: FilledButton.styleFrom(
-                                backgroundColor: const Color(0xFFC53D5D),
-                                foregroundColor: Colors.white,
-                              ),
-                              child: Text(context.tr('Reject')),
-                            ),
-                          ],
+                          ),
+                        );
+                      }),
+                    const SizedBox(height: 16),
+                    Center(
+                      child: Text(
+                        context.tr('No more sponsorships'),
+                        style: const TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 12,
                         ),
-                      ],
+                      ),
                     ),
-                  );
-                },
+                  ],
+                ],
               );
             },
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AdminTableShell extends StatelessWidget {
+  const _AdminTableShell({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.16),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: AppColors.hotPink.withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.table_chart_outlined,
+                    color: AppColors.hotPink,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(height: 1, color: AppColors.border),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminTableHeader extends StatelessWidget {
+  const _AdminTableHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColors.border)),
+      ),
+      child: const Row(
+        children: [
+          _AdminTableCell(label: 'Application', width: 180),
+          _AdminTableCell(label: 'Company', width: 240),
+          _AdminTableCell(label: 'Contact Person', width: 190),
+          _AdminTableCell(label: 'Plan', width: 110),
+          _AdminTableCell(label: 'Status', width: 220),
+          _AdminTableCell(label: 'Received At', width: 130),
+          _AdminTableCell(label: 'Actions', width: 170, alignEnd: true),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminTableCell extends StatelessWidget {
+  const _AdminTableCell({
+    required this.label,
+    required this.width,
+    this.alignEnd = false,
+  });
+
+  final String label;
+  final double width;
+  final bool alignEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      child: Align(
+        alignment: alignEnd ? Alignment.centerRight : Alignment.centerLeft,
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: AppColors.textMuted,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.5,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminTableRow extends StatelessWidget {
+  const _AdminTableRow({
+    required this.application,
+    required this.company,
+    required this.contactPerson,
+    required this.plan,
+    required this.statusLabel,
+    required this.statusColor,
+    required this.receivedAt,
+    required this.actions,
+  });
+
+  final String application;
+  final String company;
+  final String contactPerson;
+  final String plan;
+  final String statusLabel;
+  final Color statusColor;
+  final String receivedAt;
+  final Widget actions;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColors.border)),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 180,
+            child: Text(
+              application,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 240,
+            child: Text(
+              company,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 190,
+            child: Text(
+              contactPerson,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 110,
+            child: Text(
+              plan,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.gold,
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 220,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: _StatusBadge(label: statusLabel, color: statusColor),
+            ),
+          ),
+          SizedBox(
+            width: 130,
+            child: Text(
+              receivedAt,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 170,
+            child: Align(alignment: Alignment.centerRight, child: actions),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TableActionIcon extends StatelessWidget {
+  const _TableActionIcon({
+    required this.icon,
+    required this.color,
+    required this.tooltip,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String tooltip;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: enabled
+                ? color.withOpacity(0.14)
+                : Colors.white.withOpacity(0.04),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: enabled ? color.withOpacity(0.28) : AppColors.border,
+            ),
+          ),
+          child: Icon(
+            icon,
+            size: 18,
+            color: enabled ? color : AppColors.textMuted.withOpacity(0.45),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withOpacity(0.28)),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _SponsorshipMeta extends StatelessWidget {
+  const _SponsorshipMeta({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 13, color: AppColors.textMuted),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: const TextStyle(
+            color: AppColors.textMuted,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }

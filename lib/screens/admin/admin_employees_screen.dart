@@ -21,7 +21,6 @@ class AdminEmployeesScreen extends StatefulWidget {
 class _AdminEmployeesScreenState extends State<AdminEmployeesScreen> {
   final _searchController = TextEditingController();
   String _search = '';
-  bool _sortDesc = true;
   String _filter = 'all';
   final _reportService = EmployeeReportService();
 
@@ -43,20 +42,43 @@ class _AdminEmployeesScreenState extends State<AdminEmployeesScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(context.tr('Employees')),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(context.tr('Employees')),
+            Text(
+              context.tr('Manage system employees'),
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
         backgroundColor: AppColors.deepSpace,
         actions: [
-          IconButton(
-            tooltip: context.tr('All Employees Report'),
-            onPressed: _openAllReport,
-            icon: const Icon(Icons.picture_as_pdf),
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: FilledButton.icon(
+              onPressed: _openCreateForm,
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF7B3FF2),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: const Icon(Icons.add, size: 18),
+              label: Text(context.tr('Add Employee')),
+            ),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openCreateForm,
-        icon: const Icon(Icons.person_add_alt_1),
-        label: Text(context.tr('Add Employee')),
       ),
       body: Stack(
         children: [
@@ -83,72 +105,50 @@ class _AdminEmployeesScreenState extends State<AdminEmployeesScreen> {
                         (assignedCountByEmployee[assignedId] ?? 0) + 1;
                   }
 
-                  final filteredDocs = employeeDocs.where((doc) {
-                    final d = doc.data();
-                    final name = (d['displayName'] ?? '').toString();
-                    final email = (d['email'] ?? '').toString();
-                    final phone = (d['phoneE164'] ?? '').toString();
-                    final assigned = (assignedCountByEmployee[doc.id] ?? 0) > 0;
-                    final matchesFilter = switch (_filter) {
-                      'assigned' => assigned,
-                      'unassigned' => !assigned,
-                      _ => true,
-                    };
-                    if (!matchesFilter) return false;
-                    if (_search.isEmpty) return true;
-                    final q = _search.toLowerCase();
-                    return name.toLowerCase().contains(q) ||
-                        email.toLowerCase().contains(q) ||
-                        phone.toLowerCase().contains(q);
-                  }).toList()
-                    ..sort((a, b) {
-                      final aDate = (a.data()['createdAt'] as Timestamp?)
-                              ?.millisecondsSinceEpoch ??
-                          0;
-                      final bDate = (b.data()['createdAt'] as Timestamp?)
-                              ?.millisecondsSinceEpoch ??
-                          0;
-                      return _sortDesc
-                          ? bDate.compareTo(aDate)
-                          : aDate.compareTo(bDate);
-                    });
-
-                  final total = employeeDocs.length;
-                  final assignedTotal = assignedCountByEmployee.values
-                      .where((c) => c > 0)
-                      .length;
-                  final unassignedTotal = total - assignedTotal;
-                  final disabledTotal = employeeDocs
-                      .where(
-                        (doc) =>
-                            (doc.data()['accountStatus'] ?? 'active')
-                                .toString() ==
-                            'disabled',
-                      )
-                      .length;
+                  final filteredDocs =
+                      employeeDocs.where((doc) {
+                        final d = doc.data();
+                        final name = (d['displayName'] ?? '').toString();
+                        final email = (d['email'] ?? '').toString();
+                        final phone = (d['phoneE164'] ?? '').toString();
+                        final assigned =
+                            (assignedCountByEmployee[doc.id] ?? 0) > 0;
+                        final matchesFilter = switch (_filter) {
+                          'assigned' => assigned,
+                          'unassigned' => !assigned,
+                          _ => true,
+                        };
+                        if (!matchesFilter) return false;
+                        if (_search.isEmpty) return true;
+                        final q = _search.toLowerCase();
+                        return name.toLowerCase().contains(q) ||
+                            email.toLowerCase().contains(q) ||
+                            phone.toLowerCase().contains(q);
+                      }).toList()..sort((a, b) {
+                        final aDate =
+                            (a.data()['createdAt'] as Timestamp?)
+                                ?.millisecondsSinceEpoch ??
+                            0;
+                        final bDate =
+                            (b.data()['createdAt'] as Timestamp?)
+                                ?.millisecondsSinceEpoch ??
+                            0;
+                        return bDate.compareTo(aDate);
+                      });
 
                   return ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 90),
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: AppColors.card,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: AppColors.border),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            TextField(
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
                               controller: _searchController,
                               onChanged: (v) => setState(
                                 () => _search = v.trim().toLowerCase(),
                               ),
                               decoration: InputDecoration(
-                                hintText: context.tr(
-                                  'Search employee by name, email, phone',
-                                ),
+                                hintText: context.tr('Search employees'),
                                 prefixIcon: const Icon(Icons.search),
                                 suffixIcon: _searchController.text.isEmpty
                                     ? null
@@ -161,322 +161,301 @@ class _AdminEmployeesScreenState extends State<AdminEmployeesScreen> {
                                       ),
                               ),
                             ),
-                            const SizedBox(height: 10),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                ChoiceChip(
-                                  label: Text(context.tr('Newest First')),
-                                  selected: _sortDesc,
-                                  onSelected: (_) =>
-                                      setState(() => _sortDesc = true),
+                          ),
+                          const SizedBox(width: 10),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF18152A),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: PopupMenuButton<String>(
+                              tooltip: context.tr('Filter'),
+                              initialValue: _filter,
+                              color: AppColors.card,
+                              icon: const Icon(
+                                Icons.filter_list_rounded,
+                                color: Colors.white,
+                              ),
+                              onSelected: (value) =>
+                                  setState(() => _filter = value),
+                              itemBuilder: (context) => [
+                                PopupMenuItem(
+                                  value: 'all',
+                                  child: Text(context.tr('All')),
                                 ),
-                                ChoiceChip(
-                                  label: Text(context.tr('Oldest First')),
-                                  selected: !_sortDesc,
-                                  onSelected: (_) =>
-                                      setState(() => _sortDesc = false),
+                                PopupMenuItem(
+                                  value: 'assigned',
+                                  child: Text(context.tr('Assigned')),
                                 ),
-                                FilterChip(
-                                  label: Text(context.tr('All')),
-                                  selected: _filter == 'all',
-                                  onSelected: (_) =>
-                                      setState(() => _filter = 'all'),
-                                ),
-                                FilterChip(
-                                  label: Text(context.tr('Assigned')),
-                                  selected: _filter == 'assigned',
-                                  onSelected: (_) =>
-                                      setState(() => _filter = 'assigned'),
-                                ),
-                                FilterChip(
-                                  label: Text(context.tr('Unassigned')),
-                                  selected: _filter == 'unassigned',
-                                  onSelected: (_) =>
-                                      setState(() => _filter = 'unassigned'),
+                                PopupMenuItem(
+                                  value: 'unassigned',
+                                  child: Text(context.tr('Unassigned')),
                                 ),
                               ],
                             ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          final width = constraints.maxWidth;
-                          final crossAxisCount = width >= 980
-                              ? 3
-                              : width >= 620
-                              ? 3
-                              : 2;
-                          return GridView.count(
-                            crossAxisCount: crossAxisCount,
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            crossAxisSpacing: 10,
-                            mainAxisSpacing: 10,
-                            childAspectRatio: width >= 620 ? 2.2 : 1.18,
-                            children: [
-                              _StatCard(
-                                label: context.tr('Total'),
-                                value: total.toString(),
-                                icon: Icons.groups,
-                                color: AppColors.hotPink,
-                              ),
-                              _StatCard(
-                                label: context.tr('Assigned'),
-                                value: assignedTotal.toString(),
-                                icon: Icons.check_circle,
-                                color: AppColors.neonGreen,
-                              ),
-                              _StatCard(
-                                label: context.tr('Unassigned'),
-                                value: unassignedTotal.toString(),
-                                icon: Icons.pending_actions,
-                                color: AppColors.sunset,
-                              ),
-                              _StatCard(
-                                label: context.tr('Disabled'),
-                                value: disabledTotal.toString(),
-                                icon: Icons.block,
-                                color: Colors.redAccent,
-                              ),
-                            ],
-                          );
-                        },
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 12),
                       if (filteredDocs.isEmpty)
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: AppColors.card,
+                            color: const Color(0xFF151324),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(color: AppColors.border),
                           ),
                           child: Text(context.tr('No employees found.')),
                         )
                       else
-                        ...filteredDocs.map((doc) {
+                        ...filteredDocs.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final doc = entry.value;
                           final d = doc.data();
                           final name = (d['displayName'] ?? '').toString();
                           final email = (d['email'] ?? '').toString();
                           final phone = (d['phoneE164'] ?? '').toString();
+                          final photoUrl = (d['photoUrl'] ?? '').toString();
                           final assignedCount =
                               assignedCountByEmployee[doc.id] ?? 0;
                           final isDisabled =
                               (d['accountStatus'] ?? 'active').toString() ==
                               'disabled';
+                          final subtitle = assignedCount > 0
+                              ? '${context.tr('Assigned')}: $assignedCount'
+                              : context.tr('System employee');
+                          final statusColor = isDisabled
+                              ? const Color(0xFFD64B6A)
+                              : const Color(0xFF38E27B);
                           return Container(
-                            margin: const EdgeInsets.only(bottom: 10),
-                            padding: const EdgeInsets.all(14),
+                            margin: EdgeInsets.only(
+                              bottom: index == filteredDocs.length - 1 ? 0 : 10,
+                            ),
+                            padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: AppColors.card,
+                              color: const Color(0xFF151324),
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(color: AppColors.border),
                             ),
-                            child: LayoutBuilder(
-                              builder: (context, constraints) {
-                                final compact = constraints.maxWidth < 380;
-                                final assignedChip = Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 58,
+                                  height: 58,
                                   decoration: BoxDecoration(
-                                    color: assignedCount > 0
-                                        ? AppColors.neonGreen.withOpacity(0.2)
-                                        : AppColors.sunset.withOpacity(0.2),
-                                    borderRadius: BorderRadius.circular(10),
+                                    color: AppColors.cardSoft,
+                                    borderRadius: BorderRadius.circular(12),
+                                    image: photoUrl.isNotEmpty
+                                        ? DecorationImage(
+                                            image: NetworkImage(photoUrl),
+                                            fit: BoxFit.cover,
+                                          )
+                                        : null,
+                                    gradient: photoUrl.isEmpty
+                                        ? const LinearGradient(
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                            colors: [
+                                              Color(0xFF4B1A7E),
+                                              Color(0xFF12101C),
+                                            ],
+                                          )
+                                        : null,
                                   ),
-                                  child: Text(
-                                    assignedCount > 0
-                                        ? '${context.tr('Assigned')}: $assignedCount'
-                                        : context.tr('Unassigned'),
-                                    style: TextStyle(
-                                      color: assignedCount > 0
-                                          ? AppColors.neonGreen
-                                          : AppColors.sunset,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                );
-                                final actionRow = Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      tooltip: context.tr('Employee Report'),
-                                      onPressed: () => _openEmployeeReport(
-                                        employeeId: doc.id,
-                                        data: d,
-                                      ),
-                                      icon: const Icon(
-                                        Icons.description_outlined,
-                                        color: AppColors.hotPink,
-                                      ),
-                                    ),
-                                    PopupMenuButton<String>(
-                                      onSelected: (value) async {
-                                        if (value == 'disable') {
-                                          await _setEmployeeStatus(
-                                            employeeId: doc.id,
-                                            status: 'disabled',
-                                          );
-                                        } else if (value == 'enable') {
-                                          await _setEmployeeStatus(
-                                            employeeId: doc.id,
-                                            status: 'active',
-                                          );
-                                        } else if (value == 'remove') {
-                                          await _removeEmployee(
-                                            employeeId: doc.id,
-                                            employeeName: name,
-                                          );
-                                        }
-                                      },
-                                      itemBuilder: (context) => [
-                                        PopupMenuItem(
-                                          value: isDisabled
-                                              ? 'enable'
-                                              : 'disable',
+                                  child: photoUrl.isEmpty
+                                      ? Center(
                                           child: Text(
-                                            context.tr(
-                                              isDisabled
-                                                  ? 'Enable Access'
-                                                  : 'Disable Access',
+                                            name.isEmpty
+                                                ? 'E'
+                                                : name
+                                                      .trim()
+                                                      .split(RegExp(r'\s+'))
+                                                      .take(2)
+                                                      .map(
+                                                        (e) =>
+                                                            e[0].toUpperCase(),
+                                                      )
+                                                      .join(),
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w800,
                                             ),
                                           ),
-                                        ),
-                                        PopupMenuItem(
-                                          value: 'remove',
-                                          child: Text(
-                                            context.tr('Remove Employee'),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                );
-
-                                return Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Container(
-                                          width: 42,
-                                          height: 42,
-                                          decoration: BoxDecoration(
-                                            color: AppColors.neonGreen
-                                                .withOpacity(0.15),
-                                            borderRadius:
-                                                BorderRadius.circular(12),
-                                          ),
-                                          child: const Icon(
-                                            Icons.person_outline,
-                                            color: AppColors.neonGreen,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                name,
-                                                maxLines: 2,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: Theme.of(
-                                                  context,
-                                                ).textTheme.titleSmall,
-                                              ),
-                                              Text(
-                                                email,
-                                                maxLines: compact ? 2 : 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: Theme.of(
-                                                  context,
-                                                ).textTheme.bodySmall,
-                                              ),
-                                              if (phone.isNotEmpty)
+                                        )
+                                      : null,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
                                                 Text(
-                                                  phone,
-                                                  maxLines: 2,
+                                                  name,
+                                                  maxLines: 1,
                                                   overflow:
                                                       TextOverflow.ellipsis,
-                                                  style: Theme.of(
-                                                    context,
-                                                  ).textTheme.bodySmall,
-                                                ),
-                                              const SizedBox(height: 6),
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 8,
-                                                      vertical: 4,
-                                                    ),
-                                                decoration: BoxDecoration(
-                                                  color: isDisabled
-                                                      ? Colors.redAccent
-                                                          .withOpacity(0.18)
-                                                      : AppColors.neonGreen
-                                                          .withOpacity(0.18),
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                        999,
-                                                      ),
-                                                ),
-                                                child: Text(
-                                                  context.tr(
-                                                    isDisabled
-                                                        ? 'Disabled'
-                                                        : 'Active',
-                                                  ),
-                                                  style: TextStyle(
-                                                    color: isDisabled
-                                                        ? Colors.redAccent
-                                                        : AppColors.neonGreen,
-                                                    fontWeight: FontWeight.w700,
-                                                    fontSize: 11,
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 19,
+                                                    fontWeight: FontWeight.w800,
                                                   ),
                                                 ),
-                                              ),
-                                            ],
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  subtitle,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    color: AppColors.textMuted,
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 10),
-                                    if (compact)
-                                      Wrap(
-                                        spacing: 8,
-                                        runSpacing: 8,
-                                        crossAxisAlignment:
-                                            WrapCrossAlignment.center,
-                                        children: [
-                                          assignedChip,
-                                          actionRow,
-                                        ],
-                                      )
-                                    else
-                                      Row(
-                                        children: [
-                                          assignedChip,
-                                          const Spacer(),
-                                          actionRow,
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 5,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: statusColor.withOpacity(
+                                                0.16,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
+                                            ),
+                                            child: Text(
+                                              context.tr(
+                                                isDisabled
+                                                    ? 'Inactive'
+                                                    : 'Active',
+                                              ),
+                                              style: TextStyle(
+                                                color: statusColor,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                            ),
+                                          ),
                                         ],
                                       ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        email,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: AppColors.textMuted,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Wrap(
+                                        spacing: 12,
+                                        runSpacing: 6,
+                                        children: [
+                                          if (phone.isNotEmpty)
+                                            _EmployeeMeta(
+                                              icon: Icons.phone_outlined,
+                                              label: phone,
+                                            ),
+                                          _EmployeeMeta(
+                                            icon: Icons.assignment_ind_outlined,
+                                            label: assignedCount > 0
+                                                ? '${context.tr('Assigned')}: $assignedCount'
+                                                : context.tr('Unassigned'),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                PopupMenuButton<String>(
+                                  padding: EdgeInsets.zero,
+                                  icon: const Icon(
+                                    Icons.more_vert,
+                                    color: AppColors.textMuted,
+                                  ),
+                                  onSelected: (value) async {
+                                    if (value == 'report') {
+                                      await _openEmployeeReport(
+                                        employeeId: doc.id,
+                                        data: d,
+                                      );
+                                    } else if (value == 'disable') {
+                                      await _setEmployeeStatus(
+                                        employeeId: doc.id,
+                                        status: 'disabled',
+                                      );
+                                    } else if (value == 'enable') {
+                                      await _setEmployeeStatus(
+                                        employeeId: doc.id,
+                                        status: 'active',
+                                      );
+                                    } else if (value == 'remove') {
+                                      await _removeEmployee(
+                                        employeeId: doc.id,
+                                        employeeName: name,
+                                      );
+                                    }
+                                  },
+                                  itemBuilder: (context) => [
+                                    PopupMenuItem(
+                                      value: 'report',
+                                      child: Text(
+                                        context.tr('Employee Report'),
+                                      ),
+                                    ),
+                                    PopupMenuItem(
+                                      value: isDisabled ? 'enable' : 'disable',
+                                      child: Text(
+                                        context.tr(
+                                          isDisabled
+                                              ? 'Enable Access'
+                                              : 'Disable Access',
+                                        ),
+                                      ),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'remove',
+                                      child: Text(
+                                        context.tr('Remove Employee'),
+                                      ),
+                                    ),
                                   ],
-                                );
-                              },
+                                ),
+                              ],
                             ),
                           );
                         }),
+                      const SizedBox(height: 16),
+                      Center(
+                        child: Text(
+                          context.tr('No more employees'),
+                          style: const TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
                     ],
                   );
                 },
@@ -580,8 +559,10 @@ class _AdminEmployeesScreenState extends State<AdminEmployeesScreen> {
         employeeId,
         () => <String, int>{'approved': 0, 'rejected': 0},
       );
-      if (status == 'approved') counts['approved'] = (counts['approved'] ?? 0) + 1;
-      if (status == 'rejected') counts['rejected'] = (counts['rejected'] ?? 0) + 1;
+      if (status == 'approved')
+        counts['approved'] = (counts['approved'] ?? 0) + 1;
+      if (status == 'rejected')
+        counts['rejected'] = (counts['rejected'] ?? 0) + 1;
     }
 
     final rows = usersSnap.docs.map((doc) {
@@ -662,8 +643,7 @@ class _AdminEmployeesScreenState extends State<AdminEmployeesScreen> {
         rejectionReason: reason.isEmpty ? '-' : reason,
         createdAtText: dateText(d['createdAt'] as Timestamp?),
       );
-    }).toList()
-      ..sort((a, b) => b.createdAtText.compareTo(a.createdAtText));
+    }).toList()..sort((a, b) => b.createdAtText.compareTo(a.createdAtText));
 
     final bytes = await _reportService.buildSingleEmployeeReport(
       employeeName: (data['displayName'] ?? '').toString(),
@@ -778,12 +758,15 @@ class _CreateEmployeeScreenState extends State<_CreateEmployeeScreen> {
                     TextFormField(
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
-                      decoration: InputDecoration(labelText: context.tr('Email')),
+                      decoration: InputDecoration(
+                        labelText: context.tr('Email'),
+                      ),
                       validator: (v) {
                         if (v == null || v.trim().isEmpty) {
                           return context.tr('Required');
                         }
-                        if (!v.contains('@')) return context.tr('Invalid email');
+                        if (!v.contains('@'))
+                          return context.tr('Invalid email');
                         return null;
                       },
                     ),
@@ -795,7 +778,7 @@ class _CreateEmployeeScreenState extends State<_CreateEmployeeScreen> {
                           child: TextFormField(
                             controller: _phoneCodeController,
                             decoration: InputDecoration(
-                              labelText: context.tr('Code'),
+                              labelText: context.tr('Country code'),
                             ),
                             validator: (v) => (v == null || v.trim().isEmpty)
                                 ? context.tr('Required')
@@ -887,7 +870,9 @@ class _CreateEmployeeScreenState extends State<_CreateEmployeeScreen> {
       } else if (e.code == 'invalid-email') {
         message = context.tr('Invalid email');
       }
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -949,6 +934,32 @@ class _StatCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _EmployeeMeta extends StatelessWidget {
+  const _EmployeeMeta({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 13, color: AppColors.textMuted),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: const TextStyle(
+            color: AppColors.textMuted,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1025,7 +1036,8 @@ class _PdfPreviewScreen extends StatelessWidget {
         actions: [
           IconButton(
             tooltip: context.tr('Download'),
-            onPressed: () => Printing.sharePdf(bytes: bytes, filename: filename),
+            onPressed: () =>
+                Printing.sharePdf(bytes: bytes, filename: filename),
             icon: const Icon(Icons.download),
           ),
         ],

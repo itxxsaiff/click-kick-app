@@ -15,8 +15,11 @@ import 'package:video_player/video_player.dart';
 import '../../l10n/l10n.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/delete_account_dialog.dart';
 import '../../widgets/report_video_dialog.dart';
 import '../../widgets/settings_action_tile.dart';
+import '../../widgets/password_change_layout.dart';
+import '../../main.dart';
 import '../shared/legal_center_screen.dart';
 import '../shared/support_chat_screen.dart';
 import '../user/contest_detail_screen.dart';
@@ -32,7 +35,11 @@ class PublicFeedScreen extends StatefulWidget {
 class _PublicFeedScreenState extends State<PublicFeedScreen> {
   int _tabIndex = 0;
 
-  String _headerTitle(BuildContext context, List<String> labels, int safeIndex) {
+  String _headerTitle(
+    BuildContext context,
+    List<String> labels,
+    int safeIndex,
+  ) {
     return context.tr(labels[safeIndex]);
   }
 
@@ -43,8 +50,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
           .doc(userId)
           .get()
           .timeout(const Duration(seconds: 8));
-      final role =
-          (userDoc.data()?['role'] ?? 'user').toString().toLowerCase();
+      final role = (userDoc.data()?['role'] ?? 'user').toString().toLowerCase();
       final isParticipant = role == 'participant';
       if (!isParticipant) {
         return const _PublicNavConfig(isParticipant: false, hasUploads: false);
@@ -89,10 +95,10 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
               Icons.local_fire_department,
               Icons.person,
             ],
-            pages: const <Widget>[
-              _HomeFeedTab(),
-              _PublicContestsTab(),
-              _LoginRequiredCard(),
+            pages: <Widget>[
+              _HomeFeedTab(isVisible: _tabIndex == 0),
+              _PublicContestsTab(isVisible: _tabIndex == 1),
+              const _LoginRequiredCard(),
             ],
           );
         }
@@ -118,82 +124,82 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
                 const _PublicNavConfig(isParticipant: false, hasUploads: false);
             final labels = nav.isParticipant
                 ? (nav.hasUploads
-                    ? const <String>[
-                        'Home',
-                        'Contests',
-                        'Prizes',
-                        'Dashboard',
-                        'Profile',
-                      ]
-                    : const <String>[
-                        'Home',
-                        'Contests',
-                        'Dashboard',
-                        'Profile',
-                      ])
-                : const <String>['Home', 'Contests', 'Profile'];
+                      ? const <String>[
+                          'Dashboard',
+                          'Contests',
+                          'Prizes',
+                          'Dashboard',
+                          'Profile',
+                        ]
+                      : const <String>[
+                          'Dashboard',
+                          'Contests',
+                          'Dashboard',
+                          'Profile',
+                        ])
+                : const <String>['Dashboard', 'Contests', 'Profile'];
 
             final icons = nav.isParticipant
                 ? (nav.hasUploads
-                    ? const <IconData>[
-                        Icons.home_outlined,
-                        Icons.local_fire_department_outlined,
-                        Icons.card_giftcard_outlined,
-                        Icons.dashboard_outlined,
-                        Icons.person_outline,
-                      ]
-                    : const <IconData>[
-                        Icons.home_outlined,
-                        Icons.local_fire_department_outlined,
-                        Icons.dashboard_outlined,
-                        Icons.person_outline,
-                      ])
+                      ? const <IconData>[
+                          Icons.dashboard_outlined,
+                          Icons.local_fire_department_outlined,
+                          Icons.card_giftcard_outlined,
+                          Icons.dashboard_outlined,
+                          Icons.person_outline,
+                        ]
+                      : const <IconData>[
+                          Icons.dashboard_outlined,
+                          Icons.local_fire_department_outlined,
+                          Icons.dashboard_outlined,
+                          Icons.person_outline,
+                        ])
                 : const <IconData>[
-                    Icons.home_outlined,
+                    Icons.dashboard_outlined,
                     Icons.local_fire_department_outlined,
                     Icons.person_outline,
                   ];
 
             final activeIcons = nav.isParticipant
                 ? (nav.hasUploads
-                    ? const <IconData>[
-                        Icons.home,
-                        Icons.local_fire_department,
-                        Icons.card_giftcard,
-                        Icons.dashboard_customize,
-                        Icons.person,
-                      ]
-                    : const <IconData>[
-                        Icons.home,
-                        Icons.local_fire_department,
-                        Icons.dashboard_customize,
-                        Icons.person,
-                      ])
+                      ? const <IconData>[
+                          Icons.dashboard_customize,
+                          Icons.local_fire_department,
+                          Icons.card_giftcard,
+                          Icons.dashboard_customize,
+                          Icons.person,
+                        ]
+                      : const <IconData>[
+                          Icons.dashboard_customize,
+                          Icons.local_fire_department,
+                          Icons.dashboard_customize,
+                          Icons.person,
+                        ])
                 : const <IconData>[
-                    Icons.home,
+                    Icons.dashboard_customize,
                     Icons.local_fire_department,
                     Icons.person,
                   ];
 
             final pages = nav.isParticipant
                 ? (nav.hasUploads
-                    ? const <Widget>[
-                        _HomeFeedTab(),
-                        _PublicContestsTab(),
-                        _WinnersFeedTab(),
-                        _DashboardGateTab(),
-                        _ProfileGateTab(),
-                      ]
-                    : const <Widget>[
-                        _HomeFeedTab(),
-                        _PublicContestsTab(),
-                        _DashboardGateTab(),
-                        _ProfileGateTab(),
-                      ])
-                : const <Widget>[
-                    _HomeFeedTab(),
-                    _PublicContestsTab(),
-                    _ProfileGateTab(),
+                      ? <Widget>[
+                          _HomeFeedTab(isVisible: _tabIndex == 0),
+                          _PublicContestsTab(isVisible: _tabIndex == 1),
+                          const _WinnersFeedTab(),
+                          const _DashboardGateTab(),
+                          const _ProfileGateTab(),
+                        ]
+                      : <Widget>[
+                          _HomeFeedTab(isVisible: _tabIndex == 0),
+                          _PublicContestsTab(isVisible: _tabIndex == 1),
+                          const _DashboardGateTab(),
+                          const _ProfileGateTab(),
+                        ])
+                : <Widget>[
+                    _HomeFeedTab(isVisible: _tabIndex == 0),
+                    _PublicContestsTab(isVisible: _tabIndex == 1),
+                    const _ProfileGateTab(),
                   ];
 
             return _buildShell(
@@ -229,10 +235,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
         if (!isImmersiveFeed)
           Container(
             margin: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-            padding: const EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: 12,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               color: AppColors.card,
               borderRadius: BorderRadius.circular(16),
@@ -240,10 +243,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
             ),
             child: Row(
               children: [
-                Icon(
-                  activeIcons[safeIndex],
-                  color: AppColors.hotPink,
-                ),
+                Icon(activeIcons[safeIndex], color: AppColors.hotPink),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -259,10 +259,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
             ),
           ),
         Expanded(
-          child: IndexedStack(
-            index: safeIndex,
-            children: pages,
-          ),
+          child: IndexedStack(index: safeIndex, children: pages),
         ),
       ],
     );
@@ -271,10 +268,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
       body: Stack(
         children: [
           const _SpaceBackground(),
-          if (isImmersiveFeed)
-            bodyContent
-          else
-            SafeArea(child: bodyContent),
+          if (isImmersiveFeed) bodyContent else SafeArea(child: bodyContent),
         ],
       ),
       bottomNavigationBar: Container(
@@ -334,13 +328,15 @@ class _PublicNavConfig {
 }
 
 class _HomeFeedTab extends StatefulWidget {
-  const _HomeFeedTab();
+  const _HomeFeedTab({required this.isVisible});
+
+  final bool isVisible;
 
   @override
   State<_HomeFeedTab> createState() => _HomeFeedTabState();
 }
 
-class _HomeFeedTabState extends State<_HomeFeedTab> {
+class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
   final _pageController = PageController();
   int _activeIndex = 0;
   VideoPlayerController? _videoController;
@@ -351,10 +347,48 @@ class _HomeFeedTabState extends State<_HomeFeedTab> {
   int _videoRequestId = 0;
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) {
+      appRouteObserver.unsubscribe(this);
+      appRouteObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _HomeFeedTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isVisible != widget.isVisible) {
+      _handleVisibilityChange();
+    }
+  }
+
+  @override
   void dispose() {
+    appRouteObserver.unsubscribe(this);
     _videoController?.dispose();
     _pageController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didPushNext() {
+    _clearActiveVideo();
+  }
+
+  @override
+  void didPopNext() {
+    _handleVisibilityChange();
+  }
+
+  Future<void> _handleVisibilityChange() async {
+    if (!widget.isVisible) {
+      await _clearActiveVideo();
+      return;
+    }
+    if (!mounted) return;
+    setState(() {});
   }
 
   Future<void> _setActiveVideo(String url, {bool autoplay = true}) async {
@@ -389,7 +423,9 @@ class _HomeFeedTabState extends State<_HomeFeedTab> {
       await controller.setLooping(true);
       await controller.setVolume(1);
       controller.addListener(() {
-        if (!mounted || _currentVideoUrl != url || controller != _videoController) {
+        if (!mounted ||
+            _currentVideoUrl != url ||
+            controller != _videoController) {
           return;
         }
         setState(() {});
@@ -514,7 +550,9 @@ class _HomeFeedTabState extends State<_HomeFeedTab> {
 
             final safeIndex = _activeIndex.clamp(0, feedItems.length - 1);
             final activeItem = feedItems[safeIndex];
-            _scheduleActiveVideoSync(activeItem, autoplay: true);
+            if (widget.isVisible) {
+              _scheduleActiveVideoSync(activeItem, autoplay: true);
+            }
 
             return PageView.builder(
               scrollDirection: Axis.vertical,
@@ -522,6 +560,7 @@ class _HomeFeedTabState extends State<_HomeFeedTab> {
               itemCount: feedItems.length,
               onPageChanged: (i) async {
                 setState(() => _activeIndex = i);
+                if (!widget.isVisible) return;
                 final item = feedItems[i];
                 if (item.hasVideo && item.videoUrl.isNotEmpty) {
                   await _setActiveVideo(item.videoUrl, autoplay: true);
@@ -540,13 +579,17 @@ class _HomeFeedTabState extends State<_HomeFeedTab> {
                     _videoController != null &&
                     _videoController!.value.isInitialized &&
                     _currentVideoUrl == item.videoUrl;
-                final isPlaying = isShowingActiveVideo &&
-                    _videoController!.value.isPlaying;
+                final shouldShowLoading =
+                    isActive &&
+                    item.hasVideo &&
+                    (_isVideoLoading || !isShowingActiveVideo);
+                final isPlaying =
+                    isShowingActiveVideo && _videoController!.value.isPlaying;
                 return _AdminVideoFeedCard(
                   item: item,
                   isShowingActiveVideo: isShowingActiveVideo,
                   isPlaying: isPlaying,
-                  isLoading: isActive && item.hasVideo && _isVideoLoading,
+                  isLoading: shouldShowLoading,
                   controller: isShowingActiveVideo ? _videoController : null,
                   onTapVideo: isShowingActiveVideo ? _togglePlayback : null,
                 );
@@ -571,13 +614,16 @@ class _HomeFeedTabState extends State<_HomeFeedTab> {
 }
 
 class _PublicContestsTab extends StatefulWidget {
-  const _PublicContestsTab();
+  const _PublicContestsTab({required this.isVisible});
+
+  final bool isVisible;
 
   @override
   State<_PublicContestsTab> createState() => _PublicContestsTabState();
 }
 
-class _PublicContestsTabState extends State<_PublicContestsTab> {
+class _PublicContestsTabState extends State<_PublicContestsTab>
+    with RouteAware {
   final _pageController = PageController();
   int _activeIndex = 0;
   VideoPlayerController? _videoController;
@@ -587,10 +633,48 @@ class _PublicContestsTabState extends State<_PublicContestsTab> {
   int _videoRequestId = 0;
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) {
+      appRouteObserver.unsubscribe(this);
+      appRouteObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _PublicContestsTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isVisible != widget.isVisible) {
+      _handleVisibilityChange();
+    }
+  }
+
+  @override
   void dispose() {
+    appRouteObserver.unsubscribe(this);
     _videoController?.dispose();
     _pageController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didPushNext() {
+    _clearActiveVideo();
+  }
+
+  @override
+  void didPopNext() {
+    _handleVisibilityChange();
+  }
+
+  Future<void> _handleVisibilityChange() async {
+    if (!widget.isVisible) {
+      await _clearActiveVideo();
+      return;
+    }
+    if (!mounted) return;
+    setState(() {});
   }
 
   Future<void> _setActiveVideo(String url) async {
@@ -621,7 +705,9 @@ class _PublicContestsTabState extends State<_PublicContestsTab> {
       await controller.setLooping(true);
       await controller.setVolume(1);
       controller.addListener(() {
-        if (!mounted || _currentVideoUrl != url || controller != _videoController) {
+        if (!mounted ||
+            _currentVideoUrl != url ||
+            controller != _videoController) {
           return;
         }
         setState(() {});
@@ -699,8 +785,8 @@ class _PublicContestsTabState extends State<_PublicContestsTab> {
         }
         final docs = snapshot.data!.docs.where((doc) {
           final data = doc.data();
-          final contestType =
-              (data['contestType'] ?? 'video_contest').toString();
+          final contestType = (data['contestType'] ?? 'video_contest')
+              .toString();
           final status = (data['status'] ?? '').toString();
           final videoUrl = (data['contestVideoUrl'] ?? '').toString();
           if (videoUrl.isEmpty) return false;
@@ -722,7 +808,9 @@ class _PublicContestsTabState extends State<_PublicContestsTab> {
         final items = docs.map(_ContestFeedItem.fromDoc).toList();
         final safeIndex = _activeIndex.clamp(0, items.length - 1);
         final activeItem = items[safeIndex];
-        _scheduleActiveVideoSync(activeItem);
+        if (widget.isVisible) {
+          _scheduleActiveVideoSync(activeItem);
+        }
 
         return PageView.builder(
           scrollDirection: Axis.vertical,
@@ -730,6 +818,7 @@ class _PublicContestsTabState extends State<_PublicContestsTab> {
           itemCount: items.length,
           onPageChanged: (index) async {
             setState(() => _activeIndex = index);
+            if (!widget.isVisible) return;
             await _setActiveVideo(items[index].videoUrl);
           },
           itemBuilder: (context, index) {
@@ -740,6 +829,8 @@ class _PublicContestsTabState extends State<_PublicContestsTab> {
                 _videoController != null &&
                 _videoController!.value.isInitialized &&
                 _currentVideoUrl == item.videoUrl;
+            final shouldShowLoading =
+                isActive && (_isVideoLoading || !isShowingActiveVideo);
             final isPlaying =
                 isShowingActiveVideo && _videoController!.value.isPlaying;
             return _ContestFeedCard(
@@ -747,7 +838,7 @@ class _PublicContestsTabState extends State<_PublicContestsTab> {
               controller: isShowingActiveVideo ? _videoController : null,
               isShowingActiveVideo: isShowingActiveVideo,
               isPlaying: isPlaying,
-              isLoading: isActive && _isVideoLoading,
+              isLoading: shouldShowLoading,
               onTapVideo: isShowingActiveVideo ? _togglePlayback : null,
             );
           },
@@ -820,9 +911,7 @@ class _ContestFeedCard extends StatelessWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(context.tr('Sign Up / Login first')),
-        content: Text(
-          context.tr('Please sign up or login first to continue.'),
-        ),
+        content: Text(context.tr('Please sign up or login first to continue.')),
         actions: [
           TextButton(
             onPressed: () {
@@ -852,10 +941,8 @@ class _ContestFeedCard extends StatelessWidget {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ContestDetailScreen(
-          contestId: item.id,
-          data: item.data,
-        ),
+        builder: (_) =>
+            ContestDetailScreen(contestId: item.id, data: item.data),
       ),
     );
   }
@@ -868,212 +955,222 @@ class _ContestFeedCard extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-              if (isShowingActiveVideo && controller != null)
-                FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox(
-                    width: controller!.value.size.width,
-                    height: controller!.value.size.height,
-                    child: VideoPlayer(controller!),
-                  ),
-                )
-              else
-                Container(
-                  color: AppColors.card,
-                  child: const Center(
-                    child: Icon(
-                      Icons.play_circle_fill_rounded,
-                      color: AppColors.hotPink,
-                      size: 72,
+          if (isShowingActiveVideo && controller != null)
+            FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: controller!.value.size.width,
+                height: controller!.value.size.height,
+                child: VideoPlayer(controller!),
+              ),
+            )
+          else if (isShowingActiveVideo && isLoading)
+            Container(
+              color: AppColors.card,
+              child: const Center(
+                child: CircularProgressIndicator(
+                  color: AppColors.hotPink,
+                  strokeWidth: 4.6,
+                ),
+              ),
+            )
+          else
+            Container(
+              color: AppColors.card,
+              child: const Center(
+                child: Icon(
+                  Icons.play_circle_fill_rounded,
+                  color: AppColors.hotPink,
+                  size: 72,
+                ),
+              ),
+            ),
+          if (isLoading)
+            const Center(
+              child: CircularProgressIndicator(
+                color: AppColors.hotPink,
+                strokeWidth: 4.6,
+              ),
+            ),
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.transparent, Color(0xD0100A1E)],
+                stops: [0.42, 1],
+              ),
+            ),
+          ),
+          if (isShowingActiveVideo)
+            IgnorePointer(
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                opacity: (isPlaying || isLoading) ? 0 : 1,
+                child: Center(
+                  child: Container(
+                    width: 82,
+                    height: 82,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.32),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.22),
+                      ),
                     ),
-                  ),
-                ),
-              if (isLoading)
-                const Center(
-                  child: CircularProgressIndicator(
-                    color: Colors.white,
-                    strokeWidth: 2.8,
-                  ),
-                ),
-              Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Color(0xD0100A1E)],
-                    stops: [0.42, 1],
+                    child: const Icon(
+                      Icons.play_arrow_rounded,
+                      color: AppColors.hotPink,
+                      size: 48,
+                    ),
                   ),
                 ),
               ),
-              if (isShowingActiveVideo)
-                IgnorePointer(
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 180),
-                    opacity: isPlaying ? 0 : 1,
-                    child: Center(
-                      child: Container(
-                        width: 82,
-                        height: 82,
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.32),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.22),
-                          ),
-                        ),
-                        child: const Icon(
-                          Icons.play_arrow_rounded,
-                          color: Colors.white,
-                          size: 48,
-                        ),
-                      ),
-                    ),
+            ),
+          Positioned(
+            right: 14,
+            bottom: 128,
+            child: _FeedActionRail(
+              children: [
+                _FeedActionButton(
+                  icon: Icons.share_rounded,
+                  label: context.tr('Share'),
+                  onTap: () async {
+                    if (FirebaseAuth.instance.currentUser == null) {
+                      await _requireAuth(context);
+                      return;
+                    }
+                    final text =
+                        '${item.title}\n${item.description}\n${context.tr('Winner Prize')}: \$${item.winnerPrize.toStringAsFixed(0)}';
+                    await Share.share(text, subject: item.title);
+                  },
+                ),
+                _FeedActionButton(
+                  icon: Icons.flag_outlined,
+                  label: context.tr('Report'),
+                  onTap: () => showReportVideoDialog(
+                    context: context,
+                    videoType: 'contest_video',
+                    contestId: item.id,
+                    targetUserId: item.sponsorId,
+                    contestTitle: item.title,
                   ),
                 ),
-              Positioned(
-                right: 14,
-                bottom: 128,
-                child: _FeedActionRail(
+                _FeedInfoBadge(
+                  icon: Icons.card_giftcard_rounded,
+                  title: '\$${item.winnerPrize.toStringAsFixed(0)}',
+                  subtitle: context.tr('gift'),
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            left: 18,
+            right: 86,
+            bottom: 18,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    _FeedActionButton(
-                      icon: Icons.share_rounded,
-                      label: context.tr('Share'),
-                      onTap: () async {
-                        if (FirebaseAuth.instance.currentUser == null) {
-                          await _requireAuth(context);
-                          return;
-                        }
-                        final text =
-                            '${item.title}\n${item.description}\n${context.tr('Winner Prize')}: \$${item.winnerPrize.toStringAsFixed(0)}';
-                        await Share.share(text, subject: item.title);
-                      },
-                    ),
-                    _FeedActionButton(
-                      icon: Icons.flag_outlined,
-                      label: context.tr('Report'),
-                      onTap: () => showReportVideoDialog(
-                        context: context,
-                        videoType: 'contest_video',
-                        contestId: item.id,
-                        targetUserId: item.sponsorId,
-                        contestTitle: item.title,
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: AppColors.border),
                       ),
+                      clipBehavior: Clip.antiAlias,
+                      child: item.logoUrl.isNotEmpty
+                          ? Image.network(
+                              item.logoUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const Icon(
+                                Icons.emoji_events,
+                                color: AppColors.hotPink,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.emoji_events,
+                              color: AppColors.hotPink,
+                            ),
                     ),
-                    _FeedInfoBadge(
-                      icon: Icons.card_giftcard_rounded,
-                      title: '\$${item.winnerPrize.toStringAsFixed(0)}',
-                      subtitle: context.tr('gift'),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 24,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            item.description,
+                            maxLines: 4,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.textLight,
+                              fontSize: 14,
+                              height: 1.35,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
-              ),
-              Positioned(
-                left: 18,
-                right: 86,
-                bottom: 18,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: AppColors.border),
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: item.logoUrl.isNotEmpty
-                              ? Image.network(
-                                  item.logoUrl,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const Icon(
-                                    Icons.emoji_events,
-                                    color: AppColors.hotPink,
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.emoji_events,
-                                  color: AppColors.hotPink,
-                                ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                item.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 24,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                item.description,
-                                maxLines: 4,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: AppColors.textLight,
-                                  fontSize: 14,
-                                  height: 1.35,
-                                ),
-                              ),
-                            ],
-                          ),
+                const SizedBox(height: 14),
+                GestureDetector(
+                  onTap: () => _openContest(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.hotPink,
+                      borderRadius: BorderRadius.circular(999),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.hotPink.withValues(alpha: 0.28),
+                          blurRadius: 18,
+                          offset: const Offset(0, 8),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
-                    GestureDetector(
-                      onTap: () => _openContest(context),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 10,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          context.tr('Join Contest'),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
-                        decoration: BoxDecoration(
-                          color: AppColors.hotPink,
-                          borderRadius: BorderRadius.circular(999),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.hotPink.withValues(alpha: 0.28),
-                              blurRadius: 18,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
+                        const SizedBox(width: 8),
+                        const Icon(
+                          Icons.arrow_forward_rounded,
+                          size: 18,
+                          color: Colors.white,
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              context.tr('Join Contest'),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            const Icon(
-                              Icons.arrow_forward_rounded,
-                              size: 18,
-                              color: Colors.white,
-                            ),
-                          ],
-                        ),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -1111,8 +1208,7 @@ class _FeedItem {
       type: 'news',
       title: (data['title'] ?? '').toString(),
       description: ((data['details'] ?? data['body']) ?? '').toString(),
-      createdAt:
-          (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime(2000),
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime(2000),
       imageUrl: (data['imageUrl'] ?? '').toString(),
     );
   }
@@ -1125,8 +1221,7 @@ class _FeedItem {
       type: 'admin_video',
       title: (data['adminName'] ?? 'Admin').toString(),
       description: (data['caption'] ?? '').toString(),
-      createdAt:
-          (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime(2000),
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime(2000),
       videoUrl: (data['videoUrl'] ?? '').toString(),
       adminName: (data['adminName'] ?? 'Admin').toString(),
       adminVideoId: doc.id,
@@ -1165,9 +1260,7 @@ class _AdminVideoFeedCard extends StatelessWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(context.tr('Sign Up / Login first')),
-        content: Text(
-          context.tr('Please sign up or login first to continue.'),
-        ),
+        content: Text(context.tr('Please sign up or login first to continue.')),
         actions: [
           TextButton(
             onPressed: () {
@@ -1196,118 +1289,129 @@ class _AdminVideoFeedCard extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-              if (isShowingActiveVideo && controller != null)
-                FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox(
-                    width: controller!.value.size.width,
-                    height: controller!.value.size.height,
-                    child: VideoPlayer(controller!),
-                  ),
-                )
-              else
-                Container(
-                  color: AppColors.card,
-                  child: const Center(
-                    child: Icon(
-                      Icons.play_circle_fill_rounded,
+          if (isShowingActiveVideo && controller != null)
+            FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: controller!.value.size.width,
+                height: controller!.value.size.height,
+                child: VideoPlayer(controller!),
+              ),
+            )
+          else if (isShowingActiveVideo && isLoading)
+            Container(
+              color: AppColors.card,
+              child: const Center(
+                child: CircularProgressIndicator(
+                  color: AppColors.hotPink,
+                  strokeWidth: 4.6,
+                ),
+              ),
+            )
+          else
+            Container(
+              color: AppColors.card,
+              child: const Center(
+                child: Icon(
+                  Icons.play_circle_fill_rounded,
+                  color: AppColors.hotPink,
+                  size: 72,
+                ),
+              ),
+            ),
+          if (isLoading)
+            const Center(
+              child: CircularProgressIndicator(
+                color: AppColors.hotPink,
+                strokeWidth: 4.6,
+              ),
+            ),
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.transparent, Color(0xD0100A1E)],
+                stops: [0.42, 1],
+              ),
+            ),
+          ),
+          if (isShowingActiveVideo)
+            IgnorePointer(
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                opacity: (isPlaying || isLoading) ? 0 : 1,
+                child: Center(
+                  child: Container(
+                    width: 82,
+                    height: 82,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.32),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.22),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.play_arrow_rounded,
                       color: AppColors.hotPink,
-                      size: 72,
+                      size: 48,
                     ),
-                  ),
-                ),
-              if (isLoading)
-                const Center(
-                  child: CircularProgressIndicator(
-                    color: Colors.white,
-                    strokeWidth: 2.8,
-                  ),
-                ),
-              Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Color(0xD0100A1E)],
-                    stops: [0.42, 1],
                   ),
                 ),
               ),
-              if (isShowingActiveVideo)
-                IgnorePointer(
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 180),
-                    opacity: isPlaying ? 0 : 1,
-                    child: Center(
-                      child: Container(
-                        width: 82,
-                        height: 82,
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.32),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.22),
-                          ),
-                        ),
-                        child: const Icon(
-                          Icons.play_arrow_rounded,
-                          color: Colors.white,
-                          size: 48,
-                        ),
-                      ),
-                    ),
+            ),
+          Positioned(
+            right: 14,
+            bottom: 132,
+            child: _FeedActionRail(
+              children: [
+                _FeedActionButton(
+                  icon: Icons.share_rounded,
+                  label: context.tr('Share'),
+                  onTap: () async {
+                    if (FirebaseAuth.instance.currentUser == null) {
+                      await _requireAuth(context);
+                      return;
+                    }
+                    final text =
+                        '${item.adminName}\n${item.description}\n${item.videoUrl}';
+                    await Share.share(text, subject: item.adminName);
+                  },
+                ),
+                _FeedActionButton(
+                  icon: Icons.flag_outlined,
+                  label: context.tr('Report'),
+                  onTap: () => showReportVideoDialog(
+                    context: context,
+                    videoType: 'admin_video',
+                    adminVideoId: item.adminVideoId,
+                    contestTitle: item.adminName,
                   ),
                 ),
-              Positioned(
-                right: 14,
-                bottom: 132,
-                child: _FeedActionRail(
-                  children: [
-                    _FeedActionButton(
-                      icon: Icons.share_rounded,
-                      label: context.tr('Share'),
-                      onTap: () async {
-                        if (FirebaseAuth.instance.currentUser == null) {
-                          await _requireAuth(context);
-                          return;
-                        }
-                        final text = '${item.adminName}\n${item.description}\n${item.videoUrl}';
-                        await Share.share(text, subject: item.adminName);
-                      },
-                    ),
-                    _FeedActionButton(
-                      icon: Icons.flag_outlined,
-                      label: context.tr('Report'),
-                      onTap: () => showReportVideoDialog(
-                        context: context,
-                        videoType: 'admin_video',
-                        adminVideoId: item.adminVideoId,
-                        contestTitle: item.adminName,
-                      ),
-                    ),
-                  ],
+              ],
+            ),
+          ),
+          Positioned(
+            left: 18,
+            right: 82,
+            bottom: 20,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.description,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textLight,
+                    fontSize: 14,
+                    height: 1.35,
+                  ),
                 ),
-              ),
-              Positioned(
-                left: 18,
-                right: 82,
-                bottom: 20,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.description,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.textLight,
-                        fontSize: 14,
-                        height: 1.35,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -1449,9 +1553,7 @@ class _NewsFeedCardState extends State<_NewsFeedCard> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(context.tr('Sign Up / Login first')),
-        content: Text(
-          context.tr('Please sign up or login first to continue.'),
-        ),
+        content: Text(context.tr('Please sign up or login first to continue.')),
         actions: [
           TextButton(
             onPressed: () {
@@ -1488,8 +1590,8 @@ class _NewsFeedCardState extends State<_NewsFeedCard> {
               Center(
                 child: AspectRatio(
                   aspectRatio: 9 / 16,
-                    child: Container(
-                      color: Colors.black.withValues(alpha: 0.22),
+                  child: Container(
+                    color: Colors.black.withValues(alpha: 0.22),
                     child: item.imageUrl.isEmpty
                         ? const Center(
                             child: Icon(
@@ -1506,9 +1608,9 @@ class _NewsFeedCardState extends State<_NewsFeedCard> {
                                 Icons.image_not_supported,
                                 color: AppColors.textMuted,
                                 size: 52,
-                        ),
-                      ),
-                    ),
+                              ),
+                            ),
+                          ),
                   ),
                 ),
               ),
@@ -1589,10 +1691,10 @@ class _NewsFeedCardState extends State<_NewsFeedCard> {
                         ),
                         const SizedBox(width: 10),
                         Expanded(
-                        child: Text(
-                          item.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                          child: Text(
+                            item.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w800,
@@ -1606,7 +1708,9 @@ class _NewsFeedCardState extends State<_NewsFeedCard> {
                     Text(
                       item.description,
                       maxLines: _expanded ? null : 3,
-                      overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+                      overflow: _expanded
+                          ? TextOverflow.visible
+                          : TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: AppColors.textLight,
                         fontSize: 14,
@@ -1646,9 +1750,13 @@ class _DashboardGateTab extends StatelessWidget {
     if (user == null) return const _LoginRequiredCard();
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        if (!snapshot.hasData)
+          return const Center(child: CircularProgressIndicator());
         final role = (snapshot.data!.data()?['role'] ?? 'user').toString();
         if (role == 'user' || role == 'participant') {
           return _ParticipantDashboardTab(userId: user.uid);
@@ -1665,7 +1773,11 @@ class _DashboardGateTab extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.dashboard_customize, size: 44, color: AppColors.hotPink),
+                const Icon(
+                  Icons.dashboard_customize,
+                  size: 44,
+                  color: AppColors.hotPink,
+                ),
                 const SizedBox(height: 10),
                 Text(
                   context.tr('Open your role dashboard.'),
@@ -1692,7 +1804,8 @@ class _ParticipantDashboardTab extends StatefulWidget {
   final String userId;
 
   @override
-  State<_ParticipantDashboardTab> createState() => _ParticipantDashboardTabState();
+  State<_ParticipantDashboardTab> createState() =>
+      _ParticipantDashboardTabState();
 }
 
 class _ParticipantDashboardTabState extends State<_ParticipantDashboardTab> {
@@ -1718,7 +1831,8 @@ class _ParticipantDashboardTabState extends State<_ParticipantDashboardTab> {
         final data = Map<String, dynamic>.from(doc.data());
         data['_docId'] = doc.id;
         data['contestId'] =
-            (data['contestId'] ?? doc.reference.parent.parent?.id ?? '').toString();
+            (data['contestId'] ?? doc.reference.parent.parent?.id ?? '')
+                .toString();
         data['isWinner'] = false;
         return data;
       }).toList();
@@ -1760,9 +1874,13 @@ class _ParticipantDashboardTabState extends State<_ParticipantDashboardTab> {
         .toSet();
 
     for (final contestId in contestIds) {
-      final contestDoc = await firestore.collection('contests').doc(contestId).get();
+      final contestDoc = await firestore
+          .collection('contests')
+          .doc(contestId)
+          .get();
       if (!contestDoc.exists) continue;
-      final votingEnd = (contestDoc.data()?['votingEnd'] as Timestamp?)?.toDate();
+      final votingEnd = (contestDoc.data()?['votingEnd'] as Timestamp?)
+          ?.toDate();
       if (votingEnd == null || now.isBefore(votingEnd)) continue;
 
       final submissionsSnap = await contestDoc.reference
@@ -1778,7 +1896,10 @@ class _ParticipantDashboardTabState extends State<_ParticipantDashboardTab> {
         if (votes > maxVotes) maxVotes = votes;
       }
       final winnerIds = submissionsSnap.docs
-          .where((sub) => ((sub.data()['voteCount'] ?? 0) as num).toInt() == maxVotes)
+          .where(
+            (sub) =>
+                ((sub.data()['voteCount'] ?? 0) as num).toInt() == maxVotes,
+          )
           .map((sub) => sub.id)
           .toSet();
 
@@ -1804,7 +1925,9 @@ class _ParticipantDashboardTabState extends State<_ParticipantDashboardTab> {
     } on TimeoutException {
       if (!mounted) return;
       setState(() {
-        _errorMessage = context.tr('Dashboard request timed out. Check internet and retry.');
+        _errorMessage = context.tr(
+          'Dashboard request timed out. Check internet and retry.',
+        );
       });
     } catch (_) {
       if (!mounted) return;
@@ -1816,7 +1939,8 @@ class _ParticipantDashboardTabState extends State<_ParticipantDashboardTab> {
 
   String _t(BuildContext context, String key, String arFallback) {
     final value = context.tr(key);
-    if (context.isArabic && (value == key || RegExp(r'^[A-Za-z]').hasMatch(value))) {
+    if (context.isArabic &&
+        (value == key || RegExp(r'^[A-Za-z]').hasMatch(value))) {
       return arFallback;
     }
     return value;
@@ -1848,7 +1972,8 @@ class _ParticipantDashboardTabState extends State<_ParticipantDashboardTab> {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    _errorMessage ?? context.tr('Unable to load dashboard data. Tap retry.'),
+                    _errorMessage ??
+                        context.tr('Unable to load dashboard data. Tap retry.'),
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
@@ -1863,25 +1988,33 @@ class _ParticipantDashboardTabState extends State<_ParticipantDashboardTab> {
           );
         }
 
-        final docs = List<Map<String, dynamic>>.from(snapshot.data ?? <Map<String, dynamic>>[])
-          ..sort((a, b) {
-            final at = (a['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
-            final bt = (b['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
-            return bt.compareTo(at);
-          });
-        final approved = docs.where((e) => (e['status'] ?? '') == 'approved').length;
+        final docs =
+            List<Map<String, dynamic>>.from(
+              snapshot.data ?? <Map<String, dynamic>>[],
+            )..sort((a, b) {
+              final at =
+                  (a['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+              final bt =
+                  (b['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+              return bt.compareTo(at);
+            });
+        final approved = docs
+            .where((e) => (e['status'] ?? '') == 'approved')
+            .length;
         final winners = docs.where((e) => e['isWinner'] == true).length;
         final authUser = FirebaseAuth.instance.currentUser;
         final fallbackName = docs.isNotEmpty
             ? ((docs.first['userName'] ??
-                        docs.first['participantName'] ??
-                        docs.first['displayName']) ??
-                    '')
-                .toString()
+                          docs.first['participantName'] ??
+                          docs.first['displayName']) ??
+                      '')
+                  .toString()
             : '';
         final profileName = (authUser?.displayName?.trim().isNotEmpty ?? false)
             ? authUser!.displayName!.trim()
-            : (fallbackName.isNotEmpty ? fallbackName : context.tr('Participant'));
+            : (fallbackName.isNotEmpty
+                  ? fallbackName
+                  : context.tr('Participant'));
         final profileEmail = (authUser?.email ?? '').trim();
         final profilePhotoUrl = (authUser?.photoURL ?? '').trim();
 
@@ -1955,7 +2088,11 @@ class _ParticipantDashboardTabState extends State<_ParticipantDashboardTab> {
                             Expanded(
                               child: _ProfileStatBlock(
                                 value: docs.length.toString(),
-                                label: _t(context, 'Total Videos', 'إجمالي الفيديوهات'),
+                                label: _t(
+                                  context,
+                                  'Total Videos',
+                                  'إجمالي الفيديوهات',
+                                ),
                               ),
                             ),
                             Expanded(
@@ -1983,7 +2120,9 @@ class _ParticipantDashboardTabState extends State<_ParticipantDashboardTab> {
                   child: Center(
                     child: Padding(
                       padding: const EdgeInsets.all(24),
-                      child: Text(context.tr('No videos found for selected filter.')),
+                      child: Text(
+                        context.tr('No videos found for selected filter.'),
+                      ),
                     ),
                   ),
                 )
@@ -1991,165 +2130,171 @@ class _ParticipantDashboardTabState extends State<_ParticipantDashboardTab> {
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                   sliver: SliverGrid(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final data = docs[index];
-                        final status = (data['isWinner'] == true)
-                            ? 'winner'
-                            : (data['status'] ?? 'pending').toString();
-                        final videoUrl = (data['videoUrl'] ?? '').toString();
-                        final contestName =
-                            (data['contestName'] ??
-                                        data['contestTitle'] ??
-                                        data['contestId'] ??
-                                        '')
-                                    .toString();
-                        final votes = ((data['voteCount'] ?? 0) as num).toInt();
-                        final reason = (data['rejectionReason'] ?? '').toString();
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final data = docs[index];
+                      final status = (data['isWinner'] == true)
+                          ? 'winner'
+                          : (data['status'] ?? 'pending').toString();
+                      final videoUrl = (data['videoUrl'] ?? '').toString();
+                      final contestName =
+                          (data['contestName'] ??
+                                  data['contestTitle'] ??
+                                  data['contestId'] ??
+                                  '')
+                              .toString();
+                      final votes = ((data['voteCount'] ?? 0) as num).toInt();
+                      final reason = (data['rejectionReason'] ?? '').toString();
 
-                        Color badge = AppColors.sunset;
-                        String badgeLabel = _t(context, 'Pending', 'قيد الانتظار');
-                        if (status == 'approved') {
-                          badge = const Color(0xFF2DAF6F);
-                          badgeLabel = _t(context, 'Approved', 'مقبول');
-                        } else if (status == 'rejected') {
-                          badge = const Color(0xFFC53D5D);
-                          badgeLabel = _t(context, 'Rejected', 'مرفوض');
-                        } else if (status == 'winner') {
-                          badge = AppColors.hotPink;
-                          badgeLabel = _t(context, 'Winner', 'الفائز');
-                        }
+                      Color badge = AppColors.sunset;
+                      String badgeLabel = _t(
+                        context,
+                        'Pending',
+                        'قيد الانتظار',
+                      );
+                      if (status == 'approved') {
+                        badge = const Color(0xFF2DAF6F);
+                        badgeLabel = _t(context, 'Approved', 'مقبول');
+                      } else if (status == 'rejected') {
+                        badge = const Color(0xFFC53D5D);
+                        badgeLabel = _t(context, 'Rejected', 'مرفوض');
+                      } else if (status == 'winner') {
+                        badge = AppColors.hotPink;
+                        badgeLabel = _t(context, 'Winner', 'الفائز');
+                      }
 
-                        return GestureDetector(
-                          onTap: videoUrl.isEmpty
-                              ? null
-                              : () async {
-                                  await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => _DashboardVideoPlayerScreen(
-                                        videoUrl: videoUrl,
-                                        title: contestName,
-                                      ),
+                      return GestureDetector(
+                        onTap: videoUrl.isEmpty
+                            ? null
+                            : () async {
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => _DashboardVideoPlayerScreen(
+                                      videoUrl: videoUrl,
+                                      title: contestName,
                                     ),
-                                  );
-                                },
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: AppColors.card,
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(color: AppColors.border),
-                            ),
-                            child: Stack(
-                              children: [
-                                Positioned.fill(
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(18),
-                                      gradient: const LinearGradient(
-                                        begin: Alignment.topCenter,
-                                        end: Alignment.bottomCenter,
-                                        colors: [AppColors.cardSoft, AppColors.card],
-                                      ),
+                                  ),
+                                );
+                              },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.card,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: Stack(
+                            children: [
+                              Positioned.fill(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(18),
+                                    gradient: const LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: [
+                                        AppColors.cardSoft,
+                                        AppColors.card,
+                                      ],
                                     ),
-                                    child: const Center(
-                                      child: Icon(
-                                        Icons.play_circle_fill_rounded,
-                                        color: AppColors.hotPink,
-                                        size: 38,
-                                      ),
+                                  ),
+                                  child: const Center(
+                                    child: Icon(
+                                      Icons.play_circle_fill_rounded,
+                                      color: AppColors.hotPink,
+                                      size: 38,
                                     ),
                                   ),
                                 ),
-                                Positioned(
-                                  top: 8,
-                                  left: 8,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: badge.withValues(alpha: 0.18),
-                                      borderRadius: BorderRadius.circular(999),
-                                    ),
-                                    child: Text(
-                                      badgeLabel,
-                                      style: TextStyle(
-                                        color: badge,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w800,
-                                      ),
+                              ),
+                              Positioned(
+                                top: 8,
+                                left: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: badge.withValues(alpha: 0.18),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    badgeLabel,
+                                    style: TextStyle(
+                                      color: badge,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
                                     ),
                                   ),
                                 ),
-                                Positioned(
-                                  left: 10,
-                                  right: 10,
-                                  bottom: 10,
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        contestName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 13,
+                              ),
+                              Positioned(
+                                left: 10,
+                                right: 10,
+                                bottom: 10,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      contestName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.how_to_vote_rounded,
+                                          color: AppColors.hotPink,
+                                          size: 13,
                                         ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Row(
-                                        children: [
-                                          const Icon(
-                                            Icons.how_to_vote_rounded,
-                                            color: AppColors.hotPink,
-                                            size: 13,
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Expanded(
-                                            child: Text(
-                                              '${_t(context, 'Votes', 'الأصوات')}: $votes',
-                                              style: const TextStyle(
-                                                color: AppColors.textLight,
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w700,
-                                              ),
+                                        const SizedBox(width: 4),
+                                        Expanded(
+                                          child: Text(
+                                            '${_t(context, 'Votes', 'الأصوات')}: $votes',
+                                            style: const TextStyle(
+                                              color: AppColors.textLight,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
                                             ),
-                                          ),
-                                        ],
-                                      ),
-                                      if (status == 'rejected' && reason.isNotEmpty) ...[
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          reason,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            color: AppColors.textMuted,
-                                            fontSize: 10,
-                                            height: 1.25,
                                           ),
                                         ),
                                       ],
+                                    ),
+                                    if (status == 'rejected' &&
+                                        reason.isNotEmpty) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        reason,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: AppColors.textMuted,
+                                          fontSize: 10,
+                                          height: 1.25,
+                                        ),
+                                      ),
                                     ],
-                                  ),
+                                  ],
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                        );
-                      },
-                      childCount: docs.length,
-                    ),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      mainAxisSpacing: 8,
-                      crossAxisSpacing: 8,
-                      childAspectRatio: 0.72,
-                    ),
+                        ),
+                      );
+                    }, childCount: docs.length),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          mainAxisSpacing: 8,
+                          crossAxisSpacing: 8,
+                          childAspectRatio: 0.72,
+                        ),
                   ),
                 ),
             ],
@@ -2207,7 +2352,8 @@ class _DashboardVideoPlayerScreen extends StatefulWidget {
       _DashboardVideoPlayerScreenState();
 }
 
-class _DashboardVideoPlayerScreenState extends State<_DashboardVideoPlayerScreen> {
+class _DashboardVideoPlayerScreenState
+    extends State<_DashboardVideoPlayerScreen> {
   VideoPlayerController? _controller;
   bool _showControls = true;
 
@@ -2245,11 +2391,7 @@ class _DashboardVideoPlayerScreenState extends State<_DashboardVideoPlayerScreen
     final controller = _controller;
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          widget.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
       body: Stack(
         children: [
@@ -2266,7 +2408,8 @@ class _DashboardVideoPlayerScreenState extends State<_DashboardVideoPlayerScreen
                 clipBehavior: Clip.antiAlias,
                 child: controller != null && controller.value.isInitialized
                     ? GestureDetector(
-                        onTap: () => setState(() => _showControls = !_showControls),
+                        onTap: () =>
+                            setState(() => _showControls = !_showControls),
                         child: Stack(
                           fit: StackFit.expand,
                           children: [
@@ -2293,10 +2436,14 @@ class _DashboardVideoPlayerScreenState extends State<_DashboardVideoPlayerScreen
                                           width: 78,
                                           height: 78,
                                           decoration: BoxDecoration(
-                                            color: Colors.black.withValues(alpha: 0.42),
+                                            color: Colors.black.withValues(
+                                              alpha: 0.42,
+                                            ),
                                             shape: BoxShape.circle,
                                             border: Border.all(
-                                              color: Colors.white.withValues(alpha: 0.2),
+                                              color: Colors.white.withValues(
+                                                alpha: 0.2,
+                                              ),
                                             ),
                                           ),
                                           child: Icon(
@@ -2313,14 +2460,16 @@ class _DashboardVideoPlayerScreenState extends State<_DashboardVideoPlayerScreen
                                     Padding(
                                       padding: const EdgeInsets.all(16),
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           VideoProgressIndicator(
                                             controller,
                                             allowScrubbing: true,
                                             colors: const VideoProgressColors(
                                               playedColor: AppColors.hotPink,
-                                              bufferedColor: AppColors.textMuted,
+                                              bufferedColor:
+                                                  AppColors.textMuted,
                                               backgroundColor: AppColors.border,
                                             ),
                                           ),
@@ -2523,7 +2672,10 @@ class _PublicUserProfileTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      future: FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
+      future: FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get(),
       builder: (context, snapshot) {
         final data = snapshot.data?.data() ?? <String, dynamic>{};
         final displayName =
@@ -2659,9 +2811,7 @@ class _PublicUserProfileTab extends StatelessWidget {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const LegalCenterScreen(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const LegalCenterScreen()),
                 );
               },
             ),
@@ -2671,43 +2821,20 @@ class _PublicUserProfileTab extends StatelessWidget {
               subtitle: context.tr('Permanently remove your account.'),
               isDanger: true,
               onTap: () async {
-                final confirmed = await showDialog<bool>(
-                  context: context,
-                  builder: (dialogContext) => AlertDialog(
-                    title: Text(context.tr('Delete Account')),
-                    content: Text(
-                      context.tr(
-                        'Are you sure you want to delete your account? This action cannot be undone.',
-                      ),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(dialogContext, false),
-                        child: Text(context.tr('Cancel')),
-                      ),
-                      FilledButton(
-                        onPressed: () => Navigator.pop(dialogContext, true),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.hotPink,
-                        ),
-                        child: Text(context.tr('Delete')),
-                      ),
-                    ],
-                  ),
-                );
+                final confirmed = await showDeleteAccountDialog(context);
                 if (confirmed != true) return;
                 try {
                   await AuthService().deleteCurrentAccount();
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text(context.tr('Account deleted successfully.')),
+                      content: Text(
+                        context.tr('Account deleted successfully.'),
+                      ),
                     ),
                   );
                   Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(
-                      builder: (_) => const LoginScreen(),
-                    ),
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
                     (_) => false,
                   );
                 } catch (e) {
@@ -2719,9 +2846,9 @@ class _PublicUserProfileTab extends StatelessWidget {
                       : context.tr(
                           'Unable to delete account right now. Please try again.',
                         );
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(message)),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text(message)));
                 }
               },
             ),
@@ -2756,7 +2883,10 @@ class _PublicUserProfileInfoScreen extends StatelessWidget {
           const _SpaceBackground(),
           SafeArea(
             child: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-              future: FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
+              future: FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .get(),
               builder: (context, snapshot) {
                 final data = snapshot.data?.data() ?? <String, dynamic>{};
                 return ListView(
@@ -2768,7 +2898,8 @@ class _PublicUserProfileInfoScreen extends StatelessWidget {
                       rows: [
                         _InfoRow(
                           context.tr('Full Name'),
-                          (data['displayName'] ?? user.displayName ?? '').toString(),
+                          (data['displayName'] ?? user.displayName ?? '')
+                              .toString(),
                         ),
                         _InfoRow(
                           context.tr('Email'),
@@ -2777,10 +2908,10 @@ class _PublicUserProfileInfoScreen extends StatelessWidget {
                         _InfoRow(
                           context.tr('Phone number'),
                           (() {
-                            final code =
-                                (data['phoneCountryCode'] ?? '').toString();
-                            final phone =
-                                (data['phoneNumber'] ?? '').toString();
+                            final code = (data['phoneCountryCode'] ?? '')
+                                .toString();
+                            final phone = (data['phoneNumber'] ?? '')
+                                .toString();
                             final direct = '$code $phone'.trim();
                             if (direct.isNotEmpty) return direct;
                             return (data['phoneE164'] ?? '').toString();
@@ -2813,8 +2944,9 @@ class _PublicUserProfileUpdateScreenState
     extends State<_PublicUserProfileUpdateScreen> {
   late final TextEditingController _nameController;
   late final TextEditingController _emailController;
-  final TextEditingController _phoneCodeController =
-      TextEditingController(text: '+1');
+  final TextEditingController _phoneCodeController = TextEditingController(
+    text: '+1',
+  );
   final TextEditingController _phoneNumberController = TextEditingController();
   String _phoneIso = 'US';
   bool _loading = true;
@@ -2825,7 +2957,9 @@ class _PublicUserProfileUpdateScreenState
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.user.displayName ?? '');
+    _nameController = TextEditingController(
+      text: widget.user.displayName ?? '',
+    );
     _emailController = TextEditingController(text: widget.user.email ?? '');
     _photoUrl = widget.user.photoURL ?? '';
     _loadProfile();
@@ -2838,7 +2972,8 @@ class _PublicUserProfileUpdateScreenState
         .get();
     if (!mounted) return;
     final data = snap.data() ?? <String, dynamic>{};
-    _nameController.text = (data['displayName'] ?? _nameController.text).toString();
+    _nameController.text = (data['displayName'] ?? _nameController.text)
+        .toString();
     _emailController.text = (data['email'] ?? _emailController.text).toString();
     _phoneCodeController.text = (data['phoneCountryCode'] ?? '+1').toString();
     _phoneIso = (data['phoneCountryIso'] ?? 'US').toString();
@@ -2901,7 +3036,8 @@ class _PublicUserProfileUpdateScreenState
         'phoneCountryCode': _phoneCodeController.text.trim(),
         'phoneCountryIso': _phoneIso,
         'phoneNumber': _phoneNumberController.text.trim(),
-        'phoneE164': '${_phoneCodeController.text.trim()}${_phoneNumberController.text.trim()}',
+        'phoneE164':
+            '${_phoneCodeController.text.trim()}${_phoneNumberController.text.trim()}',
         'photoUrl': uploadedPhotoUrl,
         'updatedAt': DateTime.now().toUtc(),
       }, SetOptions(merge: true));
@@ -2911,7 +3047,9 @@ class _PublicUserProfileUpdateScreenState
       _show(
         context,
         willUpdateEmail
-            ? context.tr('Verification email sent. Confirm it to complete email change.')
+            ? context.tr(
+                'Verification email sent. Confirm it to complete email change.',
+              )
             : context.tr('Profile updated.'),
       );
     } on FirebaseAuthException catch (e) {
@@ -2921,7 +3059,10 @@ class _PublicUserProfileUpdateScreenState
       } else if (e.code == 'email-already-in-use') {
         _show(context, context.tr('This email is already in use.'));
       } else if (e.code == 'requires-recent-login') {
-        _show(context, context.tr('Please login again before changing your email.'));
+        _show(
+          context,
+          context.tr('Please login again before changing your email.'),
+        );
       } else {
         _show(context, context.tr('Profile update failed (${e.code}).'));
       }
@@ -2960,7 +3101,9 @@ class _PublicUserProfileUpdateScreenState
                                         decoration: BoxDecoration(
                                           shape: BoxShape.circle,
                                           color: AppColors.cardSoft,
-                                          border: Border.all(color: AppColors.border),
+                                          border: Border.all(
+                                            color: AppColors.border,
+                                          ),
                                         ),
                                         clipBehavior: Clip.antiAlias,
                                         child: _photoBytes != null
@@ -2969,20 +3112,21 @@ class _PublicUserProfileUpdateScreenState
                                                 fit: BoxFit.cover,
                                               )
                                             : _photoUrl.isNotEmpty
-                                                ? Image.network(
-                                                    _photoUrl,
-                                                    fit: BoxFit.cover,
-                                                    errorBuilder: (_, __, ___) => const Icon(
+                                            ? Image.network(
+                                                _photoUrl,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (_, __, ___) =>
+                                                    const Icon(
                                                       Icons.person_rounded,
                                                       color: AppColors.hotPink,
                                                       size: 42,
                                                     ),
-                                                  )
-                                                : const Icon(
-                                                    Icons.person_rounded,
-                                                    color: AppColors.hotPink,
-                                                    size: 42,
-                                                  ),
+                                              )
+                                            : const Icon(
+                                                Icons.person_rounded,
+                                                color: AppColors.hotPink,
+                                                size: 42,
+                                              ),
                                       ),
                                       Container(
                                         width: 34,
@@ -2990,7 +3134,10 @@ class _PublicUserProfileUpdateScreenState
                                         decoration: BoxDecoration(
                                           color: AppColors.hotPink,
                                           shape: BoxShape.circle,
-                                          border: Border.all(color: AppColors.deepSpace, width: 2),
+                                          border: Border.all(
+                                            color: AppColors.deepSpace,
+                                            width: 2,
+                                          ),
                                         ),
                                         child: const Icon(
                                           Icons.camera_alt_rounded,
@@ -3038,7 +3185,8 @@ class _PublicUserProfileUpdateScreenState
                                         showPhoneCode: true,
                                         onSelect: (country) {
                                           setState(() {
-                                            _phoneCodeController.text = '+${country.phoneCode}';
+                                            _phoneCodeController.text =
+                                                '+${country.phoneCode}';
                                             _phoneIso = country.countryCode;
                                           });
                                         },
@@ -3046,7 +3194,7 @@ class _PublicUserProfileUpdateScreenState
                                     },
                                     child: InputDecorator(
                                       decoration: InputDecoration(
-                                        labelText: context.tr('Code'),
+                                        labelText: context.tr('Country code'),
                                       ),
                                       child: Text(
                                         '$_phoneIso ${_phoneCodeController.text}',
@@ -3106,13 +3254,16 @@ class _PublicUserPasswordScreen extends StatefulWidget {
 }
 
 class _PublicUserPasswordScreenState extends State<_PublicUserPasswordScreen> {
-  final TextEditingController _currentPasswordController = TextEditingController();
+  final TextEditingController _currentPasswordController =
+      TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
   bool _saving = false;
   bool _obscureCurrentPassword = true;
   bool _obscureNewPassword = true;
   bool _obscureConfirmPassword = true;
+  bool _submitted = false;
 
   @override
   void dispose() {
@@ -3125,6 +3276,7 @@ class _PublicUserPasswordScreenState extends State<_PublicUserPasswordScreen> {
   Future<void> _changePassword() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || user.email == null) return;
+    setState(() => _submitted = true);
     if (_currentPasswordController.text.trim().isEmpty) {
       _show(context, context.tr('Current password is required.'));
       return;
@@ -3133,7 +3285,8 @@ class _PublicUserPasswordScreenState extends State<_PublicUserPasswordScreen> {
       _show(context, context.tr('New password is required.'));
       return;
     }
-    if (_newPasswordController.text.trim() != _confirmPasswordController.text.trim()) {
+    if (_newPasswordController.text.trim() !=
+        _confirmPasswordController.text.trim()) {
       _show(
         context,
         context.tr('New password and confirm password do not match.'),
@@ -3167,100 +3320,38 @@ class _PublicUserPasswordScreenState extends State<_PublicUserPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          const _SpaceBackground(),
-          SafeArea(
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                _ScreenHeader(title: context.tr('Change Password')),
-                const SizedBox(height: 16),
-                _FormCard(
-                  child: Column(
-                    children: [
-                      TextField(
-                        controller: _currentPasswordController,
-                        obscureText: _obscureCurrentPassword,
-                        decoration: InputDecoration(
-                          hintText: context.tr('Current Password'),
-                          floatingLabelBehavior: FloatingLabelBehavior.never,
-                          suffixIcon: IconButton(
-                            onPressed: () => setState(
-                              () => _obscureCurrentPassword =
-                                  !_obscureCurrentPassword,
-                            ),
-                            icon: Icon(
-                              _obscureCurrentPassword
-                                  ? Icons.visibility_off_outlined
-                                  : Icons.visibility_outlined,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _newPasswordController,
-                        obscureText: _obscureNewPassword,
-                        decoration: InputDecoration(
-                          hintText: context.tr('New Password'),
-                          floatingLabelBehavior: FloatingLabelBehavior.never,
-                          suffixIcon: IconButton(
-                            onPressed: () => setState(
-                              () => _obscureNewPassword = !_obscureNewPassword,
-                            ),
-                            icon: Icon(
-                              _obscureNewPassword
-                                  ? Icons.visibility_off_outlined
-                                  : Icons.visibility_outlined,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _confirmPasswordController,
-                        obscureText: _obscureConfirmPassword,
-                        decoration: InputDecoration(
-                          hintText: context.tr('Confirm Password'),
-                          floatingLabelBehavior: FloatingLabelBehavior.never,
-                          suffixIcon: IconButton(
-                            onPressed: () => setState(
-                              () => _obscureConfirmPassword = !_obscureConfirmPassword,
-                            ),
-                            icon: Icon(
-                              _obscureConfirmPassword
-                                  ? Icons.visibility_off_outlined
-                                  : Icons.visibility_outlined,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _saving ? null : _changePassword,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.hotPink,
-                            foregroundColor: Colors.white,
-                          ),
-                          child: Text(
-                            _saving
-                                ? context.tr('Updating...')
-                                : context.tr('Update Password'),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return PasswordChangeLayout(
+      title: context.tr('Change Password'),
+      currentController: _currentPasswordController,
+      newController: _newPasswordController,
+      confirmController: _confirmPasswordController,
+      currentObscure: _obscureCurrentPassword,
+      newObscure: _obscureNewPassword,
+      confirmObscure: _obscureConfirmPassword,
+      onToggleCurrent: () =>
+          setState(() => _obscureCurrentPassword = !_obscureCurrentPassword),
+      onToggleNew: () =>
+          setState(() => _obscureNewPassword = !_obscureNewPassword),
+      onToggleConfirm: () =>
+          setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+      onSubmit: _changePassword,
+      saving: _saving,
+      currentError: _submitted && _currentPasswordController.text.trim().isEmpty
+          ? context.tr('Current password is required.')
+          : null,
+      newError: _submitted
+          ? (_newPasswordController.text.trim().isEmpty
+                ? context.tr('New password is required.')
+                : null)
+          : null,
+      confirmError: _submitted
+          ? (_confirmPasswordController.text.trim().isEmpty
+                ? context.tr('Confirm password is required.')
+                : _newPasswordController.text.trim() !=
+                      _confirmPasswordController.text.trim()
+                ? context.tr('New password and confirm password do not match.')
+                : null)
+          : null,
     );
   }
 }
@@ -3369,10 +3460,7 @@ class _ReadOnlyInfoCard extends StatelessWidget {
 
 void _show(BuildContext context, String message) {
   ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(message),
-      behavior: SnackBarBehavior.floating,
-    ),
+    SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
   );
 }
 
@@ -3385,41 +3473,168 @@ class _LoginRequiredCard extends StatelessWidget {
     return Center(
       child: Container(
         margin: const EdgeInsets.all(20),
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: AppColors.card,
-          borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              AppColors.card.withOpacity(0.96),
+              AppColors.cardSoft.withOpacity(0.9),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(color: AppColors.border),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.16),
+              blurRadius: 18,
+              offset: const Offset(0, 10),
+            ),
+          ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.person_rounded, size: 48, color: AppColors.hotPink),
-            const SizedBox(height: 10),
+            Container(
+              width: 66,
+              height: 66,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AppColors.hotPink, AppColors.magenta],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.hotPink.withOpacity(0.25),
+                    blurRadius: 16,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.person_rounded,
+                size: 34,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              context.tr('Sign In'),
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
             Text(
               user == null
-                  ? context.tr('Login to manage your profile and contests.')
+                  ? context.tr(
+                      'Login to manage your profile, contests and much more.',
+                    )
                   : (user.email ?? context.tr('Logged in user')),
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.textLight),
+              style: const TextStyle(
+                color: AppColors.textLight,
+                fontSize: 16,
+                height: 1.35,
+              ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 18),
             if (user == null) ...[
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pushNamed(context, '/login'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.hotPink,
-                    foregroundColor: Colors.white,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [AppColors.hotPink, AppColors.magenta],
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.hotPink.withOpacity(0.24),
+                        blurRadius: 16,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
                   ),
-                  child: Text(context.tr('Login')),
+                  child: ElevatedButton.icon(
+                    onPressed: () => Navigator.pushNamed(context, '/login'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    icon: const Icon(Icons.login_rounded),
+                    label: Text(
+                      context.tr('Login'),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
                 ),
               ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () => Navigator.pushNamed(context, '/register'),
-                child: Text(context.tr('Create account')),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => Navigator.pushNamed(context, '/register'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: BorderSide(color: Colors.white.withOpacity(0.42)),
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  icon: const Icon(Icons.person_add_alt_1_rounded),
+                  label: Text(
+                    context.tr('Create Account'),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Row(
+                children: [
+                  Expanded(
+                    child: _GuestBenefit(
+                      icon: Icons.verified_user_outlined,
+                      title: 'Secure',
+                      subtitle: '100% Safe',
+                    ),
+                  ),
+                  Expanded(
+                    child: _GuestBenefit(
+                      icon: Icons.emoji_events_outlined,
+                      title: 'Contests',
+                      subtitle: 'Join & Win',
+                    ),
+                  ),
+                  Expanded(
+                    child: _GuestBenefit(
+                      icon: Icons.person_outline_rounded,
+                      title: 'Personalized',
+                      subtitle: 'Just for you',
+                    ),
+                  ),
+                ],
+              ),
+            ] else ...[
+              const SizedBox(height: 6),
+              Text(
+                context.tr('You are already signed in.'),
+                style: const TextStyle(
+                  color: AppColors.textMuted,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ],
@@ -3429,8 +3644,53 @@ class _LoginRequiredCard extends StatelessWidget {
   }
 }
 
+class _GuestBenefit extends StatelessWidget {
+  const _GuestBenefit({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Icon(icon, color: AppColors.hotPink, size: 24),
+        const SizedBox(height: 8),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          subtitle,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: AppColors.textMuted,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _CountCard extends StatelessWidget {
-  const _CountCard({required this.label, required this.value, required this.color});
+  const _CountCard({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
 
   final String label;
   final int value;
@@ -3450,10 +3710,17 @@ class _CountCard extends StatelessWidget {
           children: [
             Text(
               value.toString(),
-              style: TextStyle(color: color, fontSize: 18, fontWeight: FontWeight.w800),
+              style: TextStyle(
+                color: color,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
             ),
             const SizedBox(height: 4),
-            Text(label, style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+            Text(
+              label,
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+            ),
           ],
         ),
       ),
@@ -3520,7 +3787,9 @@ Uint8List _compressProfilePhotoBytes(Uint8List input) {
   }
 
   var quality = 85;
-  Uint8List bytes = Uint8List.fromList(img.encodeJpg(processed, quality: quality));
+  Uint8List bytes = Uint8List.fromList(
+    img.encodeJpg(processed, quality: quality),
+  );
   while (bytes.lengthInBytes > 100 * 1024 && quality > 35) {
     quality -= 10;
     bytes = Uint8List.fromList(img.encodeJpg(processed, quality: quality));

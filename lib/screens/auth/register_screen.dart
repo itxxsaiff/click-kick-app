@@ -18,7 +18,7 @@ const _kJoinTheContest = 'Join the Contest';
 const _kFullName = 'Full name';
 const _kEmail = 'Email';
 const _kSearchCountry = 'Search country';
-const _kCode = 'Code';
+const _kCode = 'Country code';
 const _kPhoneNumber = 'Phone number';
 const _kCountry = 'Country';
 const _kCompanyName = 'Company name';
@@ -29,7 +29,9 @@ const _kAlreadyHaveAccount = 'Already have an account?';
 const _kLogin = 'Login';
 const _kTermsPrefix = 'I have read and agree to the ';
 const _kTerms = 'terms';
-final _arabicScriptRegExp = RegExp(r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]');
+final _arabicScriptRegExp = RegExp(
+  r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]',
+);
 
 class AccountTypeSelectionScreen extends StatelessWidget {
   const AccountTypeSelectionScreen({super.key});
@@ -47,34 +49,46 @@ class AccountTypeSelectionScreen extends StatelessWidget {
                 children: [
                   const SizedBox(height: 24),
                   SizedBox(
-                    width: 220,
-                    height: 170,
-                    child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+                    width: 170,
+                    height: 150,
+                    child: Image.asset(
+                      'assets/images/logo.png',
+                      fit: BoxFit.contain,
+                    ),
                   ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 26),
                   Text(
                     _kCreateAccount,
-                    style: Theme.of(context).textTheme.headlineMedium,
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontSize: 34,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     _kSelectAccountType,
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                       color: AppColors.textMuted,
+                      fontSize: 18,
                     ),
                   ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 34),
                   _AccountTypeTile(
                     icon: Icons.person_outline_rounded,
                     title: _kPersonalAccount,
+                    description:
+                        'Join as an individual and take part in amazing contests.',
                     accent: AppColors.hotPink,
-                    onTap: () => Navigator.pushNamed(context, '/register?type=user'),
+                    onTap: () =>
+                        Navigator.pushNamed(context, '/register?type=user'),
                     showArrow: true,
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 18),
                   _AccountTypeTile(
                     icon: Icons.business_center_outlined,
                     title: _kBusinessAccount,
+                    description:
+                        'Create your brand profile and promote your contests.',
                     accent: const Color(0xFF47C8FF),
                     onTap: () =>
                         Navigator.pushNamed(context, '/register?type=business'),
@@ -243,10 +257,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       builder: (_) => AlertDialog(
         title: Text(title),
         content: SingleChildScrollView(
-          child: Text(
-            body,
-            style: const TextStyle(height: 1.45),
-          ),
+          child: Text(body, style: const TextStyle(height: 1.45)),
         ),
         actions: [
           TextButton(
@@ -261,7 +272,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String _friendlyError(Object e) {
     final text = e.toString();
     if (text.contains('email-already-in-use')) {
-      return 'Email already registered.';
+      return 'This email is already linked to another account.';
+    }
+    if (text.contains('phone-number-already-in-use')) {
+      return 'This phone number is already linked to another account.';
     }
     if (text.contains('invalid-email')) {
       return 'Invalid email address.';
@@ -314,9 +328,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        _isSponsor
-                            ? _kBusinessAccount
-                            : _kPersonalAccount,
+                        _isSponsor ? _kBusinessAccount : _kPersonalAccount,
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const Spacer(),
@@ -341,7 +353,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             TextFormField(
                               controller: _nameController,
                               inputFormatters: [
-                                FilteringTextInputFormatter.deny(_arabicScriptRegExp),
+                                FilteringTextInputFormatter.deny(
+                                  _arabicScriptRegExp,
+                                ),
                               ],
                               decoration: InputDecoration(
                                 labelText: _kFullName,
@@ -400,7 +414,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   ),
                                   onSelect: (country) {
                                     setState(() {
-                                      _phoneCountryCode = '+${country.phoneCode}';
+                                      _phoneCountryCode =
+                                          '+${country.phoneCode}';
                                       _phoneCountryIso = country.countryCode;
                                     });
                                   },
@@ -480,7 +495,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               TextFormField(
                                 controller: _companyController,
                                 inputFormatters: [
-                                  FilteringTextInputFormatter.deny(_arabicScriptRegExp),
+                                  FilteringTextInputFormatter.deny(
+                                    _arabicScriptRegExp,
+                                  ),
                                 ],
                                 decoration: InputDecoration(
                                   labelText: _kCompanyName,
@@ -591,9 +608,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 TextSpan(
                                   style: Theme.of(context).textTheme.bodyMedium,
                                   children: [
-                                    TextSpan(
-                                      text: _kTermsPrefix,
-                                    ),
+                                    TextSpan(text: _kTermsPrefix),
                                     TextSpan(
                                       text: _kTerms,
                                       style: const TextStyle(
@@ -684,6 +699,7 @@ class _AccountTypeTile extends StatelessWidget {
   const _AccountTypeTile({
     required this.icon,
     required this.title,
+    required this.description,
     required this.accent,
     required this.onTap,
     this.showArrow = false,
@@ -691,6 +707,7 @@ class _AccountTypeTile extends StatelessWidget {
 
   final IconData icon;
   final String title;
+  final String description;
   final Color accent;
   final VoidCallback onTap;
   final bool showArrow;
@@ -702,44 +719,85 @@ class _AccountTypeTile extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
         decoration: BoxDecoration(
-          color: AppColors.card.withValues(alpha: 0.86),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: accent.withValues(alpha: 0.75), width: 1.4),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              AppColors.card.withOpacity(0.96),
+              AppColors.cardSoft.withOpacity(0.9),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: accent.withOpacity(0.82), width: 1.6),
           boxShadow: [
             BoxShadow(
-              color: accent.withValues(alpha: 0.22),
-              blurRadius: 18,
-              offset: const Offset(0, 10),
+              color: accent.withOpacity(0.18),
+              blurRadius: 22,
+              offset: const Offset(0, 12),
             ),
           ],
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
-              width: 52,
-              height: 52,
+              width: 76,
+              height: 76,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: accent.withValues(alpha: 0.14),
-                border: Border.all(color: accent.withValues(alpha: 0.75)),
-              ),
-              child: Icon(icon, color: accent, size: 30),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [accent.withOpacity(0.92), accent.withOpacity(0.68)],
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: accent.withOpacity(0.32),
+                    blurRadius: 16,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Icon(icon, color: Colors.white, size: 40),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    description,
+                    style: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 15,
+                      height: 1.35,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
             ),
             if (showArrow)
-              Icon(Icons.chevron_right_rounded, color: accent, size: 34),
+              Padding(
+                padding: const EdgeInsets.only(left: 10),
+                child: Icon(
+                  Icons.chevron_right_rounded,
+                  color: accent,
+                  size: 42,
+                ),
+              ),
           ],
         ),
       ),

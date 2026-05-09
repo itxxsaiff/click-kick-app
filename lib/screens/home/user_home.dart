@@ -375,7 +375,9 @@ class _UserContestsTabState extends State<_UserContestsTab> {
                               const SizedBox(width: 6),
                               Text(
                                 context.tr('Open Contest'),
-                                style: const TextStyle(color: AppColors.hotPink),
+                                style: const TextStyle(
+                                  color: AppColors.hotPink,
+                                ),
                               ),
                             ],
                           ),
@@ -1286,8 +1288,7 @@ class _UserProfileTabState extends State<_UserProfileTab> {
     if (!mounted) return;
     final data = snap.data() ?? <String, dynamic>{};
     setState(() {
-      _phoneCodeController.text = (data['phoneCountryCode'] ?? '+1')
-          .toString();
+      _phoneCodeController.text = (data['phoneCountryCode'] ?? '+1').toString();
       _phoneNumberController.text = (data['phoneNumber'] ?? '').toString();
       _phoneIso = (data['phoneCountryIso'] ?? 'US').toString();
     });
@@ -1439,7 +1440,7 @@ class _UserProfileTabState extends State<_UserProfileTab> {
                       },
                       child: InputDecorator(
                         decoration: InputDecoration(
-                          labelText: context.tr('Code'),
+                          labelText: context.tr('Country code'),
                         ),
                         child: Text(
                           '$_phoneIso ${_phoneCodeController.text}',
@@ -1555,9 +1556,7 @@ class _UserProfileTabState extends State<_UserProfileTab> {
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const LegalCenterScreen(),
-                ),
+                MaterialPageRoute(builder: (_) => const LegalCenterScreen()),
               );
             },
             icon: const Icon(Icons.privacy_tip_outlined),

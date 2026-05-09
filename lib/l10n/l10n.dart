@@ -67,7 +67,7 @@ class LanguageMenuButton extends StatelessWidget {
   }
 }
 
-class LanguageSelectionScreen extends StatelessWidget {
+class LanguageSelectionScreen extends StatefulWidget {
   const LanguageSelectionScreen({
     super.key,
     this.showContinue = false,
@@ -76,12 +76,37 @@ class LanguageSelectionScreen extends StatelessWidget {
   final bool showContinue;
 
   @override
+  State<LanguageSelectionScreen> createState() => _LanguageSelectionScreenState();
+}
+
+class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
+  bool _showUpdated = false;
+  bool _hasExplicitSelection = false;
+
+  Future<void> _selectLanguage(AppLanguage language) async {
+    final controller = LanguageScope.of(context);
+    if (_hasExplicitSelection && controller.language == language) return;
+    await controller.setLanguage(language);
+    if (!mounted) return;
+    setState(() {
+      _showUpdated = true;
+      _hasExplicitSelection = true;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final isStandalonePicker = !widget.showContinue;
+    if (isStandalonePicker) {
+      return const _CompactLanguageSelectionScreen();
+    }
+
     final controller = LanguageScope.of(context);
     final language = controller.language;
+    final showSelectedState = !widget.showContinue || _hasExplicitSelection;
 
     return Scaffold(
-      appBar: showContinue
+      appBar: widget.showContinue
           ? null
           : AppBar(
               title: Text(context.tr('Language')),
@@ -98,12 +123,12 @@ class LanguageSelectionScreen extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.all(24),
             children: [
-              SizedBox(height: showContinue ? 52 : 24),
+              SizedBox(height: widget.showContinue ? 52 : 24),
               Center(
                 child: SizedBox(
-                  width: showContinue ? 220 : 108,
-                  height: showContinue ? 170 : 108,
-                  child: showContinue
+                  width: widget.showContinue ? 220 : 108,
+                  height: widget.showContinue ? 170 : 108,
+                  child: widget.showContinue
                       ? Image.asset('assets/images/logo.png', fit: BoxFit.contain)
                       : Container(
                           decoration: BoxDecoration(
@@ -120,7 +145,7 @@ class LanguageSelectionScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 24),
-              if (showContinue) ...[
+              if (widget.showContinue) ...[
                 Text(
                   context.tr('Language'),
                   textAlign: TextAlign.center,
@@ -185,22 +210,62 @@ class LanguageSelectionScreen extends StatelessWidget {
               _LanguageOptionTile(
                 label: context.tr('Arabic'),
                 emoji: '🇸🇦',
-                selected: language == AppLanguage.arabic,
-                onTap: () => controller.setLanguage(AppLanguage.arabic),
+                selected: showSelectedState && language == AppLanguage.arabic,
+                onTap: () => _selectLanguage(AppLanguage.arabic),
               ),
               const SizedBox(height: 12),
               _LanguageOptionTile(
                 label: context.tr('English'),
                 emoji: '🇬🇧',
-                selected: language == AppLanguage.english,
-                onTap: () => controller.setLanguage(AppLanguage.english),
+                selected: showSelectedState && language == AppLanguage.english,
+                onTap: () => _selectLanguage(AppLanguage.english),
               ),
-              if (showContinue) ...[
+              if (_showUpdated) ...[
+                const SizedBox(height: 26),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 18,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0E1A25),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: const Color(0xFF5BCB58),
+                      width: 1.4,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.check_circle_outline_rounded,
+                        color: Color(0xFF5BCB58),
+                        size: 32,
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Text(
+                          context.tr('Language updated successfully'),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (widget.showContinue) ...[
                 const SizedBox(height: 28),
                 FilledButton(
-                  onPressed: () {
-                    Navigator.pushReplacementNamed(context, '/app');
-                  },
+                  onPressed: _hasExplicitSelection
+                      ? () {
+                          Navigator.pushReplacementNamed(context, '/app');
+                        }
+                      : null,
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.hotPink,
                     foregroundColor: Colors.white,
@@ -214,6 +279,114 @@ class LanguageSelectionScreen extends StatelessWidget {
               ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CompactLanguageSelectionScreen extends StatefulWidget {
+  const _CompactLanguageSelectionScreen();
+
+  @override
+  State<_CompactLanguageSelectionScreen> createState() =>
+      _CompactLanguageSelectionScreenState();
+}
+
+class _CompactLanguageSelectionScreenState
+    extends State<_CompactLanguageSelectionScreen> {
+  bool _showUpdated = false;
+
+  Future<void> _selectLanguage(AppLanguage language) async {
+    final controller = LanguageScope.of(context);
+    if (controller.language == language) return;
+    await controller.setLanguage(language);
+    if (!mounted) return;
+    setState(() => _showUpdated = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = LanguageScope.of(context);
+    final language = controller.language;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF07121B),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                ),
+                Expanded(
+                  child: Text(
+                    context.tr('Language'),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            _CompactLanguageTile(
+              label: context.tr('English'),
+              emoji: '🇺🇸',
+              selected: language == AppLanguage.english,
+              onTap: () => _selectLanguage(AppLanguage.english),
+            ),
+            const SizedBox(height: 14),
+            _CompactLanguageTile(
+              label: context.tr('Arabic'),
+              emoji: '🇸🇦',
+              selected: language == AppLanguage.arabic,
+              onTap: () => _selectLanguage(AppLanguage.arabic),
+            ),
+            if (_showUpdated) ...[
+              const SizedBox(height: 26),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 18,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0E1A25),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFF5BCB58),
+                    width: 1.4,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.check_circle_outline_rounded,
+                      color: Color(0xFF5BCB58),
+                      size: 32,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        context.tr('Language updated successfully'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          height: 1.3,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -271,6 +444,67 @@ class _LanguageOptionTile extends StatelessWidget {
                   Icons.check_circle,
                   color: Color(0xFFE14BC7),
                 ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CompactLanguageTile extends StatelessWidget {
+  const _CompactLanguageTile({
+    required this.label,
+    required this.emoji,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final String emoji;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0E1A25),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected
+                  ? const Color(0xFFEE4B82)
+                  : const Color(0xFF263646),
+              width: 1.2,
+            ),
+          ),
+          child: Row(
+            children: [
+              Text(emoji, style: const TextStyle(fontSize: 28)),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Icon(
+                selected ? Icons.check_circle : Icons.radio_button_unchecked,
+                color: selected
+                    ? const Color(0xFFEE4B82)
+                    : const Color(0xFF506072),
+                size: 28,
+              ),
             ],
           ),
         ),

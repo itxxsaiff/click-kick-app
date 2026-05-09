@@ -157,8 +157,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
                                   showPhoneCode: true,
                                   onSelect: (country) {
                                     setState(() {
-                                      _phoneCode.text =
-                                          '+${country.phoneCode}';
+                                      _phoneCode.text = '+${country.phoneCode}';
                                       _phoneIso = country.countryCode;
                                     });
                                   },
@@ -166,7 +165,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
                               },
                               child: InputDecorator(
                                 decoration: InputDecoration(
-                                  labelText: context.tr('Code'),
+                                  labelText: context.tr('Country code'),
                                 ),
                                 child: Text(
                                   '$_phoneIso ${_phoneCode.text}',

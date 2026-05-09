@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import '../../l10n/l10n.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/delete_account_dialog.dart';
+import '../../widgets/password_change_layout.dart';
 import '../../widgets/settings_action_tile.dart';
 import '../admin/admin_videos_screen.dart';
 import '../shared/legal_center_screen.dart';
@@ -384,11 +386,14 @@ class _EmployeeProfileTab extends StatelessWidget {
     }
 
     return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      future: FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
+      future: FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get(),
       builder: (context, snapshot) {
         final data = snapshot.data?.data() ?? <String, dynamic>{};
-        final name =
-            (data['displayName'] ?? user.displayName ?? displayName).toString();
+        final name = (data['displayName'] ?? user.displayName ?? displayName)
+            .toString();
         final email = (data['email'] ?? user.email ?? '').toString();
 
         return ListView(
@@ -421,7 +426,10 @@ class _EmployeeProfileTab extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(name, style: Theme.of(context).textTheme.titleMedium),
+                        Text(
+                          name,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
                         const SizedBox(height: 4),
                         Text(
                           email,
@@ -515,9 +523,7 @@ class _EmployeeProfileTab extends StatelessWidget {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const LegalCenterScreen(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const LegalCenterScreen()),
                 );
               },
             ),
@@ -527,43 +533,20 @@ class _EmployeeProfileTab extends StatelessWidget {
               subtitle: context.tr('Permanently remove your account.'),
               isDanger: true,
               onTap: () async {
-                final confirmed = await showDialog<bool>(
-                  context: context,
-                  builder: (dialogContext) => AlertDialog(
-                    title: Text(context.tr('Delete Account')),
-                    content: Text(
-                      context.tr(
-                        'Are you sure you want to delete your account? This action cannot be undone.',
-                      ),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(dialogContext, false),
-                        child: Text(context.tr('Cancel')),
-                      ),
-                      FilledButton(
-                        onPressed: () => Navigator.pop(dialogContext, true),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.hotPink,
-                        ),
-                        child: Text(context.tr('Delete')),
-                      ),
-                    ],
-                  ),
-                );
+                final confirmed = await showDeleteAccountDialog(context);
                 if (confirmed != true) return;
                 try {
                   await AuthService().deleteCurrentAccount();
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text(context.tr('Account deleted successfully.')),
+                      content: Text(
+                        context.tr('Account deleted successfully.'),
+                      ),
                     ),
                   );
                   Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(
-                      builder: (_) => const LoginScreen(),
-                    ),
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
                     (_) => false,
                   );
                 } catch (e) {
@@ -575,9 +558,9 @@ class _EmployeeProfileTab extends StatelessWidget {
                       : context.tr(
                           'Unable to delete account right now. Please try again.',
                         );
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(message)),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text(message)));
                 }
               },
             ),
@@ -609,13 +592,26 @@ class _EmployeeProfileInfoScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: Text(context.tr('Profile Info'))),
       body: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        future: FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
+        future: FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get(),
         builder: (context, snapshot) {
           final data = snapshot.data?.data() ?? <String, dynamic>{};
           final rows = <MapEntry<String, String>>[
-            MapEntry(context.tr('Full Name'), (data['displayName'] ?? user.displayName ?? '').toString()),
-            MapEntry(context.tr('Email'), (data['email'] ?? user.email ?? '').toString()),
-            MapEntry(context.tr('Phone number'), '${(data['phoneCountryCode'] ?? '').toString()} ${(data['phoneNumber'] ?? '').toString()}'.trim()),
+            MapEntry(
+              context.tr('Full Name'),
+              (data['displayName'] ?? user.displayName ?? '').toString(),
+            ),
+            MapEntry(
+              context.tr('Email'),
+              (data['email'] ?? user.email ?? '').toString(),
+            ),
+            MapEntry(
+              context.tr('Phone number'),
+              '${(data['phoneCountryCode'] ?? '').toString()} ${(data['phoneNumber'] ?? '').toString()}'
+                  .trim(),
+            ),
           ];
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -629,17 +625,34 @@ class _EmployeeProfileInfoScreen extends StatelessWidget {
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: rows.map((row) => Padding(
-                    padding: const EdgeInsets.only(bottom: 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(row.key, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
-                        const SizedBox(height: 4),
-                        Text(row.value.isEmpty ? '-' : row.value, style: const TextStyle(color: AppColors.textLight, fontSize: 16, fontWeight: FontWeight.w700)),
-                      ],
-                    ),
-                  )).toList(),
+                  children: rows
+                      .map(
+                        (row) => Padding(
+                          padding: const EdgeInsets.only(bottom: 14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                row.key,
+                                style: const TextStyle(
+                                  color: AppColors.textMuted,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                row.value.isEmpty ? '-' : row.value,
+                                style: const TextStyle(
+                                  color: AppColors.textLight,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                      .toList(),
                 ),
               ),
             ],
@@ -651,16 +664,21 @@ class _EmployeeProfileInfoScreen extends StatelessWidget {
 }
 
 class _EmployeeProfileUpdateScreen extends StatefulWidget {
-  const _EmployeeProfileUpdateScreen({required this.user, required this.displayName});
+  const _EmployeeProfileUpdateScreen({
+    required this.user,
+    required this.displayName,
+  });
 
   final User user;
   final String displayName;
 
   @override
-  State<_EmployeeProfileUpdateScreen> createState() => _EmployeeProfileUpdateScreenState();
+  State<_EmployeeProfileUpdateScreen> createState() =>
+      _EmployeeProfileUpdateScreenState();
 }
 
-class _EmployeeProfileUpdateScreenState extends State<_EmployeeProfileUpdateScreen> {
+class _EmployeeProfileUpdateScreenState
+    extends State<_EmployeeProfileUpdateScreen> {
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _phoneCode = TextEditingController(text: '+1');
@@ -683,7 +701,9 @@ class _EmployeeProfileUpdateScreenState extends State<_EmployeeProfileUpdateScre
         .doc(widget.user.uid)
         .get();
     final data = doc.data() ?? <String, dynamic>{};
-    _name.text = (data['displayName'] ?? widget.user.displayName ?? widget.displayName).toString();
+    _name.text =
+        (data['displayName'] ?? widget.user.displayName ?? widget.displayName)
+            .toString();
     _email.text = (data['email'] ?? widget.user.email ?? '').toString();
     _phoneCode.text = (data['phoneCountryCode'] ?? '+1').toString();
     _phoneNumber.text = (data['phoneNumber'] ?? '').toString();
@@ -707,10 +727,14 @@ class _EmployeeProfileUpdateScreenState extends State<_EmployeeProfileUpdateScre
     setState(() => _saving = true);
     try {
       final newEmail = _email.text.trim();
-      final willUpdateEmail = newEmail.isNotEmpty && newEmail != (user.email ?? '');
+      final willUpdateEmail =
+          newEmail.isNotEmpty && newEmail != (user.email ?? '');
       if (willUpdateEmail) {
         if (_currentPassword.text.trim().isEmpty) {
-          _showEmployeeMessage(context, context.tr('Current password is required.'));
+          _showEmployeeMessage(
+            context,
+            context.tr('Current password is required.'),
+          );
           return;
         }
         final credential = EmailAuthProvider.credential(
@@ -735,12 +759,17 @@ class _EmployeeProfileUpdateScreenState extends State<_EmployeeProfileUpdateScre
       _showEmployeeMessage(
         context,
         willUpdateEmail
-            ? context.tr('Verification email sent. Confirm it to complete email change.')
+            ? context.tr(
+                'Verification email sent. Confirm it to complete email change.',
+              )
             : context.tr('Profile updated.'),
       );
     } on FirebaseAuthException catch (e) {
       if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
-        _showEmployeeMessage(context, context.tr('Current password is incorrect.'));
+        _showEmployeeMessage(
+          context,
+          context.tr('Current password is incorrect.'),
+        );
       } else {
         _showEmployeeMessage(context, context.tr('Update failed.'));
       }
@@ -751,7 +780,8 @@ class _EmployeeProfileUpdateScreenState extends State<_EmployeeProfileUpdateScre
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_loading)
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     return Scaffold(
       appBar: AppBar(title: Text(context.tr('Profile Update'))),
       body: ListView(
@@ -766,9 +796,17 @@ class _EmployeeProfileUpdateScreenState extends State<_EmployeeProfileUpdateScre
             ),
             child: Column(
               children: [
-                TextField(controller: _name, decoration: InputDecoration(labelText: context.tr('Full Name'))),
+                TextField(
+                  controller: _name,
+                  decoration: InputDecoration(
+                    labelText: context.tr('Full Name'),
+                  ),
+                ),
                 const SizedBox(height: 12),
-                TextField(controller: _email, decoration: InputDecoration(labelText: context.tr('Email'))),
+                TextField(
+                  controller: _email,
+                  decoration: InputDecoration(labelText: context.tr('Email')),
+                ),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -788,8 +826,16 @@ class _EmployeeProfileUpdateScreenState extends State<_EmployeeProfileUpdateScre
                           );
                         },
                         child: InputDecorator(
-                          decoration: InputDecoration(labelText: context.tr('Code')),
-                          child: Text('$_phoneIso ${_phoneCode.text}', style: const TextStyle(color: AppColors.textLight, fontWeight: FontWeight.w700)),
+                          decoration: InputDecoration(
+                            labelText: context.tr('Country code'),
+                          ),
+                          child: Text(
+                            '$_phoneIso ${_phoneCode.text}',
+                            style: const TextStyle(
+                              color: AppColors.textLight,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -799,7 +845,9 @@ class _EmployeeProfileUpdateScreenState extends State<_EmployeeProfileUpdateScre
                       child: TextField(
                         controller: _phoneNumber,
                         keyboardType: TextInputType.phone,
-                        decoration: InputDecoration(labelText: context.tr('Phone number')),
+                        decoration: InputDecoration(
+                          labelText: context.tr('Phone number'),
+                        ),
                       ),
                     ),
                   ],
@@ -809,10 +857,19 @@ class _EmployeeProfileUpdateScreenState extends State<_EmployeeProfileUpdateScre
                   controller: _currentPassword,
                   obscureText: _obscureCurrentPassword,
                   decoration: InputDecoration(
-                    labelText: context.tr('Current Password (for email change)'),
+                    labelText: context.tr(
+                      'Current Password (for email change)',
+                    ),
                     suffixIcon: IconButton(
-                      onPressed: () => setState(() => _obscureCurrentPassword = !_obscureCurrentPassword),
-                      icon: Icon(_obscureCurrentPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                      onPressed: () => setState(
+                        () =>
+                            _obscureCurrentPassword = !_obscureCurrentPassword,
+                      ),
+                      icon: Icon(
+                        _obscureCurrentPassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
                     ),
                   ),
                 ),
@@ -826,7 +883,9 @@ class _EmployeeProfileUpdateScreenState extends State<_EmployeeProfileUpdateScre
                       foregroundColor: Colors.white,
                     ),
                     child: Text(
-                      _saving ? context.tr('Saving...') : context.tr('Update Profile'),
+                      _saving
+                          ? context.tr('Saving...')
+                          : context.tr('Update Profile'),
                     ),
                   ),
                 ),
@@ -866,6 +925,7 @@ class _EmployeeSecurityTabState extends State<_EmployeeSecurityScreen> {
   bool _obscureCurrent = true;
   bool _obscureNew = true;
   bool _obscureConfirm = true;
+  bool _submitted = false;
 
   @override
   void dispose() {
@@ -878,6 +938,7 @@ class _EmployeeSecurityTabState extends State<_EmployeeSecurityScreen> {
   Future<void> _changePassword() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || user.email == null) return;
+    setState(() => _submitted = true);
     if (_current.text.trim().isEmpty) {
       _show(context.tr('Current password is required.'));
       return;
@@ -935,149 +996,36 @@ class _EmployeeSecurityTabState extends State<_EmployeeSecurityScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          const _SpaceBackground(),
-          SafeArea(
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                _ScreenHeader(title: context.tr('Change Password')),
-                const SizedBox(height: 16),
-                _FormCard(
-                  child: Column(
-                    children: [
-                      _PasswordField(
-                        controller: _current,
-                        hintText: context.tr('Current Password'),
-                        obscureText: _obscureCurrent,
-                        onToggle: () => setState(
-                          () => _obscureCurrent = !_obscureCurrent,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _PasswordField(
-                        controller: _newPass,
-                        hintText: context.tr('New Password'),
-                        obscureText: _obscureNew,
-                        onToggle: () =>
-                            setState(() => _obscureNew = !_obscureNew),
-                      ),
-                      const SizedBox(height: 12),
-                      _PasswordField(
-                        controller: _confirm,
-                        hintText: context.tr('Confirm Password'),
-                        obscureText: _obscureConfirm,
-                        onToggle: () => setState(
-                          () => _obscureConfirm = !_obscureConfirm,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _saving ? null : _changePassword,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.hotPink,
-                            foregroundColor: Colors.white,
-                          ),
-                          child: Text(
-                            _saving
-                                ? context.tr('Updating...')
-                                : context.tr('Update Password'),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ScreenHeader extends StatelessWidget {
-  const _ScreenHeader({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        IconButton(
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-        ),
-        Expanded(
-          child: Text(
-            title,
-            style: const TextStyle(
-              color: AppColors.textLight,
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _FormCard extends StatelessWidget {
-  const _FormCard({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: child,
-    );
-  }
-}
-
-class _PasswordField extends StatelessWidget {
-  const _PasswordField({
-    required this.controller,
-    required this.hintText,
-    required this.obscureText,
-    required this.onToggle,
-  });
-
-  final TextEditingController controller;
-  final String hintText;
-  final bool obscureText;
-  final VoidCallback onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      obscureText: obscureText,
-      decoration: InputDecoration(
-        hintText: hintText,
-        floatingLabelBehavior: FloatingLabelBehavior.never,
-        suffixIcon: IconButton(
-          onPressed: onToggle,
-          icon: Icon(
-            obscureText
-                ? Icons.visibility_off_outlined
-                : Icons.visibility_outlined,
-          ),
-        ),
-      ),
+    return PasswordChangeLayout(
+      title: context.tr('Change Password'),
+      currentController: _current,
+      newController: _newPass,
+      confirmController: _confirm,
+      currentObscure: _obscureCurrent,
+      newObscure: _obscureNew,
+      confirmObscure: _obscureConfirm,
+      onToggleCurrent: () => setState(() => _obscureCurrent = !_obscureCurrent),
+      onToggleNew: () => setState(() => _obscureNew = !_obscureNew),
+      onToggleConfirm: () => setState(() => _obscureConfirm = !_obscureConfirm),
+      onSubmit: _changePassword,
+      saving: _saving,
+      currentError: _submitted && _current.text.trim().isEmpty
+          ? context.tr('Current password is required.')
+          : null,
+      newError: _submitted
+          ? (_newPass.text.trim().isEmpty
+                ? context.tr('New password is required.')
+                : _newPass.text.trim().length < 6
+                ? context.tr('New password must be at least 6 characters.')
+                : null)
+          : null,
+      confirmError: _submitted
+          ? (_confirm.text.trim().isEmpty
+                ? context.tr('Confirm password is required.')
+                : _newPass.text.trim() != _confirm.text.trim()
+                ? context.tr('Passwords do not match.')
+                : null)
+          : null,
     );
   }
 }

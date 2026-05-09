@@ -13,6 +13,8 @@ class AuthService {
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
 
+  String _normalizeEmail(String email) => email.trim().toLowerCase();
+
   String _normalizedPhone({
     required String phoneCountryCode,
     required String phoneNumber,
@@ -28,6 +30,46 @@ class AuthService {
     return digits;
   }
 
+  String _phoneE164({
+    required String phoneCountryCode,
+    required String normalizedPhone,
+  }) {
+    return '${phoneCountryCode.trim()}$normalizedPhone';
+  }
+
+  Future<void> _assertRegistrationContactAvailable({
+    required String email,
+    required String phoneCountryCode,
+    required String normalizedPhone,
+  }) async {
+    final normalizedEmail = _normalizeEmail(email);
+    final callable = FirebaseFunctions.instance.httpsCallable(
+      'checkRegistrationAvailability',
+    );
+    final result = await callable.call<Map<String, dynamic>>({
+      'email': normalizedEmail,
+      'phoneCountryCode': phoneCountryCode,
+      'phoneNumber': normalizedPhone,
+    });
+    final data = Map<String, dynamic>.from(result.data);
+    final emailAvailable = data['emailAvailable'] == true;
+    final phoneAvailable = data['phoneAvailable'] == true;
+
+    if (!emailAvailable) {
+      throw FirebaseAuthException(
+        code: 'email-already-in-use',
+        message: 'This email is already linked to another account.',
+      );
+    }
+
+    if (!phoneAvailable) {
+      throw FirebaseAuthException(
+        code: 'phone-number-already-in-use',
+        message: 'This phone number is already linked to another account.',
+      );
+    }
+  }
+
   Future<UserCredential> registerWithEmail({
     required String email,
     required String password,
@@ -36,12 +78,22 @@ class AuthService {
     required String phoneNumber,
     required bool acceptedTerms,
   }) async {
+    final normalizedEmail = _normalizeEmail(email);
     final normalizedPhone = _normalizedPhone(
       phoneCountryCode: phoneCountryCode,
       phoneNumber: phoneNumber,
     );
+    final phoneE164 = _phoneE164(
+      phoneCountryCode: phoneCountryCode,
+      normalizedPhone: normalizedPhone,
+    );
+    await _assertRegistrationContactAvailable(
+      email: normalizedEmail,
+      phoneCountryCode: phoneCountryCode,
+      normalizedPhone: normalizedPhone,
+    );
     final credential = await _auth.createUserWithEmailAndPassword(
-      email: email,
+      email: normalizedEmail,
       password: password,
     );
     await credential.user?.updateDisplayName(displayName);
@@ -51,12 +103,13 @@ class AuthService {
 
     await _firestore.collection('users').doc(uid).set({
       'uid': uid,
-      'email': email,
+      'email': normalizedEmail,
+      'emailLower': normalizedEmail,
       'displayName': displayName,
       'role': enumToName(UserRole.user),
       'phoneCountryCode': phoneCountryCode,
       'phoneNumber': normalizedPhone,
-      'phoneE164': '$phoneCountryCode$normalizedPhone',
+      'phoneE164': phoneE164,
       'createdAt': now,
       'updatedAt': now,
       'termsAcceptedAt': acceptedTerms ? now : null,
@@ -75,12 +128,22 @@ class AuthService {
     required String companyName,
     required bool acceptedTerms,
   }) async {
+    final normalizedEmail = _normalizeEmail(email);
     final normalizedPhone = _normalizedPhone(
       phoneCountryCode: phoneCountryCode,
       phoneNumber: phoneNumber,
     );
+    final phoneE164 = _phoneE164(
+      phoneCountryCode: phoneCountryCode,
+      normalizedPhone: normalizedPhone,
+    );
+    await _assertRegistrationContactAvailable(
+      email: normalizedEmail,
+      phoneCountryCode: phoneCountryCode,
+      normalizedPhone: normalizedPhone,
+    );
     final credential = await _auth.createUserWithEmailAndPassword(
-      email: email,
+      email: normalizedEmail,
       password: password,
     );
     await credential.user?.updateDisplayName(displayName);
@@ -90,12 +153,13 @@ class AuthService {
 
     await _firestore.collection('users').doc(uid).set({
       'uid': uid,
-      'email': email,
+      'email': normalizedEmail,
+      'emailLower': normalizedEmail,
       'displayName': displayName,
       'role': enumToName(UserRole.sponsor),
       'phoneCountryCode': phoneCountryCode,
       'phoneNumber': normalizedPhone,
-      'phoneE164': '$phoneCountryCode$normalizedPhone',
+      'phoneE164': phoneE164,
       'country': country,
       'companyName': companyName,
       'createdAt': now,
@@ -160,6 +224,24 @@ class AuthService {
   Future<UserCredential> signInWithFacebook() async {
     final provider = FacebookAuthProvider();
     return _signInWithProvider(provider, roleIfMissing: UserRole.user);
+  }
+
+  Future<void> sendPasswordResetEmail({required String email}) async {
+    final normalizedEmail = _normalizeEmail(email);
+    final callable = FirebaseFunctions.instance.httpsCallable(
+      'checkPasswordResetAvailability',
+    );
+    final result = await callable.call<Map<String, dynamic>>({
+      'email': normalizedEmail,
+    });
+    final data = Map<String, dynamic>.from(result.data);
+    if (data['emailExists'] != true) {
+      throw FirebaseAuthException(
+        code: 'user-not-found',
+        message: 'No user found for that email.',
+      );
+    }
+    await _auth.sendPasswordResetEmail(email: normalizedEmail);
   }
 
   Future<UserCredential> _signInWithProvider(

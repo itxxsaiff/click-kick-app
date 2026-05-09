@@ -9,10 +9,14 @@ import 'l10n/app_strings.dart';
 import 'l10n/l10n.dart';
 import 'theme/app_theme.dart';
 import 'screens/auth/login_screen.dart';
+import 'screens/auth/forgot_password_screen.dart';
 import 'screens/auth/register_screen.dart';
 import 'screens/home/home_router.dart';
 import 'screens/public/public_feed_screen.dart';
 import 'screens/user/contest_detail_screen.dart';
+
+final RouteObserver<ModalRoute<void>> appRouteObserver =
+    RouteObserver<ModalRoute<void>>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -71,6 +75,7 @@ class VideoContestApp extends StatelessWidget {
           return MaterialApp(
             debugShowCheckedModeBanner: false,
             title: context.tr('Video Contest'),
+            navigatorObservers: [appRouteObserver],
             theme: AppTheme.darkTheme(useArabicFont: isArabic),
             locale: localeController.locale,
             supportedLocales: const [Locale('en'), Locale('ar')],
@@ -115,6 +120,12 @@ class VideoContestApp extends StatelessWidget {
               }
               if (uri.path == '/login') {
                 return MaterialPageRoute(builder: (_) => const LoginScreen());
+              }
+              if (uri.path == '/forgot-password') {
+                final email = uri.queryParameters['email'] ?? '';
+                return MaterialPageRoute(
+                  builder: (_) => ForgotPasswordScreen(initialEmail: email),
+                );
               }
               if (uri.path == '/home') {
                 return MaterialPageRoute(builder: (_) => const HomeRouter());

@@ -57,6 +57,11 @@ service firebase.storage {
       allow write: if signedIn() && request.auth.uid == userId;
     }
 
+    match /support_attachments/{userId}/{allPaths=**} {
+      allow read: if signedIn() && (request.auth.uid == userId || isStaff());
+      allow write: if signedIn() && request.auth.uid == userId;
+    }
+
     match /sponsorship/{allPaths=**} {
       allow read: if signedIn();
       allow write: if signedIn();

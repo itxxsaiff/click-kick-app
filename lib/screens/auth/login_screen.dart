@@ -4,9 +4,8 @@ import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/gradient_button.dart';
 import '../../widgets/social_icon_button.dart';
-import '../shared/legal_center_screen.dart';
 
-enum _SocialProvider { google, apple, facebook }
+enum _SocialProvider { google, facebook }
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -23,6 +22,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _autoValidate = false;
   bool _obscurePassword = true;
+  bool _rememberMe = true;
 
   @override
   void dispose() {
@@ -70,8 +70,6 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       if (provider == _SocialProvider.google) {
         await _authService.signInWithGoogle();
-      } else if (provider == _SocialProvider.apple) {
-        await _authService.signInWithApple();
       } else {
         await _authService.signInWithFacebook();
       }
@@ -142,14 +140,47 @@ class _LoginScreenState extends State<LoginScreen> {
                 final content = Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    _LogoBadge(compact: isCompact),
-                    SizedBox(height: isCompact ? 6 : 12),
+                    Row(
+                      children: [
+                        IconButton(
+                          onPressed: () => Navigator.maybePop(context),
+                          icon: const Icon(Icons.arrow_back_rounded),
+                        ),
+                        Expanded(
+                          child: Center(
+                            child: SizedBox(
+                              width: isCompact ? 82 : 96,
+                              height: isCompact ? 58 : 68,
+                              child: Image.asset(
+                                'assets/images/logo.png',
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 48),
+                      ],
+                    ),
+                    SizedBox(height: isCompact ? 8 : 14),
+                    Text(
+                      context.tr('Welcome Back!'),
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      context.tr('Login to continue and enjoy the contest.'),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 15,
+                      ),
+                    ),
+                    SizedBox(height: isCompact ? 10 : 14),
                     _AuthCard(
                       compact: isCompact,
-                      title: context.tr('Welcome Back'),
-                      subtitle: context.tr(
-                        'Login to continue the contest fun.',
-                      ),
+                      title: '',
+                      subtitle: '',
                       children: [
                         Form(
                           key: _formKey,
@@ -162,7 +193,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 controller: _emailController,
                                 keyboardType: TextInputType.emailAddress,
                                 decoration: InputDecoration(
-                                  labelText: context.tr('Email'),
+                                  hintText: context.tr('Email address'),
                                   prefixIcon: const Icon(Icons.email_outlined),
                                   prefixIconColor: AppColors.textMuted,
                                 ),
@@ -181,7 +212,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 controller: _passwordController,
                                 obscureText: _obscurePassword,
                                 decoration: InputDecoration(
-                                  labelText: context.tr('Password'),
+                                  hintText: context.tr('Password'),
                                   prefixIcon: const Icon(Icons.lock_outline),
                                   prefixIconColor: AppColors.textMuted,
                                   suffixIcon: IconButton(
@@ -209,26 +240,77 @@ class _LoginScreenState extends State<LoginScreen> {
                             ],
                           ),
                         ),
-                        SizedBox(height: isCompact ? 12 : 20),
+                        SizedBox(height: isCompact ? 10 : 14),
+                        Row(
+                          children: [
+                            InkWell(
+                              onTap: () =>
+                                  setState(() => _rememberMe = !_rememberMe),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    _rememberMe
+                                        ? Icons.check_box_rounded
+                                        : Icons.check_box_outline_blank_rounded,
+                                    color: _rememberMe
+                                        ? AppColors.hotPink
+                                        : AppColors.textMuted,
+                                    size: 22,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    context.tr('Remember me'),
+                                    style: const TextStyle(
+                                      color: AppColors.textLight,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Spacer(),
+                            TextButton(
+                              onPressed: () {
+                                final email = _emailController.text.trim();
+                                final target = email.isEmpty
+                                    ? '/forgot-password'
+                                    : '/forgot-password?email=${Uri.encodeComponent(email)}';
+                                Navigator.pushNamed(context, target);
+                              },
+                              child: Text(context.tr('Forgot password?')),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: isCompact ? 8 : 14),
                         GradientButton(
                           label: _isLoading
                               ? context.tr('Loading...')
                               : context.tr('Login'),
                           onPressed: _isLoading ? () {} : _handleLogin,
                         ),
-                        SizedBox(height: isCompact ? 6 : 12),
-                        TextButton(
-                          onPressed: () {},
-                          child: Text(context.tr('Forgot password?')),
+                      ],
+                    ),
+                    SizedBox(height: isCompact ? 10 : 16),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Divider(color: AppColors.border, thickness: 1),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Text(
+                            context.tr('or continue with'),
+                            style: const TextStyle(color: AppColors.textMuted),
+                          ),
+                        ),
+                        const Expanded(
+                          child: Divider(color: AppColors.border, thickness: 1),
                         ),
                       ],
                     ),
-                    SizedBox(height: isCompact ? 8 : 14),
-                    Text(
-                      context.tr('Or login with'),
-                      style: const TextStyle(color: AppColors.textMuted),
-                    ),
-                    SizedBox(height: isCompact ? 8 : 10),
+                    SizedBox(height: isCompact ? 10 : 12),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -250,17 +332,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         SocialIconButton(
                           onPressed: _isLoading
                               ? () {}
-                              : () => _handleSocialLogin(_SocialProvider.apple),
-                          child: const Icon(
-                            Icons.apple,
-                            color: Colors.white,
-                            size: 26,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        SocialIconButton(
-                          onPressed: _isLoading
-                              ? () {}
                               : () => _handleSocialLogin(
                                   _SocialProvider.facebook,
                                 ),
@@ -272,25 +343,13 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ],
                     ),
-                    SizedBox(height: isCompact ? 8 : 12),
-                    TextButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const LegalCenterScreen(),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.privacy_tip_outlined),
-                      label: Text(context.tr('Legal & Privacy')),
-                    ),
+                    SizedBox(height: isCompact ? 10 : 12),
                     SizedBox(height: isCompact ? 8 : 14),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          context.tr('New here?'),
+                          context.tr('Don’t have an account?'),
                           style: const TextStyle(color: AppColors.textMuted),
                         ),
                         const SizedBox(width: 8),
@@ -462,6 +521,7 @@ class _AuthCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasHeader = title.trim().isNotEmpty || subtitle.trim().isNotEmpty;
     return Container(
       padding: EdgeInsets.all(compact ? 16 : 20),
       decoration: BoxDecoration(
@@ -472,10 +532,12 @@ class _AuthCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: Theme.of(context).textTheme.titleLarge),
-          SizedBox(height: compact ? 4 : 6),
-          Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
-          SizedBox(height: compact ? 12 : 18),
+          if (hasHeader) ...[
+            Text(title, style: Theme.of(context).textTheme.titleLarge),
+            SizedBox(height: compact ? 4 : 6),
+            Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
+            SizedBox(height: compact ? 12 : 18),
+          ],
           ...children,
         ],
       ),

@@ -1,7 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import '../../../services/contest_report_service.dart';
+
 import '../../../l10n/l10n.dart';
+import '../../../services/contest_report_service.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/pdf_preview_screen.dart';
 import 'admin_contest_form.dart';
@@ -17,14 +18,94 @@ class AdminContestsScreen extends StatefulWidget {
 class _AdminContestsScreenState extends State<AdminContestsScreen> {
   final _searchController = TextEditingController();
   final _reportService = ContestReportService();
+
   String _search = '';
   bool _sortDesc = true;
-  String _typeFilter = 'video_contest';
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Color _statusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'live':
+      case 'active':
+        return const Color(0xFF39DF79);
+      case 'contest_created':
+      case 'upcoming':
+        return const Color(0xFF429CFF);
+      case 'draft':
+        return const Color(0xFFA67BFF);
+      case 'ended':
+      case 'completed':
+        return const Color(0xFF9AA2B5);
+      case 'cancelled':
+      case 'rejected':
+        return const Color(0xFFFF647A);
+      default:
+        return AppColors.sunset;
+    }
+  }
+
+  String _statusLabel(BuildContext context, String status) {
+    switch (status.toLowerCase()) {
+      case 'live':
+        return context.tr('Active');
+      case 'contest_created':
+        return context.tr('Upcoming');
+      case 'draft':
+        return context.tr('Draft');
+      case 'ended':
+        return context.tr('Ended');
+      case 'cancelled':
+        return context.tr('Cancelled');
+      default:
+        return status.replaceAll('_', ' ');
+    }
+  }
+
+  String _formatShortDate(DateTime? date) {
+    if (date == null) return 'Not set';
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${date.day.toString().padLeft(2, '0')} ${months[date.month - 1]} ${date.year}';
+  }
+
+  Future<void> _openContestReport({
+    required String contestId,
+    required Map<String, dynamic> data,
+  }) async {
+    final title = (data['title'] ?? contestId).toString();
+    final bytes = await _reportService.buildContestReportFromFirestore(
+      contestId: contestId,
+      contestData: data,
+    );
+    if (!mounted) return;
+    final safe = title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-');
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PdfPreviewScreen(
+          title: context.tr('Contest Report'),
+          bytes: bytes,
+          filename: '$safe-contest-report.pdf',
+        ),
+      ),
+    );
   }
 
   @override
@@ -37,16 +118,34 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
       appBar: AppBar(
         title: Text(context.tr('Contests')),
         backgroundColor: AppColors.deepSpace,
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const AdminVideoContestForm()),
-          );
-        },
-        icon: const Icon(Icons.add),
-        label: Text(context.tr('Create Video Contest')),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: FilledButton.icon(
+              onPressed: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const AdminVideoContestForm(),
+                  ),
+                );
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF7B3FF2),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: const Icon(Icons.add, size: 18),
+              label: Text(context.tr('Add')),
+            ),
+          ),
+        ],
       ),
       body: Stack(
         children: [
@@ -54,83 +153,52 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
           Column(
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
                 child: Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: AppColors.card,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.border),
+                    color: const Color(0xFF18152A),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: AppColors.border.withOpacity(0.85),
+                    ),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      TextField(
-                        controller: _searchController,
-                        onChanged: (v) =>
-                            setState(() => _search = v.trim().toLowerCase()),
-                        decoration: InputDecoration(
-                          hintText: context.tr(
-                            'Search contest, details, region',
-                          ),
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: _searchController.text.isEmpty
-                              ? null
-                              : IconButton(
-                                  onPressed: () {
-                                    _searchController.clear();
-                                    setState(() => _search = '');
-                                  },
-                                  icon: const Icon(Icons.close),
-                                ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        context.tr('Contest Type'),
-                        style: TextStyle(
-                          color: AppColors.textMuted,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          ChoiceChip(
-                            label: Text(context.tr('Video Contests')),
-                            selected: _typeFilter == 'video_contest',
-                            onSelected: (_) =>
-                                setState(() => _typeFilter = 'video_contest'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        context.tr('Sort By Created Date'),
-                        style: TextStyle(
-                          color: AppColors.textMuted,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          ChoiceChip(
-                            label: Text(context.tr('Newest First')),
-                            selected: _sortDesc,
-                            onSelected: (_) => setState(() => _sortDesc = true),
-                          ),
-                          const SizedBox(width: 8),
-                          ChoiceChip(
-                            label: Text(context.tr('Oldest First')),
-                            selected: !_sortDesc,
-                            onSelected: (_) =>
-                                setState(() => _sortDesc = false),
-                          ),
-                        ],
-                      ),
-                    ],
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (value) =>
+                        setState(() => _search = value.trim().toLowerCase()),
+                    decoration: InputDecoration(
+                      hintText: context.tr('Search contests'),
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _searchController.text.isEmpty
+                          ? null
+                          : IconButton(
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() => _search = '');
+                              },
+                              icon: const Icon(Icons.close),
+                            ),
+                    ),
                   ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Row(
+                  children: [
+                    ChoiceChip(
+                      label: Text(context.tr('Newest First')),
+                      selected: _sortDesc,
+                      onSelected: (_) => setState(() => _sortDesc = true),
+                    ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: Text(context.tr('Oldest First')),
+                      selected: !_sortDesc,
+                      onSelected: (_) => setState(() => _sortDesc = false),
+                    ),
+                  ],
                 ),
               ),
               Expanded(
@@ -158,85 +226,85 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
                       final data = doc.data();
                       final rawType = (data['contestType'] ?? 'video_contest')
                           .toString();
-                      if (_typeFilter == 'video_contest' &&
-                          rawType == 'sponsor_contest') {
-                        return false;
-                      }
+                      if (rawType == 'sponsor_contest') return false;
                       if (_search.isEmpty) return true;
-                      final title = (data['title'] ?? '')
-                          .toString()
-                          .toLowerCase();
-                      final desc = (data['description'] ?? '')
-                          .toString()
-                          .toLowerCase();
-                      final region = (data['region'] ?? '')
-                          .toString()
-                          .toLowerCase();
-                      final sponsor = (data['sponsorName'] ?? '')
-                          .toString()
-                          .toLowerCase();
-                      final type = rawType.toLowerCase();
-                      return title.contains(_search) ||
-                          desc.contains(_search) ||
-                          region.contains(_search) ||
-                          sponsor.contains(_search) ||
-                          type.contains(_search);
+                      final haystack =
+                          [data['title'], data['description'], data['region']]
+                              .map((e) => (e ?? '').toString().toLowerCase())
+                              .join(' ');
+                      return haystack.contains(_search);
                     }).toList();
 
                     if (filtered.isEmpty) {
                       return Center(
-                        child: Text(context.tr('No matching contests.')),
+                        child: Text(
+                          context.tr('No matching contests.'),
+                          style: const TextStyle(color: AppColors.textMuted),
+                        ),
                       );
                     }
 
                     return ListView.separated(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: filtered.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                      itemCount: filtered.length + 1,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
                       itemBuilder: (context, index) {
+                        if (index == filtered.length) {
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 4, bottom: 12),
+                            child: Center(
+                              child: Text(
+                                context.tr('No more contests'),
+                                style: const TextStyle(
+                                  color: AppColors.textMuted,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          );
+                        }
+
                         final doc = filtered[index];
                         final data = doc.data();
-                        final title = (data['title'] ?? '') as String;
-                        final desc = (data['description'] ?? '') as String;
-                        final region = (data['region'] ?? '') as String;
-                        final maxVideos = (data['maxVideos'] ?? 0).toString();
-                        final logoUrl = (data['logoUrl'] ?? '') as String;
-                        final sponsorName =
-                            (data['sponsorName'] ?? 'Unassigned').toString();
-                        final winnerPrize =
-                            ((data['winnerPrize'] ?? 100) as num).toDouble();
-                        final challengeQuestion =
-                            (data['challengeQuestion'] ?? '').toString();
-                        final contestType =
-                            (data['contestType'] ?? 'video_contest').toString();
-                        final contestVideoUrl = (data['contestVideoUrl'] ?? '')
+                        final title = (data['title'] ?? '').toString();
+                        final desc = (data['description'] ?? '').toString();
+                        final logoUrl = (data['logoUrl'] ?? '').toString();
+                        final statusRaw = (data['status'] ?? 'contest_created')
                             .toString();
-                        final status = (data['status'] ?? 'contest_created')
-                            .toString()
-                            .replaceAll('_', ' ');
+                        final status = _statusLabel(context, statusRaw);
+                        final statusColor = _statusColor(statusRaw);
+                        final participants =
+                            (data['participantsCount'] ??
+                                    data['participantCount'] ??
+                                    data['totalParticipants'] ??
+                                    0)
+                                .toString();
+                        final endDate =
+                            (data['submissionEnd'] as Timestamp?)?.toDate() ??
+                            (data['endDate'] as Timestamp?)?.toDate() ??
+                            (data['votingEnd'] as Timestamp?)?.toDate();
+                        final dateLabel = endDate == null
+                            ? context.tr('Date')
+                            : context.tr('End Date');
+
                         return Container(
-                          padding: const EdgeInsets.all(14),
+                          padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: AppColors.card,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: AppColors.border),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Color(0x40000000),
-                                blurRadius: 12,
-                                offset: Offset(0, 6),
-                              ),
-                            ],
+                            color: const Color(0xFF18152A),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: AppColors.border.withOpacity(0.9),
+                            ),
                           ),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Container(
-                                width: 54,
-                                height: 54,
+                                width: 92,
+                                height: 72,
                                 decoration: BoxDecoration(
                                   color: AppColors.cardSoft,
-                                  borderRadius: BorderRadius.circular(14),
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: logoUrl.isNotEmpty
                                     ? ClipRRect(
@@ -246,9 +314,37 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
                                           fit: BoxFit.cover,
                                         ),
                                       )
-                                    : const Icon(
-                                        Icons.emoji_events,
-                                        color: AppColors.hotPink,
+                                    : Container(
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          gradient: const LinearGradient(
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                            colors: [
+                                              Color(0xFF4E1C7E),
+                                              Color(0xFF21113B),
+                                            ],
+                                          ),
+                                        ),
+                                        child: Center(
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(8),
+                                            child: Text(
+                                              title.toUpperCase(),
+                                              maxLines: 3,
+                                              overflow: TextOverflow.ellipsis,
+                                              textAlign: TextAlign.center,
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 12,
+                                                height: 1.05,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                       ),
                               ),
                               const SizedBox(width: 12),
@@ -256,123 +352,118 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      title,
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.titleMedium,
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: contestType == 'sponsor_contest'
-                                            ? AppColors.sunset.withOpacity(0.18)
-                                            : AppColors.hotPink.withOpacity(
-                                                0.18,
-                                              ),
-                                        borderRadius: BorderRadius.circular(
-                                          999,
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            title,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .titleMedium
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                          ),
                                         ),
-                                      ),
-                                      child: Text(
-                                        contestType == 'sponsor_contest'
-                                            ? context.tr('Sponsored Contest')
-                                            : context.tr('Video Contest'),
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w700,
-                                          color:
-                                              contestType == 'sponsor_contest'
-                                              ? AppColors.sunset
-                                              : AppColors.hotPink,
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: statusColor.withOpacity(
+                                              0.16,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              999,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            status,
+                                            style: TextStyle(
+                                              color: statusColor,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
                                         ),
-                                      ),
+                                      ],
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      desc,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodySmall,
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.groups_2_outlined,
+                                          size: 14,
+                                          color: AppColors.textMuted,
+                                        ),
+                                        const SizedBox(width: 5),
+                                        Text(
+                                          participants,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          context.tr('Participants'),
+                                          style: const TextStyle(
+                                            color: AppColors.textMuted,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                     const SizedBox(height: 6),
                                     Row(
                                       children: [
-                                        Text(
-                                          '${context.tr('Region')}: $region',
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.bodySmall,
+                                        const Icon(
+                                          Icons.calendar_today_outlined,
+                                          size: 13,
+                                          color: AppColors.textMuted,
                                         ),
-                                        const SizedBox(width: 12),
+                                        const SizedBox(width: 5),
                                         Text(
-                                          '${context.tr('Max')}: $maxVideos',
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.bodySmall,
+                                          _formatShortDate(endDate),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          dateLabel,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: AppColors.textMuted,
+                                            fontSize: 10,
+                                          ),
                                         ),
                                       ],
                                     ),
-                                    if (contestType == 'sponsor_contest') ...[
-                                      const SizedBox(height: 2),
+                                    if (desc.trim().isNotEmpty) ...[
+                                      const SizedBox(height: 8),
                                       Text(
-                                        '${context.tr('Sponsor')}: $sponsorName',
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.bodySmall,
-                                      ),
-                                    ],
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      '${context.tr('Winner Prize')}: \$${winnerPrize.toStringAsFixed(0)}',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodySmall,
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      '${context.tr('Status')}: $status',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodySmall,
-                                    ),
-                                    if (challengeQuestion.isNotEmpty) ...[
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        '${context.tr('Challenge')}: $challengeQuestion',
-                                        maxLines: 1,
+                                        desc,
+                                        maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.bodySmall,
-                                      ),
-                                    ],
-                                    if (contestType == 'video_contest' &&
-                                        contestVideoUrl.isNotEmpty) ...[
-                                      const SizedBox(height: 6),
-                                      Row(
-                                        children: [
-                                          const Icon(
-                                            Icons.video_library,
-                                            size: 15,
-                                            color: AppColors.sunset,
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            context.tr('Script video attached'),
-                                            style: const TextStyle(
-                                              color: AppColors.sunset,
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w600,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color: AppColors.textMuted,
                                             ),
-                                          ),
-                                        ],
                                       ),
                                     ],
                                   ],
@@ -384,16 +475,10 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
                                     await Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                        builder: (_) =>
-                                            contestType == 'sponsor_contest'
-                                            ? AdminContestForm(
-                                                contestId: doc.id,
-                                                existing: data,
-                                              )
-                                            : AdminVideoContestForm(
-                                                contestId: doc.id,
-                                                existing: data,
-                                              ),
+                                        builder: (_) => AdminVideoContestForm(
+                                          contestId: doc.id,
+                                          existing: data,
+                                        ),
                                       ),
                                     );
                                   } else if (value == 'report') {
@@ -459,29 +544,6 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
       ),
     );
   }
-
-  Future<void> _openContestReport({
-    required String contestId,
-    required Map<String, dynamic> data,
-  }) async {
-    final title = (data['title'] ?? contestId).toString();
-    final bytes = await _reportService.buildContestReportFromFirestore(
-      contestId: contestId,
-      contestData: data,
-    );
-    if (!mounted) return;
-    final safe = title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-');
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => PdfPreviewScreen(
-          title: context.tr('Contest Report'),
-          bytes: bytes,
-          filename: '$safe-contest-report.pdf',
-        ),
-      ),
-    );
-  }
 }
 
 class _SpaceBackground extends StatelessWidget {
@@ -495,41 +557,6 @@ class _SpaceBackground extends StatelessWidget {
           center: Alignment.topCenter,
           radius: 1.2,
           colors: [AppColors.cosmicPurple, AppColors.deepSpace],
-        ),
-      ),
-      child: Stack(
-        children: const [
-          Positioned(
-            top: -120,
-            left: -40,
-            child: _GlowOrb(size: 220, color: AppColors.hotPink),
-          ),
-          Positioned(
-            top: 160,
-            right: -60,
-            child: _GlowOrb(size: 220, color: AppColors.neonGreen),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _GlowOrb extends StatelessWidget {
-  const _GlowOrb({required this.size, required this.color});
-
-  final double size;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [color.withOpacity(0.55), color.withOpacity(0.0)],
         ),
       ),
     );

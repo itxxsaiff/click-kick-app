@@ -18,16 +18,7 @@ class AdminVideosScreen extends StatefulWidget {
 class _AdminVideosScreenState extends State<AdminVideosScreen> {
   final _searchController = TextEditingController();
   String _search = '';
-  bool _sortDesc = true;
   String _statusFilter = 'all';
-  static const List<String> _statusOptions = <String>[
-    'all',
-    'pending',
-    'under_review',
-    'approved',
-    'rejected',
-    'removed',
-  ];
 
   @override
   void dispose() {
@@ -44,7 +35,21 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.customTitle ?? context.tr('Videos Moderation')),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(widget.customTitle ?? context.tr('Video Moderation')),
+            Text(
+              context.tr('Review and moderate videos'),
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
         backgroundColor: AppColors.deepSpace,
       ),
       body: Stack(
@@ -53,23 +58,16 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
           Column(
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.card,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      TextField(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
                         controller: _searchController,
                         onChanged: (v) =>
                             setState(() => _search = v.trim().toLowerCase()),
                         decoration: InputDecoration(
-                          hintText: context.tr('Search contest or user'),
+                          hintText: context.tr('Search videos'),
                           prefixIcon: const Icon(Icons.search),
                           suffixIcon: _searchController.text.isEmpty
                               ? null
@@ -82,63 +80,52 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                                 ),
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      Text(
-                        context.tr('Sort By Created Date'),
-                        style: TextStyle(
-                          color: AppColors.textMuted,
-                          fontSize: 12,
-                        ),
+                    ),
+                    const SizedBox(width: 10),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF7B3FF2),
+                        borderRadius: BorderRadius.circular(14),
                       ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          ChoiceChip(
-                            label: Text(context.tr('Newest First')),
-                            selected: _sortDesc,
-                            onSelected: (_) => setState(() => _sortDesc = true),
+                      child: PopupMenuButton<String>(
+                        tooltip: context.tr('Filter'),
+                        initialValue: _statusFilter,
+                        color: AppColors.card,
+                        icon: const Icon(
+                          Icons.filter_list_rounded,
+                          color: Colors.white,
+                        ),
+                        onSelected: (value) =>
+                            setState(() => _statusFilter = value),
+                        itemBuilder: (context) => [
+                          PopupMenuItem(
+                            value: 'all',
+                            child: Text(context.tr('All')),
                           ),
-                          const SizedBox(width: 8),
-                          ChoiceChip(
-                            label: Text(context.tr('Oldest First')),
-                            selected: !_sortDesc,
-                            onSelected: (_) =>
-                                setState(() => _sortDesc = false),
+                          PopupMenuItem(
+                            value: 'pending',
+                            child: Text(context.tr('Pending')),
+                          ),
+                          PopupMenuItem(
+                            value: 'approved',
+                            child: Text(context.tr('Approved')),
+                          ),
+                          PopupMenuItem(
+                            value: 'rejected',
+                            child: Text(context.tr('Rejected')),
+                          ),
+                          PopupMenuItem(
+                            value: 'under_review',
+                            child: Text(context.tr('Under Review')),
+                          ),
+                          PopupMenuItem(
+                            value: 'removed',
+                            child: Text(context.tr('Removed')),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 10),
-                      Text(
-                        context.tr('Filter By Status'),
-                        style: TextStyle(
-                          color: AppColors.textMuted,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: _statusOptions.map((status) {
-                            final selected = _statusFilter == status;
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: FilterChip(
-                                label: Text(_toStatusLabel(context, status)),
-                                selected: selected,
-                                onSelected: (_) =>
-                                    setState(() => _statusFilter = status),
-                                selectedColor: _statusColor(
-                                  status,
-                                ).withOpacity(0.2),
-                                checkmarkColor: _statusColor(status),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
               Expanded(
@@ -181,12 +168,9 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                                   (b.data()['createdAt'] as Timestamp?)
                                       ?.millisecondsSinceEpoch ??
                                   0;
-                              return _sortDesc
-                                  ? bt.compareTo(at)
-                                  : at.compareTo(bt);
+                              return bt.compareTo(at);
                             });
 
-                        final total = docs.length;
                         final pendingCount = docs
                             .where(
                               (d) =>
@@ -220,15 +204,6 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                             )
                             .length;
 
-                        final removedCount = docs
-                            .where(
-                              (d) =>
-                                  (d.data()['status'] ?? 'pending')
-                                      .toString() ==
-                                  'removed',
-                            )
-                            .length;
-
                         final filtered = docs.where((doc) {
                           final status = (doc.data()['status'] ?? 'pending')
                               .toString();
@@ -239,8 +214,15 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                               contestId != widget.contestIdFilter) {
                             return false;
                           }
-                          if (_statusFilter != 'all' && status != _statusFilter)
+                          if (_statusFilter == 'pending') {
+                            if (status != 'pending' &&
+                                status != 'under_review') {
+                              return false;
+                            }
+                          } else if (_statusFilter != 'all' &&
+                              status != _statusFilter) {
                             return false;
+                          }
                           if (_search.isEmpty) return true;
                           final contestIdLc = contestId.toLowerCase();
                           final userId = (doc.data()['userId'] ?? '')
@@ -250,353 +232,433 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                               userId.contains(_search);
                         }).toList();
 
-                        return ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                          itemCount: filtered.isEmpty ? 2 : filtered.length + 1,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            if (index == 0) {
-                              return LayoutBuilder(
-                                builder: (context, constraints) {
-                                  final width = constraints.maxWidth;
-                                  final crossAxisCount = width >= 980
-                                      ? 4
-                                      : width >= 760
-                                      ? 3
-                                      : 2;
-                                  final ratio = width >= 980
-                                      ? 2.1
-                                      : width >= 760
-                                      ? 1.7
-                                      : 1.35;
-                                  return GridView.count(
-                                    crossAxisCount: crossAxisCount,
-                                    crossAxisSpacing: 10,
-                                    mainAxisSpacing: 10,
-                                    shrinkWrap: true,
-                                    physics:
-                                        const NeverScrollableScrollPhysics(),
-                                    childAspectRatio: ratio,
-                                    children: [
-                                      _StatCard(
-                                        label: context.tr('Total'),
-                                        value: total.toString(),
-                                        color: AppColors.hotPink,
-                                        icon: Icons.video_collection,
-                                      ),
-                                      _StatCard(
-                                        label: context.tr('Pending'),
-                                        value: pendingCount.toString(),
-                                        color: AppColors.sunset,
-                                        icon: Icons.hourglass_top,
-                                      ),
-                                      _StatCard(
-                                        label: context.tr('Under Review'),
-                                        value: underReviewCount.toString(),
-                                        color: const Color(0xFF5AB4FF),
-                                        icon: Icons.rule_folder,
-                                      ),
-                                      _StatCard(
-                                        label: context.tr('Approved'),
-                                        value: approvedCount.toString(),
-                                        color: const Color(0xFF2DAF6F),
-                                        icon: Icons.check_circle,
-                                      ),
-                                      _StatCard(
-                                        label: context.tr('Rejected'),
-                                        value: rejectedCount.toString(),
-                                        color: const Color(0xFFC53D5D),
-                                        icon: Icons.cancel,
-                                      ),
-                                      _StatCard(
-                                        label: context.tr('Removed'),
-                                        value: removedCount.toString(),
-                                        color: const Color(0xFF9B8AA8),
-                                        icon: Icons.remove_circle,
-                                      ),
-                                    ],
-                                  );
-                                },
-                              );
-                            }
-                            if (filtered.isEmpty) {
-                              return Container(
-                                padding: const EdgeInsets.all(16),
+                        return Column(
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
                                 decoration: BoxDecoration(
-                                  color: AppColors.card,
+                                  color: const Color(0xFF18152A),
                                   borderRadius: BorderRadius.circular(14),
                                   border: Border.all(color: AppColors.border),
                                 ),
-                                child: Text(context.tr('No matching videos.')),
-                              );
-                            }
-                            final doc = filtered[index - 1];
-                            final data = doc.data();
-                            final status = (data['status'] ?? 'pending')
-                                .toString();
-                            final contestId = (data['contestId'] ?? '')
-                                .toString();
-                            final userId = (data['userId'] ?? '').toString();
-                            final videoUrl = (data['videoUrl'] ?? '')
-                                .toString();
-                            final reportReason =
-                                (data['sponsorReportReason'] ?? '').toString();
-
-                            return Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: AppColors.card,
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: AppColors.border),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Color(0x40000000),
-                                    blurRadius: 12,
-                                    offset: Offset(0, 6),
-                                  ),
-                                ],
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Container(
-                                        width: 42,
-                                        height: 42,
-                                        decoration: BoxDecoration(
-                                          color: AppColors.hotPink.withOpacity(
-                                            0.15,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                        child: const Icon(
-                                          Icons.video_file,
-                                          color: AppColors.hotPink,
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: _ModerationTab(
+                                        label:
+                                            '${context.tr('Pending')} (${pendingCount + underReviewCount})',
+                                        selected:
+                                            _statusFilter == 'pending' ||
+                                            _statusFilter == 'under_review',
+                                        onTap: () => setState(
+                                          () => _statusFilter = 'pending',
                                         ),
                                       ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: FutureBuilder<_SubmissionMeta>(
-                                          future: _loadMeta(
-                                            contestId: contestId,
-                                            userId: userId,
-                                          ),
-                                          builder: (context, metaSnap) {
-                                            final fallbackContestName =
-                                                (data['contestTitle'] ??
-                                                        data['contestName'] ??
-                                                        '')
-                                                    .toString();
-                                            final fallbackUserName =
-                                                (data['userName'] ??
-                                                        data['participantName'] ??
-                                                        '')
-                                                    .toString();
-                                            final contestName =
-                                                metaSnap.data?.contestName ??
-                                                (fallbackContestName.isNotEmpty
-                                                    ? fallbackContestName
-                                                    : context.tr(
-                                                        'Unknown Contest',
-                                                      ));
-                                            final userName =
-                                                metaSnap.data?.userName ??
-                                                (fallbackUserName.isNotEmpty
-                                                    ? fallbackUserName
-                                                    : context.tr(
-                                                        'Unknown User',
-                                                      ));
-                                            return Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  '${context.tr('Contest')}: $contestName',
-                                                  style: Theme.of(
-                                                    context,
-                                                  ).textTheme.titleSmall,
-                                                ),
-                                                Text(
-                                                  '${context.tr('User')}: $userName',
-                                                  style: Theme.of(
-                                                    context,
-                                                  ).textTheme.bodySmall,
-                                                ),
-                                              ],
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 6,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: _statusColor(
-                                            status,
-                                          ).withOpacity(0.18),
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          status.toUpperCase(),
-                                          style: TextStyle(
-                                            color: _statusColor(status),
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  const Divider(
-                                    color: AppColors.border,
-                                    height: 1,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  FilledButton.tonalIcon(
-                                    onPressed: videoUrl.isEmpty
-                                        ? null
-                                        : () async {
-                                            if (!context.mounted) return;
-                                            await showDialog<void>(
-                                              context: context,
-                                              barrierDismissible: true,
-                                              builder: (_) =>
-                                                  _VideoPlayerDialog(
-                                                    videoUrl: videoUrl,
-                                                  ),
-                                            );
-                                          },
-                                    icon: const Icon(Icons.play_circle_fill),
-                                    label: Text(context.tr('Watch Video')),
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: AppColors.cardSoft,
-                                      foregroundColor: Colors.white,
                                     ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  OutlinedButton.icon(
-                                    onPressed: () => _showDetails(
-                                      context,
-                                      doc.reference,
-                                      data,
+                                    Expanded(
+                                      child: _ModerationTab(
+                                        label:
+                                            '${context.tr('Approved')} ($approvedCount)',
+                                        selected: _statusFilter == 'approved',
+                                        onTap: () => setState(
+                                          () => _statusFilter = 'approved',
+                                        ),
+                                      ),
                                     ),
-                                    icon: const Icon(Icons.visibility_outlined),
-                                    label: Text(context.tr('View Details')),
-                                  ),
-                                  if (status == 'under_review' &&
-                                      reportReason.isNotEmpty) ...[
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      '${context.tr('Sponsor report')}: $reportReason',
-                                      style: const TextStyle(
-                                        color: AppColors.sunset,
-                                        fontWeight: FontWeight.w600,
+                                    Expanded(
+                                      child: _ModerationTab(
+                                        label:
+                                            '${context.tr('Rejected')} ($rejectedCount)',
+                                        selected: _statusFilter == 'rejected',
+                                        onTap: () => setState(
+                                          () => _statusFilter = 'rejected',
+                                        ),
                                       ),
                                     ),
                                   ],
-                                  StreamBuilder<
-                                    QuerySnapshot<Map<String, dynamic>>
-                                  >(
-                                    stream: doc.reference
-                                        .collection('sponsor_comments')
-                                        .orderBy('createdAt', descending: true)
-                                        .limit(1)
-                                        .snapshots(),
-                                    builder: (context, commentSnap) {
-                                      if (!commentSnap.hasData ||
-                                          commentSnap.data!.docs.isEmpty) {
-                                        return const SizedBox.shrink();
-                                      }
-                                      final latest =
-                                          commentSnap.data!.docs.first;
-                                      final c = (latest.data()['comment'] ?? '')
-                                          .toString();
-                                      final by =
-                                          (latest.data()['sponsorName'] ??
-                                                  'Sponsor')
-                                              .toString();
-                                      if (c.isEmpty) {
-                                        return const SizedBox.shrink();
-                                      }
-                                      return Padding(
-                                        padding: const EdgeInsets.only(top: 8),
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: ListView.separated(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  0,
+                                  16,
+                                  16,
+                                ),
+                                itemCount: filtered.isEmpty
+                                    ? 1
+                                    : filtered.length + 1,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: 12),
+                                itemBuilder: (context, index) {
+                                  if (filtered.isEmpty) {
+                                    return Container(
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF151324),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(
+                                          color: AppColors.border,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        context.tr('No matching videos.'),
+                                      ),
+                                    );
+                                  }
+                                  if (index == filtered.length) {
+                                    return Padding(
+                                      padding: const EdgeInsets.only(
+                                        top: 4,
+                                        bottom: 6,
+                                      ),
+                                      child: Center(
                                         child: Text(
-                                          '${context.tr('Sponsor comment')} ($by): $c',
+                                          context.tr('No more videos'),
                                           style: const TextStyle(
                                             color: AppColors.textMuted,
                                             fontSize: 12,
                                           ),
                                         ),
-                                      );
-                                    },
-                                  ),
-                                  if (status == 'pending' ||
-                                      status == 'under_review') ...[
-                                    const SizedBox(height: 12),
-                                    Row(
+                                      ),
+                                    );
+                                  }
+
+                                  final doc = filtered[index];
+                                  final data = doc.data();
+                                  final status = (data['status'] ?? 'pending')
+                                      .toString();
+                                  final contestId = (data['contestId'] ?? '')
+                                      .toString();
+                                  final userId = (data['userId'] ?? '')
+                                      .toString();
+                                  final videoUrl = (data['videoUrl'] ?? '')
+                                      .toString();
+                                  final thumbnailUrl =
+                                      (data['thumbnailUrl'] ??
+                                              data['thumbUrl'] ??
+                                              '')
+                                          .toString();
+                                  final durationLabel =
+                                      (data['durationLabel'] ?? '').toString();
+                                  final createdAt =
+                                      (data['createdAt'] as Timestamp?)
+                                          ?.toDate();
+
+                                  return Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF151324),
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: AppColors.border,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Expanded(
-                                          child: ElevatedButton(
-                                            onPressed: () => _approve(
-                                              context,
-                                              doc.reference,
-                                              data,
-                                            ),
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: const Color(
-                                                0xFF2DAF6F,
+                                        Stack(
+                                          children: [
+                                            Container(
+                                              width: 116,
+                                              height: 78,
+                                              decoration: BoxDecoration(
+                                                color: AppColors.cardSoft,
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                                gradient: thumbnailUrl.isEmpty
+                                                    ? const LinearGradient(
+                                                        begin:
+                                                            Alignment.topLeft,
+                                                        end: Alignment
+                                                            .bottomRight,
+                                                        colors: [
+                                                          Color(0xFF4B1A7E),
+                                                          Color(0xFF12101C),
+                                                        ],
+                                                      )
+                                                    : null,
                                               ),
-                                              foregroundColor: Colors.white,
+                                              child: thumbnailUrl.isNotEmpty
+                                                  ? ClipRRect(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            12,
+                                                          ),
+                                                      child: Image.network(
+                                                        thumbnailUrl,
+                                                        fit: BoxFit.cover,
+                                                        errorBuilder:
+                                                            (
+                                                              _,
+                                                              __,
+                                                              ___,
+                                                            ) => const Icon(
+                                                              Icons.video_file,
+                                                              color: Colors
+                                                                  .white70,
+                                                            ),
+                                                      ),
+                                                    )
+                                                  : const Center(
+                                                      child: Icon(
+                                                        Icons.video_file,
+                                                        color: Colors.white70,
+                                                        size: 28,
+                                                      ),
+                                                    ),
                                             ),
-                                            child: Text(context.tr('Approve')),
+                                            if (durationLabel.trim().isNotEmpty)
+                                              Positioned(
+                                                right: 6,
+                                                bottom: 6,
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 6,
+                                                        vertical: 3,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.black
+                                                        .withOpacity(0.72),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          8,
+                                                        ),
+                                                  ),
+                                                  child: Text(
+                                                    durationLabel,
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 11,
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: FutureBuilder<_SubmissionMeta>(
+                                            future: _loadMeta(
+                                              contestId: contestId,
+                                              userId: userId,
+                                            ),
+                                            builder: (context, metaSnap) {
+                                              final fallbackContestName =
+                                                  (data['contestTitle'] ??
+                                                          data['contestName'] ??
+                                                          '')
+                                                      .toString();
+                                              final fallbackUserName =
+                                                  (data['userName'] ??
+                                                          data['participantName'] ??
+                                                          '')
+                                                      .toString();
+                                              final contestName =
+                                                  metaSnap.data?.contestName ??
+                                                  (fallbackContestName
+                                                          .isNotEmpty
+                                                      ? fallbackContestName
+                                                      : context.tr(
+                                                          'Video submission',
+                                                        ));
+                                              final userName =
+                                                  metaSnap.data?.userName ??
+                                                  (fallbackUserName.isNotEmpty
+                                                      ? fallbackUserName
+                                                      : context.tr(
+                                                          'Unknown User',
+                                                        ));
+                                              return Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Row(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      Expanded(
+                                                        child: Text(
+                                                          contestName,
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                          style:
+                                                              const TextStyle(
+                                                                color: Colors
+                                                                    .white,
+                                                                fontSize: 19,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w800,
+                                                              ),
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 8),
+                                                      Container(
+                                                        padding:
+                                                            const EdgeInsets.symmetric(
+                                                              horizontal: 10,
+                                                              vertical: 5,
+                                                            ),
+                                                        decoration: BoxDecoration(
+                                                          color: _statusColor(
+                                                            status,
+                                                          ).withOpacity(0.18),
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                10,
+                                                              ),
+                                                        ),
+                                                        child: Text(
+                                                          _toStatusLabel(
+                                                            context,
+                                                            status,
+                                                          ),
+                                                          style: TextStyle(
+                                                            color: _statusColor(
+                                                              status,
+                                                            ),
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.w800,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    '${context.tr('by')} $userName',
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      color:
+                                                          AppColors.textMuted,
+                                                      fontSize: 13,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 8),
+                                                  _VideoMeta(
+                                                    icon: Icons
+                                                        .calendar_today_outlined,
+                                                    label:
+                                                        '${context.tr('Submitted')}: ${_formatShortDate(createdAt)}',
+                                                  ),
+                                                ],
+                                              );
+                                            },
                                           ),
                                         ),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: ElevatedButton(
-                                            onPressed: () => _reject(
-                                              context,
-                                              doc.reference,
-                                              data,
-                                            ),
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: const Color(
-                                                0xFFC53D5D,
-                                              ),
-                                              foregroundColor: Colors.white,
-                                            ),
-                                            child: Text(context.tr('Reject')),
+                                        PopupMenuButton<String>(
+                                          padding: EdgeInsets.zero,
+                                          icon: const Icon(
+                                            Icons.more_vert,
+                                            color: AppColors.textMuted,
                                           ),
+                                          onSelected: (value) async {
+                                            switch (value) {
+                                              case 'preview':
+                                                if (videoUrl.isNotEmpty) {
+                                                  await showDialog<void>(
+                                                    context: context,
+                                                    barrierDismissible: true,
+                                                    builder: (_) =>
+                                                        _VideoPlayerDialog(
+                                                          videoUrl: videoUrl,
+                                                        ),
+                                                  );
+                                                }
+                                                break;
+                                              case 'details':
+                                                await _showDetails(
+                                                  context,
+                                                  doc.reference,
+                                                  data,
+                                                );
+                                                break;
+                                              case 'approve':
+                                                await _approve(
+                                                  context,
+                                                  doc.reference,
+                                                  data,
+                                                );
+                                                break;
+                                              case 'reject':
+                                                await _reject(
+                                                  context,
+                                                  doc.reference,
+                                                  data,
+                                                );
+                                                break;
+                                              case 'remove':
+                                                await _removeAfterPublish(
+                                                  context,
+                                                  doc.reference,
+                                                  data,
+                                                );
+                                                break;
+                                            }
+                                          },
+                                          itemBuilder: (context) => [
+                                            if (videoUrl.isNotEmpty)
+                                              PopupMenuItem(
+                                                value: 'preview',
+                                                child: Text(
+                                                  context.tr('Watch Video'),
+                                                ),
+                                              ),
+                                            PopupMenuItem(
+                                              value: 'details',
+                                              child: Text(
+                                                context.tr('View Details'),
+                                              ),
+                                            ),
+                                            if (status == 'pending' ||
+                                                status == 'under_review')
+                                              PopupMenuItem(
+                                                value: 'approve',
+                                                child: Text(
+                                                  context.tr('Approve'),
+                                                ),
+                                              ),
+                                            if (status == 'pending' ||
+                                                status == 'under_review')
+                                              PopupMenuItem(
+                                                value: 'reject',
+                                                child: Text(
+                                                  context.tr('Reject'),
+                                                ),
+                                              ),
+                                            if (status == 'approved' ||
+                                                status == 'under_review')
+                                              PopupMenuItem(
+                                                value: 'remove',
+                                                child: Text(
+                                                  context.tr('Remove Video'),
+                                                ),
+                                              ),
+                                          ],
                                         ),
                                       ],
                                     ),
-                                  ],
-                                  if (status == 'approved' ||
-                                      status == 'under_review') ...[
-                                    const SizedBox(height: 10),
-                                    OutlinedButton.icon(
-                                      onPressed: () => _removeAfterPublish(
-                                        context,
-                                        doc.reference,
-                                        data,
-                                      ),
-                                      icon: const Icon(Icons.delete_outline),
-                                      label: Text(context.tr('Remove Video')),
-                                    ),
-                                  ],
-                                ],
+                                  );
+                                },
                               ),
-                            );
-                          },
+                            ),
+                          ],
                         );
                       },
                     );
@@ -696,7 +758,8 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
     await _notifyParticipant(
       userId: (data['userId'] ?? '').toString(),
       title: context.tr('Video Rejected'),
-      message: '${context.tr('Your video was rejected.')} ${context.tr('Reason')}: $reason',
+      message:
+          '${context.tr('Your video was rejected.')} ${context.tr('Reason')}: $reason',
       contestId: (data['contestId'] ?? '').toString(),
       submissionId: ref.id,
     );
@@ -754,7 +817,8 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
     await _notifyParticipant(
       userId: (data['userId'] ?? '').toString(),
       title: context.tr('Video Removed'),
-      message: '${context.tr('Your video was removed.')} ${context.tr('Reason')}: $reason',
+      message:
+          '${context.tr('Your video was removed.')} ${context.tr('Reason')}: $reason',
       contestId: (data['contestId'] ?? '').toString(),
       submissionId: ref.id,
     );
@@ -905,6 +969,25 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
         return status;
     }
   }
+
+  String _formatShortDate(DateTime? date) {
+    if (date == null) return '--';
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${date.day.toString().padLeft(2, '0')} ${months[date.month - 1]} ${date.year}';
+  }
 }
 
 class _VideoDetailsDialog extends StatelessWidget {
@@ -950,7 +1033,10 @@ class _VideoDetailsDialog extends StatelessWidget {
       MapEntry(context.tr('Status'), status),
       MapEntry(context.tr('Total Votes'), votes.toString()),
       MapEntry(context.tr('Total Shares'), shares.toString()),
-      MapEntry(context.tr('Contest Admin'), contestAdminName.isEmpty ? '-' : contestAdminName),
+      MapEntry(
+        context.tr('Contest Admin'),
+        contestAdminName.isEmpty ? '-' : contestAdminName,
+      ),
       MapEntry(context.tr('Created At'), _fmt(createdAt)),
       MapEntry(context.tr('Updated At'), _fmt(updatedAt)),
       if (rejectionReason.trim().isNotEmpty)
@@ -1005,10 +1091,7 @@ class _VideoDetailsDialog extends StatelessWidget {
                           const SizedBox(width: 12),
                           Expanded(
                             flex: 6,
-                            child: Text(
-                              row.value,
-                              textAlign: TextAlign.end,
-                            ),
+                            child: Text(row.value, textAlign: TextAlign.end),
                           ),
                         ],
                       ),
@@ -1029,6 +1112,73 @@ class _SubmissionMeta {
 
   final String contestName;
   final String userName;
+}
+
+class _ModerationTab extends StatelessWidget {
+  const _ModerationTab({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 11),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFF6E41E2) : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: selected ? Colors.white : AppColors.textMuted,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _VideoMeta extends StatelessWidget {
+  const _VideoMeta({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 13, color: AppColors.textMuted),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: const TextStyle(
+            color: AppColors.textMuted,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _StatCard extends StatelessWidget {

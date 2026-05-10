@@ -85,6 +85,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   String _friendlySocialError(Object e) {
     final text = e.toString();
+    if (text.contains('social-link-required')) {
+      return 'This email already exists. Login with your password once to link this social account.';
+    }
     if (text.contains('operation-not-allowed')) {
       return 'This social provider is not enabled in Firebase yet.';
     }
@@ -96,6 +99,9 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     if (text.contains('network-request-failed')) {
       return 'Network issue. Please try again.';
+    }
+    if (text.contains('facebook-login-failed')) {
+      return text;
     }
     return 'Social login failed. Please try again.';
   }

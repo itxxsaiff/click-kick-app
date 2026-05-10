@@ -3,6 +3,7 @@ import 'package:country_picker/country_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../../l10n/l10n.dart';
+import '../../../services/auth_service.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/gradient_button.dart';
 import '../../shared/legal_center_screen.dart';
@@ -65,7 +66,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
     if (user == null) return;
     setState(() => _saving = true);
     try {
-      final newEmail = _email.text.trim();
+      final newEmail = _email.text.trim().toLowerCase();
       final willUpdateEmail =
           newEmail.isNotEmpty && newEmail != (user.email ?? '');
       if (willUpdateEmail) {
@@ -78,11 +79,16 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
           password: _currentPassword.text.trim(),
         );
         await user.reauthenticateWithCredential(credential);
-        await user.verifyBeforeUpdateEmail(newEmail);
+        await user.verifyBeforeUpdateEmail(
+          newEmail,
+          AuthService.emailActionCodeSettings(),
+        );
       }
       await user.updateDisplayName(_name.text.trim());
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'displayName': _name.text.trim(),
+        'email': (user.email ?? '').trim().toLowerCase(),
+        'emailLower': (user.email ?? '').trim().toLowerCase(),
         'phoneCountryCode': _phoneCode.text.trim(),
         'phoneCountryIso': _phoneIso,
         'phoneNumber': _phoneNumber.text.trim(),

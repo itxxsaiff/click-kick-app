@@ -1317,8 +1317,9 @@ class _UserProfileTabState extends State<_UserProfileTab> {
       final newPassword = _newPasswordController.text.trim();
       final confirmPassword = _confirmPasswordController.text.trim();
 
+      final normalizedEmail = newEmail.trim().toLowerCase();
       final willUpdateEmail =
-          newEmail.isNotEmpty && newEmail != (user.email ?? '');
+          normalizedEmail.isNotEmpty && normalizedEmail != (user.email ?? '');
       final willUpdatePassword =
           newPassword.isNotEmpty || confirmPassword.isNotEmpty;
 
@@ -1345,7 +1346,10 @@ class _UserProfileTabState extends State<_UserProfileTab> {
 
       await user.updateDisplayName(newName);
       if (willUpdateEmail) {
-        await user.verifyBeforeUpdateEmail(newEmail);
+        await user.verifyBeforeUpdateEmail(
+          normalizedEmail,
+          AuthService.emailActionCodeSettings(),
+        );
       }
       if (willUpdatePassword && newPassword.isNotEmpty) {
         await user.updatePassword(newPassword);
@@ -1353,13 +1357,14 @@ class _UserProfileTabState extends State<_UserProfileTab> {
 
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'displayName': newName,
-        'email': user.email ?? '',
+        'email': (user.email ?? '').trim().toLowerCase(),
+        'emailLower': (user.email ?? '').trim().toLowerCase(),
         'phoneCountryCode': _phoneCodeController.text.trim(),
         'phoneCountryIso': _phoneIso,
         'phoneNumber': _phoneNumberController.text.trim(),
         'phoneE164':
             '${_phoneCodeController.text.trim()}${_phoneNumberController.text.trim()}',
-        if (willUpdateEmail) 'pendingEmail': newEmail,
+        if (willUpdateEmail) 'pendingEmail': normalizedEmail,
         'updatedAt': DateTime.now().toUtc(),
       }, SetOptions(merge: true));
       if (!mounted) return;

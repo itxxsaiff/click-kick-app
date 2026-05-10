@@ -3019,11 +3019,14 @@ class _PublicUserProfileUpdateScreenState
     setState(() => _saving = true);
     try {
       final newName = _nameController.text.trim();
-      final newEmail = _emailController.text.trim();
+      final newEmail = _emailController.text.trim().toLowerCase();
       final willUpdateEmail =
           newEmail.isNotEmpty && newEmail != (user.email ?? '');
       if (willUpdateEmail) {
-        await user.verifyBeforeUpdateEmail(newEmail);
+        await user.verifyBeforeUpdateEmail(
+          newEmail,
+          AuthService.emailActionCodeSettings(),
+        );
       }
       final uploadedPhotoUrl = await _uploadProfilePhoto(user.uid);
       await user.updateDisplayName(newName);
@@ -3032,13 +3035,15 @@ class _PublicUserProfileUpdateScreenState
       }
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'displayName': newName,
-        'email': willUpdateEmail ? newEmail : (user.email ?? ''),
+        'email': (user.email ?? '').trim().toLowerCase(),
+        'emailLower': (user.email ?? '').trim().toLowerCase(),
         'phoneCountryCode': _phoneCodeController.text.trim(),
         'phoneCountryIso': _phoneIso,
         'phoneNumber': _phoneNumberController.text.trim(),
         'phoneE164':
             '${_phoneCodeController.text.trim()}${_phoneNumberController.text.trim()}',
         'photoUrl': uploadedPhotoUrl,
+        if (willUpdateEmail) 'pendingEmail': newEmail,
         'updatedAt': DateTime.now().toUtc(),
       }, SetOptions(merge: true));
       if (!mounted) return;

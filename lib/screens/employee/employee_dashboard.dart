@@ -726,7 +726,7 @@ class _EmployeeProfileUpdateScreenState
     if (user == null) return;
     setState(() => _saving = true);
     try {
-      final newEmail = _email.text.trim();
+      final newEmail = _email.text.trim().toLowerCase();
       final willUpdateEmail =
           newEmail.isNotEmpty && newEmail != (user.email ?? '');
       if (willUpdateEmail) {
@@ -742,12 +742,17 @@ class _EmployeeProfileUpdateScreenState
           password: _currentPassword.text.trim(),
         );
         await user.reauthenticateWithCredential(credential);
-        await user.verifyBeforeUpdateEmail(newEmail);
+        await user.verifyBeforeUpdateEmail(
+          newEmail,
+          AuthService.emailActionCodeSettings(),
+        );
       }
 
       await user.updateDisplayName(_name.text.trim());
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'displayName': _name.text.trim(),
+        'email': (user.email ?? '').trim().toLowerCase(),
+        'emailLower': (user.email ?? '').trim().toLowerCase(),
         'phoneCountryCode': _phoneCode.text.trim(),
         'phoneCountryIso': _phoneIso,
         'phoneNumber': _phoneNumber.text.trim(),

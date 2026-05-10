@@ -3818,7 +3818,7 @@ class _SponsorProfileUpdateScreenState
     setState(() => _saving = true);
     try {
       await user.updateDisplayName(_name.text.trim());
-      final newEmail = _email.text.trim();
+      final newEmail = _email.text.trim().toLowerCase();
       if (newEmail.isNotEmpty && newEmail != (user.email ?? '')) {
         final currentEmail = (user.email ?? '').trim();
         if (currentEmail.isEmpty) {
@@ -3842,12 +3842,16 @@ class _SponsorProfileUpdateScreenState
           password: _currentPassword.text.trim(),
         );
         await user.reauthenticateWithCredential(credential);
-        await user.verifyBeforeUpdateEmail(newEmail);
+        await user.verifyBeforeUpdateEmail(
+          newEmail,
+          AuthService.emailActionCodeSettings(),
+        );
       }
 
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'displayName': _name.text.trim(),
-        'email': user.email ?? '',
+        'email': (user.email ?? '').trim().toLowerCase(),
+        'emailLower': (user.email ?? '').trim().toLowerCase(),
         'country': _country.text.trim(),
         'companyName': _company.text.trim(),
         'phoneCountryCode': _phoneCode.text.trim(),
@@ -3857,7 +3861,14 @@ class _SponsorProfileUpdateScreenState
         if (newEmail != (user.email ?? '')) 'pendingEmail': newEmail,
         'updatedAt': DateTime.now().toUtc(),
       }, SetOptions(merge: true));
-      _showSponsorMessage(context, context.tr('Profile updated.'));
+      _showSponsorMessage(
+        context,
+        newEmail.isNotEmpty && newEmail != (user.email ?? '')
+            ? context.tr(
+                'Verification email sent. Confirm it to complete email change.',
+              )
+            : context.tr('Profile updated.'),
+      );
     } on FirebaseAuthException catch (e) {
       if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
         _showSponsorMessage(

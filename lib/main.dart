@@ -10,6 +10,7 @@ import 'l10n/l10n.dart';
 import 'theme/app_theme.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
+import 'screens/auth/auth_action_screen.dart';
 import 'screens/auth/register_screen.dart';
 import 'screens/home/home_router.dart';
 import 'screens/public/public_feed_screen.dart';
@@ -125,6 +126,14 @@ class VideoContestApp extends StatelessWidget {
                 final email = uri.queryParameters['email'] ?? '';
                 return MaterialPageRoute(
                   builder: (_) => ForgotPasswordScreen(initialEmail: email),
+                );
+              }
+              if (uri.path == '/auth-action') {
+                final mode = uri.queryParameters['mode'] ?? '';
+                final oobCode = uri.queryParameters['oobCode'] ?? '';
+                return MaterialPageRoute(
+                  builder: (_) =>
+                      AuthActionScreen(mode: mode, oobCode: oobCode),
                 );
               }
               if (uri.path == '/home') {

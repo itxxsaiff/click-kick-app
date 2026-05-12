@@ -68,15 +68,13 @@ class LanguageMenuButton extends StatelessWidget {
 }
 
 class LanguageSelectionScreen extends StatefulWidget {
-  const LanguageSelectionScreen({
-    super.key,
-    this.showContinue = false,
-  });
+  const LanguageSelectionScreen({super.key, this.showContinue = false});
 
   final bool showContinue;
 
   @override
-  State<LanguageSelectionScreen> createState() => _LanguageSelectionScreenState();
+  State<LanguageSelectionScreen> createState() =>
+      _LanguageSelectionScreenState();
 }
 
 class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
@@ -108,9 +106,7 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
     return Scaffold(
       appBar: widget.showContinue
           ? null
-          : AppBar(
-              title: Text(context.tr('Language')),
-            ),
+          : AppBar(title: Text(context.tr('Language'))),
       body: Container(
         decoration: const BoxDecoration(
           gradient: RadialGradient(
@@ -129,7 +125,10 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
                   width: widget.showContinue ? 220 : 108,
                   height: widget.showContinue ? 170 : 108,
                   child: widget.showContinue
-                      ? Image.asset('assets/images/logo.png', fit: BoxFit.contain)
+                      ? Image.asset(
+                          'assets/images/logo.png',
+                          fit: BoxFit.contain,
+                        )
                       : Container(
                           decoration: BoxDecoration(
                             color: const Color(0x2217D4FF),
@@ -263,7 +262,7 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
                 FilledButton(
                   onPressed: _hasExplicitSelection
                       ? () {
-                          Navigator.pushReplacementNamed(context, '/app');
+                          Navigator.pushReplacementNamed(context, '/home');
                         }
                       : null,
                   style: FilledButton.styleFrom(
@@ -320,7 +319,10 @@ class _CompactLanguageSelectionScreenState
               children: [
                 IconButton(
                   onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                  icon: const Icon(
+                    Icons.arrow_back_rounded,
+                    color: Colors.white,
+                  ),
                 ),
                 Expanded(
                   child: Text(
@@ -440,10 +442,7 @@ class _LanguageOptionTile extends StatelessWidget {
                 ),
               ),
               if (selected)
-                const Icon(
-                  Icons.check_circle,
-                  color: Color(0xFFE14BC7),
-                ),
+                const Icon(Icons.check_circle, color: Color(0xFFE14BC7)),
             ],
           ),
         ),

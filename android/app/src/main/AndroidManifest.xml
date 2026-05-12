@@ -49,7 +49,7 @@
             android:value="2" />
         <provider
             android:name="com.facebook.FacebookContentProvider"
-            android:authorities="com.facebook.app.FacebookContentProvider989502110405879"
+            android:authorities="com.facebook.app.FacebookContentProvider1016336394254792"
             android:exported="true" />
     </application>
     <!-- Required to query activities that can process text, see:

@@ -947,8 +947,20 @@ class _ContestFeedCard extends StatelessWidget {
     );
   }
 
+  DateTime? _readDate(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is String) return DateTime.tryParse(value);
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final submissionEnd = _readDate(
+      item.data['submissionEnd'] ?? item.data['endDate'],
+    );
+    final votingStart = _readDate(item.data['votingStart']);
+    final votingEnd = _readDate(item.data['votingEnd']);
+
     return GestureDetector(
       onTap: onTapVideo,
       behavior: HitTestBehavior.opaque,
@@ -1028,13 +1040,43 @@ class _ContestFeedCard extends StatelessWidget {
               ),
             ),
           Positioned(
-            right: 14,
-            bottom: 128,
+            right: 10,
+            bottom: 102,
             child: _FeedActionRail(
               children: [
+                if (item.logoUrl.isNotEmpty)
+                  _FeedBrandBadge(imageUrl: item.logoUrl),
+                _FeedStatTile(
+                  icon: Icons.emoji_events_rounded,
+                  title: context.tr('Prize'),
+                  value: '\$${item.winnerPrize.toStringAsFixed(0)}',
+                  accent: const Color(0xFFF5C14B),
+                ),
+                if (submissionEnd != null)
+                  _FeedCountdownTile(
+                    icon: Icons.file_upload_outlined,
+                    title: context.tr('Upload Ends'),
+                    target: submissionEnd,
+                    accent: AppColors.hotPink,
+                  ),
+                if (votingStart != null)
+                  _FeedCountdownTile(
+                    icon: Icons.how_to_vote_outlined,
+                    title: context.tr('Voting Starts'),
+                    target: votingStart,
+                    accent: const Color(0xFF54C7FF),
+                  ),
+                if (votingEnd != null)
+                  _FeedCountdownTile(
+                    icon: Icons.emoji_events_outlined,
+                    title: context.tr('Voting Ends'),
+                    target: votingEnd,
+                    accent: const Color(0xFF9BFF5C),
+                  ),
                 _FeedActionButton(
                   icon: Icons.share_rounded,
                   label: context.tr('Share'),
+                  compact: true,
                   onTap: () async {
                     if (FirebaseAuth.instance.currentUser == null) {
                       await _requireAuth(context);
@@ -1045,28 +1087,12 @@ class _ContestFeedCard extends StatelessWidget {
                     await Share.share(text, subject: item.title);
                   },
                 ),
-                _FeedActionButton(
-                  icon: Icons.flag_outlined,
-                  label: context.tr('Report'),
-                  onTap: () => showReportVideoDialog(
-                    context: context,
-                    videoType: 'contest_video',
-                    contestId: item.id,
-                    targetUserId: item.sponsorId,
-                    contestTitle: item.title,
-                  ),
-                ),
-                _FeedInfoBadge(
-                  icon: Icons.card_giftcard_rounded,
-                  title: '\$${item.winnerPrize.toStringAsFixed(0)}',
-                  subtitle: context.tr('gift'),
-                ),
               ],
             ),
           ),
           Positioned(
             left: 18,
-            right: 86,
+            right: 96,
             bottom: 18,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1132,13 +1158,18 @@ class _ContestFeedCard extends StatelessWidget {
                 GestureDetector(
                   onTap: () => _openContest(context),
                   child: Container(
+                    width: double.infinity,
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 10,
+                      horizontal: 14,
+                      vertical: 12,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.hotPink,
-                      borderRadius: BorderRadius.circular(999),
+                      gradient: const LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: [Color(0xFFF52C79), Color(0xFF7C38F5)],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
                           color: AppColors.hotPink.withValues(alpha: 0.28),
@@ -1148,20 +1179,54 @@ class _ContestFeedCard extends StatelessWidget {
                       ],
                     ),
                     child: Row(
-                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          context.tr('Join Contest'),
-                          style: const TextStyle(
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.emoji_events_rounded,
                             color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
+                            size: 24,
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                context.tr('Join Contest').toUpperCase(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${context.tr('Show your talent and compete to win')} \$${item.winnerPrize.toStringAsFixed(0)}!',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.9),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
                         const Icon(
                           Icons.arrow_forward_rounded,
-                          size: 18,
+                          size: 24,
                           color: Colors.white,
                         ),
                       ],
@@ -1442,11 +1507,13 @@ class _FeedActionButton extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    this.compact = false,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -1455,32 +1522,232 @@ class _FeedActionButton extends StatelessWidget {
       child: Column(
         children: [
           Container(
-            width: 46,
-            height: 46,
+            width: compact ? 42 : 46,
+            height: compact ? 42 : 46,
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.28),
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
             ),
-            child: Icon(icon, color: Colors.white, size: 24),
+            child: Icon(icon, color: Colors.white, size: compact ? 21 : 24),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: compact ? 4 : 6),
           SizedBox(
             width: 58,
             child: Text(
               label,
-              maxLines: 2,
+              maxLines: compact ? 3 : 2,
               textAlign: TextAlign.center,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 color: Colors.white,
-                fontSize: 12,
+                fontSize: compact ? 10 : 12,
                 fontWeight: FontWeight.w700,
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _FeedBrandBadge extends StatelessWidget {
+  const _FeedBrandBadge({required this.imageUrl});
+
+  final String imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 50,
+      height: 50,
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Image.network(
+        imageUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const Icon(
+          Icons.emoji_events_rounded,
+          color: AppColors.hotPink,
+          size: 26,
+        ),
+      ),
+    );
+  }
+}
+
+class _FeedStatTile extends StatelessWidget {
+  const _FeedStatTile({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.accent,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 64,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.32),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: accent, size: 22),
+          const SizedBox(height: 4),
+          Text(
+            title.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: accent,
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FeedCountdownTile extends StatelessWidget {
+  const _FeedCountdownTile({
+    required this.icon,
+    required this.title,
+    required this.target,
+    required this.accent,
+  });
+
+  final IconData icon;
+  final String title;
+  final DateTime target;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DateTime>(
+      stream: Stream<DateTime>.periodic(
+        const Duration(seconds: 1),
+        (_) => DateTime.now(),
+      ),
+      initialData: DateTime.now(),
+      builder: (context, snapshot) {
+        final now = snapshot.data ?? DateTime.now();
+        final remaining = target.difference(now);
+        final isDone = remaining.isNegative;
+        final days = isDone ? 0 : remaining.inDays;
+        final hours = isDone ? 0 : remaining.inHours.remainder(24);
+        final minutes = isDone ? 0 : remaining.inMinutes.remainder(60);
+        final seconds = isDone ? 0 : remaining.inSeconds.remainder(60);
+
+        String part(int value) => value.toString().padLeft(2, '0');
+
+        return Container(
+          width: 70,
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.32),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: accent, size: 20),
+              const SizedBox(height: 4),
+              Text(
+                title.toUpperCase(),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: accent,
+                  fontSize: 8.5,
+                  fontWeight: FontWeight.w800,
+                  height: 1.15,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${part(days)}:${part(hours)}:${part(minutes)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                part(seconds),
+                maxLines: 1,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'D : H : M : S',
+                maxLines: 1,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: accent.withValues(alpha: 0.95),
+                  fontSize: 7.8,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.2,
+                ),
+              ),
+              if (isDone) ...[
+                const SizedBox(height: 2),
+                Text(
+                  context.tr('Done'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 8.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }

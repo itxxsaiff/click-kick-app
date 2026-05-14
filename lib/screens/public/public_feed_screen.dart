@@ -435,10 +435,17 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
         await controller.dispose();
         return;
       }
-      if (autoplay) {
-        await controller.play();
+      if (mounted) {
+        setState(() {
+          _videoController = controller;
+        });
       } else {
-        await controller.pause();
+        _videoController = controller;
+      }
+      if (autoplay) {
+        controller.play();
+      } else {
+        controller.pause();
       }
     } catch (_) {
       await controller.dispose();
@@ -447,7 +454,6 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
     }
     if (!mounted) return;
     setState(() {
-      _videoController = controller;
       _isVideoLoading = false;
     });
   }
@@ -717,7 +723,14 @@ class _PublicContestsTabState extends State<_PublicContestsTab>
         await controller.dispose();
         return;
       }
-      await controller.play();
+      if (mounted) {
+        setState(() {
+          _videoController = controller;
+        });
+      } else {
+        _videoController = controller;
+      }
+      controller.play();
     } catch (_) {
       await controller.dispose();
       if (mounted) setState(() => _isVideoLoading = false);
@@ -725,7 +738,6 @@ class _PublicContestsTabState extends State<_PublicContestsTab>
     }
     if (!mounted) return;
     setState(() {
-      _videoController = controller;
       _isVideoLoading = false;
     });
   }
@@ -953,13 +965,42 @@ class _ContestFeedCard extends StatelessWidget {
     return null;
   }
 
+  bool _isJoinOpen({
+    required DateTime now,
+    DateTime? submissionStart,
+    DateTime? submissionEnd,
+    DateTime? votingStart,
+    DateTime? votingEnd,
+  }) {
+    final uploadStarted =
+        submissionStart == null || !now.isBefore(submissionStart);
+    final uploadEnded = submissionEnd != null && now.isAfter(submissionEnd);
+    final votingStarted = votingStart != null && !now.isBefore(votingStart);
+    final contestClosed = votingEnd != null && now.isAfter(votingEnd);
+
+    if (contestClosed) return false;
+    if (!uploadStarted) return false;
+    if (uploadEnded) return false;
+    if (votingStarted) return false;
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final submissionStart = _readDate(item.data['submissionStart']);
     final submissionEnd = _readDate(
       item.data['submissionEnd'] ?? item.data['endDate'],
     );
     final votingStart = _readDate(item.data['votingStart']);
     final votingEnd = _readDate(item.data['votingEnd']);
+    final canJoin = _isJoinOpen(
+      now: now,
+      submissionStart: submissionStart,
+      submissionEnd: submissionEnd,
+      votingStart: votingStart,
+      votingEnd: votingEnd,
+    );
 
     return GestureDetector(
       onTap: onTapVideo,
@@ -976,7 +1017,7 @@ class _ContestFeedCard extends StatelessWidget {
                 child: VideoPlayer(controller!),
               ),
             )
-          else if (isShowingActiveVideo && isLoading)
+          else if (isLoading || isShowingActiveVideo)
             Container(
               color: AppColors.card,
               child: const Center(
@@ -987,16 +1028,7 @@ class _ContestFeedCard extends StatelessWidget {
               ),
             )
           else
-            Container(
-              color: AppColors.card,
-              child: const Center(
-                child: Icon(
-                  Icons.play_circle_fill_rounded,
-                  color: AppColors.hotPink,
-                  size: 72,
-                ),
-              ),
-            ),
+            Container(color: AppColors.card),
           if (isLoading)
             const Center(
               child: CircularProgressIndicator(
@@ -1044,8 +1076,6 @@ class _ContestFeedCard extends StatelessWidget {
             bottom: 102,
             child: _FeedActionRail(
               children: [
-                if (item.logoUrl.isNotEmpty)
-                  _FeedBrandBadge(imageUrl: item.logoUrl),
                 _FeedStatTile(
                   icon: Icons.emoji_events_rounded,
                   title: context.tr('Prize'),
@@ -1156,7 +1186,7 @@ class _ContestFeedCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 14),
                 GestureDetector(
-                  onTap: () => _openContest(context),
+                  onTap: canJoin ? () => _openContest(context) : null,
                   child: Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(
@@ -1164,15 +1194,21 @@ class _ContestFeedCard extends StatelessWidget {
                       vertical: 12,
                     ),
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
+                      gradient: LinearGradient(
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
-                        colors: [Color(0xFFF52C79), Color(0xFF7C38F5)],
+                        colors: canJoin
+                            ? const [Color(0xFFF52C79), Color(0xFF7C38F5)]
+                            : const [Color(0xFF5A5367), Color(0xFF383447)],
                       ),
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.hotPink.withValues(alpha: 0.28),
+                          color:
+                              (canJoin
+                                      ? AppColors.hotPink
+                                      : const Color(0xFF5A5367))
+                                  .withValues(alpha: 0.28),
                           blurRadius: 18,
                           offset: const Offset(0, 8),
                         ),
@@ -1199,7 +1235,13 @@ class _ContestFeedCard extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                context.tr('Join Contest').toUpperCase(),
+                                context
+                                    .tr(
+                                      canJoin
+                                          ? 'Join Contest'
+                                          : 'Contest Closed',
+                                    )
+                                    .toUpperCase(),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
@@ -1211,7 +1253,11 @@ class _ContestFeedCard extends StatelessWidget {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                '${context.tr('Show your talent and compete to win')} \$${item.winnerPrize.toStringAsFixed(0)}!',
+                                canJoin
+                                    ? '${context.tr('Show your talent and compete to win')} \$${item.winnerPrize.toStringAsFixed(0)}!'
+                                    : context.tr(
+                                        'This contest is no longer accepting entries.',
+                                      ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
@@ -1363,7 +1409,7 @@ class _AdminVideoFeedCard extends StatelessWidget {
                 child: VideoPlayer(controller!),
               ),
             )
-          else if (isShowingActiveVideo && isLoading)
+          else if (isLoading || isShowingActiveVideo)
             Container(
               color: AppColors.card,
               child: const Center(
@@ -1374,16 +1420,7 @@ class _AdminVideoFeedCard extends StatelessWidget {
               ),
             )
           else
-            Container(
-              color: AppColors.card,
-              child: const Center(
-                child: Icon(
-                  Icons.play_circle_fill_rounded,
-                  color: AppColors.hotPink,
-                  size: 72,
-                ),
-              ),
-            ),
+            Container(color: AppColors.card),
           if (isLoading)
             const Center(
               child: CircularProgressIndicator(
@@ -1706,41 +1743,42 @@ class _FeedCountdownTile extends StatelessWidget {
                   letterSpacing: 0.3,
                 ),
               ),
-              const SizedBox(height: 2),
-              Text(
-                part(seconds),
-                maxLines: 1,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.3,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'D : H : M : S',
-                maxLines: 1,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: accent.withValues(alpha: 0.95),
-                  fontSize: 7.8,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.2,
-                ),
-              ),
               if (isDone) ...[
-                const SizedBox(height: 2),
+                const SizedBox(height: 3),
                 Text(
-                  context.tr('Done'),
+                  context.tr('Closed'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: accent,
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ] else ...[
+                const SizedBox(height: 2),
+                Text(
+                  part(seconds),
+                  maxLines: 1,
+                  textAlign: TextAlign.center,
                   style: const TextStyle(
-                    color: AppColors.textMuted,
-                    fontSize: 8.5,
-                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'D : H : M : S',
+                  maxLines: 1,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: accent.withValues(alpha: 0.95),
+                    fontSize: 7.8,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.2,
                   ),
                 ),
               ],
@@ -3742,173 +3780,196 @@ class _LoginRequiredCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-    return Center(
+    return Align(
+      alignment: Alignment.topCenter,
       child: Container(
-        margin: const EdgeInsets.all(20),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              AppColors.card.withOpacity(0.96),
-              AppColors.cardSoft.withOpacity(0.9),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: AppColors.border),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.16),
-              blurRadius: 18,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
+        margin: const EdgeInsets.fromLTRB(20, 8, 20, 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: SizedBox(
+                width: 108,
+                height: 84,
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
             Container(
-              width: 66,
-              height: 66,
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const LinearGradient(
+                gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [AppColors.hotPink, AppColors.magenta],
+                  colors: [
+                    AppColors.card.withOpacity(0.96),
+                    AppColors.cardSoft.withOpacity(0.9),
+                  ],
                 ),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: AppColors.border),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.hotPink.withOpacity(0.25),
-                    blurRadius: 16,
-                    offset: const Offset(0, 8),
+                    color: Colors.black.withOpacity(0.16),
+                    blurRadius: 18,
+                    offset: const Offset(0, 10),
                   ),
                 ],
               ),
-              child: const Icon(
-                Icons.person_rounded,
-                size: 34,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              context.tr('Sign In'),
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              user == null
-                  ? context.tr(
-                      'Login to manage your profile, contests and much more.',
-                    )
-                  : (user.email ?? context.tr('Logged in user')),
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: AppColors.textLight,
-                fontSize: 16,
-                height: 1.35,
-              ),
-            ),
-            const SizedBox(height: 18),
-            if (user == null) ...[
-              SizedBox(
-                width: double.infinity,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [AppColors.hotPink, AppColors.magenta],
-                    ),
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.hotPink.withOpacity(0.24),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: ElevatedButton.icon(
-                    onPressed: () => Navigator.pushNamed(context, '/login'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                    ),
-                    icon: const Icon(Icons.login_rounded),
-                    label: Text(
-                      context.tr('Login'),
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => Navigator.pushNamed(context, '/register'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: BorderSide(color: Colors.white.withOpacity(0.42)),
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                  icon: const Icon(Icons.person_add_alt_1_rounded),
-                  label: Text(
-                    context.tr('Create Account'),
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              const Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: _GuestBenefit(
-                      icon: Icons.verified_user_outlined,
-                      title: 'Secure',
-                      subtitle: '100% Safe',
+                  Container(
+                    width: 66,
+                    height: 66,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [AppColors.hotPink, AppColors.magenta],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.hotPink.withOpacity(0.25),
+                          blurRadius: 16,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.person_rounded,
+                      size: 34,
+                      color: Colors.white,
                     ),
                   ),
-                  Expanded(
-                    child: _GuestBenefit(
-                      icon: Icons.emoji_events_outlined,
-                      title: 'Contests',
-                      subtitle: 'Join & Win',
+                  const SizedBox(height: 14),
+                  Text(
+                    context.tr('Sign In'),
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                  Expanded(
-                    child: _GuestBenefit(
-                      icon: Icons.person_outline_rounded,
-                      title: 'Personalized',
-                      subtitle: 'Just for you',
+                  const SizedBox(height: 8),
+                  Text(
+                    user == null
+                        ? context.tr(
+                            'Login to manage your profile, contests and much more.',
+                          )
+                        : (user.email ?? context.tr('Logged in user')),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: AppColors.textLight,
+                      fontSize: 16,
+                      height: 1.35,
                     ),
                   ),
+                  const SizedBox(height: 18),
+                  if (user == null) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                            colors: [AppColors.hotPink, AppColors.magenta],
+                          ),
+                          borderRadius: BorderRadius.circular(18),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.hotPink.withOpacity(0.24),
+                              blurRadius: 16,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: ElevatedButton.icon(
+                          onPressed: () =>
+                              Navigator.pushNamed(context, '/login'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            shadowColor: Colors.transparent,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                          ),
+                          icon: const Icon(Icons.login_rounded),
+                          label: Text(
+                            context.tr('Login'),
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () =>
+                            Navigator.pushNamed(context, '/register'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: BorderSide(
+                            color: Colors.white.withOpacity(0.42),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                        ),
+                        icon: const Icon(Icons.person_add_alt_1_rounded),
+                        label: Text(
+                          context.tr('Create Account'),
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    const Row(
+                      children: [
+                        Expanded(
+                          child: _GuestBenefit(
+                            icon: Icons.verified_user_outlined,
+                            title: 'Secure',
+                            subtitle: '100% Safe',
+                          ),
+                        ),
+                        Expanded(
+                          child: _GuestBenefit(
+                            icon: Icons.emoji_events_outlined,
+                            title: 'Contests',
+                            subtitle: 'Join & Win',
+                          ),
+                        ),
+                        Expanded(
+                          child: _GuestBenefit(
+                            icon: Icons.person_outline_rounded,
+                            title: 'Personalized',
+                            subtitle: 'Just for you',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      context.tr('You are already signed in.'),
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ],
               ),
-            ] else ...[
-              const SizedBox(height: 6),
-              Text(
-                context.tr('You are already signed in.'),
-                style: const TextStyle(
-                  color: AppColors.textMuted,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+            ),
           ],
         ),
       ),

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../l10n/l10n.dart';
@@ -16,6 +17,15 @@ class _AdminSupportScreenState extends State<AdminSupportScreen> {
   final _search = TextEditingController();
   String _query = '';
   String _status = 'all';
+  String _ownership = 'all';
+  List<Map<String, String>> _agents = const [];
+  bool _loadingAgents = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAgents();
+  }
 
   @override
   void dispose() {
@@ -23,8 +33,35 @@ class _AdminSupportScreenState extends State<AdminSupportScreen> {
     super.dispose();
   }
 
+  Future<void> _loadAgents() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where('role', whereIn: const ['admin', 'employee', 'super_admin'])
+          .get();
+      if (!mounted) return;
+      setState(() {
+        _agents = snapshot.docs.map((doc) {
+          final data = doc.data();
+          final name =
+              (data['displayName'] ??
+                      data['companyName'] ??
+                      data['email'] ??
+                      context.tr('User'))
+                  .toString();
+          return <String, String>{'id': doc.id, 'name': name};
+        }).toList();
+        _loadingAgents = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingAgents = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
     final stream = FirebaseFirestore.instance
         .collection('support_threads')
         .orderBy('lastMessageAt', descending: true)
@@ -101,12 +138,21 @@ class _AdminSupportScreenState extends State<AdminSupportScreen> {
               final data = doc.data();
               final status = _ticketStatus(data);
               if (_status != 'all' && status != _status) return false;
+              final assignedTo = (data['assignedTo'] ?? '').toString();
+              if (_ownership == 'mine' && assignedTo != currentUid) {
+                return false;
+              }
+              if (_ownership == 'unassigned' && assignedTo.isNotEmpty) {
+                return false;
+              }
               if (_query.isEmpty) return true;
               final haystack = [
                 (data['userName'] ?? '').toString(),
                 (data['userEmail'] ?? '').toString(),
                 (data['inquiryType'] ?? '').toString(),
                 (data['lastMessage'] ?? '').toString(),
+                (data['assignedToName'] ?? '').toString(),
+                (data['lastRepliedBy'] ?? '').toString(),
               ].join(' ').toLowerCase();
               return haystack.contains(_query);
             }).toList();
@@ -122,6 +168,11 @@ class _AdminSupportScreenState extends State<AdminSupportScreen> {
                   resolvedCount: resolvedCount,
                   closedCount: closedCount,
                   onChanged: (value) => setState(() => _status = value),
+                ),
+                const SizedBox(height: 12),
+                _OwnershipTabs(
+                  selected: _ownership,
+                  onChanged: (value) => setState(() => _ownership = value),
                 ),
                 const SizedBox(height: 12),
                 Row(
@@ -208,6 +259,7 @@ class _AdminSupportScreenState extends State<AdminSupportScreen> {
                   for (final doc in filtered) ...[
                     _SupportTicketCard(
                       data: doc.data(),
+                      loadingAgents: _loadingAgents,
                       onTap: () {
                         Navigator.push(
                           context,
@@ -225,7 +277,7 @@ class _AdminSupportScreenState extends State<AdminSupportScreen> {
                         );
                       },
                       onMenuSelected: (action) =>
-                          _handleAction(doc.reference, action),
+                          _handleAction(doc.reference, doc.data(), action),
                     ),
                     const SizedBox(height: 10),
                   ],
@@ -251,9 +303,23 @@ class _AdminSupportScreenState extends State<AdminSupportScreen> {
 
   Future<void> _handleAction(
     DocumentReference<Map<String, dynamic>> ref,
+    Map<String, dynamic> data,
     _SupportAction action,
   ) async {
     switch (action) {
+      case _SupportAction.assignToMe:
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) return;
+        final meName = (user.displayName ?? user.email ?? context.tr('User'))
+            .toString();
+        await _assignTicket(ref, user.uid, meName);
+        break;
+      case _SupportAction.assignToOther:
+        await _pickAssignee(ref, data);
+        break;
+      case _SupportAction.unassign:
+        await _assignTicket(ref, '', '');
+        break;
       case _SupportAction.open:
         await _setStatus(ref, 'open');
         break;
@@ -267,6 +333,103 @@ class _AdminSupportScreenState extends State<AdminSupportScreen> {
         await _setStatus(ref, 'closed');
         break;
     }
+  }
+
+  Future<void> _pickAssignee(
+    DocumentReference<Map<String, dynamic>> ref,
+    Map<String, dynamic> data,
+  ) async {
+    if (_loadingAgents) return;
+    final currentAssigned = (data['assignedTo'] ?? '').toString();
+    final selected = await showModalBottomSheet<Map<String, String>?>(
+      context: context,
+      backgroundColor: const Color(0xFF10192A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+            children: [
+              Text(
+                context.tr('Assign Ticket'),
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 14),
+              ListTile(
+                onTap: () => Navigator.pop(context, <String, String>{
+                  'id': '',
+                  'name': '',
+                }),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                tileColor: const Color(0xFF151E31),
+                leading: const Icon(
+                  Icons.person_off_outlined,
+                  color: Colors.white,
+                ),
+                title: Text(
+                  context.tr('Unassigned'),
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+              const SizedBox(height: 10),
+              for (final agent in _agents)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    onTap: () => Navigator.pop(context, agent),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    tileColor: const Color(0xFF151E31),
+                    leading: CircleAvatar(
+                      backgroundColor: currentAssigned == agent['id']
+                          ? AppColors.hotPink
+                          : const Color(0xFF6D42F5),
+                      child: Text(
+                        _initials(agent['name'] ?? ''),
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                    title: Text(
+                      agent['name'] ?? context.tr('User'),
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    trailing: currentAssigned == agent['id']
+                        ? const Icon(
+                            Icons.check_circle,
+                            color: AppColors.hotPink,
+                          )
+                        : null,
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+    if (selected == null) return;
+    await _assignTicket(ref, selected['id'] ?? '', selected['name'] ?? '');
+  }
+
+  Future<void> _assignTicket(
+    DocumentReference<Map<String, dynamic>> ref,
+    String assigneeId,
+    String assigneeName,
+  ) async {
+    await ref.set({
+      'assignedTo': assigneeId,
+      'assignedToName': assigneeName,
+      'assignedAt': Timestamp.now(),
+      'updatedAt': Timestamp.now(),
+    }, SetOptions(merge: true));
   }
 
   Future<void> _setStatus(
@@ -347,14 +510,72 @@ class _SupportTabs extends StatelessWidget {
   }
 }
 
+class _OwnershipTabs extends StatelessWidget {
+  const _OwnershipTabs({required this.selected, required this.onChanged});
+
+  final String selected;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final tabs = [
+      ('all', context.tr('All Tickets')),
+      ('mine', context.tr('My Tickets')),
+      ('unassigned', context.tr('Unassigned')),
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final (value, label) in tabs)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: GestureDetector(
+                onTap: () => onChanged(value),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: selected == value
+                        ? const Color(0x332FE2A8)
+                        : const Color(0xFF101A2B),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: selected == value
+                          ? const Color(0xFF2FE2A8)
+                          : Colors.white.withOpacity(0.08),
+                    ),
+                  ),
+                  child: Text(
+                    label,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SupportTicketCard extends StatelessWidget {
   const _SupportTicketCard({
     required this.data,
+    required this.loadingAgents,
     required this.onTap,
     required this.onMenuSelected,
   });
 
   final Map<String, dynamic> data;
+  final bool loadingAgents;
   final VoidCallback onTap;
   final ValueChanged<_SupportAction> onMenuSelected;
 
@@ -367,6 +588,17 @@ class _SupportTicketCard extends StatelessWidget {
     final preview = (data['lastMessage'] ?? '').toString();
     final status = _ticketStatus(data);
     final timeText = _relativeTime(_threadDate(data));
+    final assignedToName = (data['assignedToName'] ?? '').toString();
+    final lastRepliedBy = (data['lastRepliedBy'] ?? '').toString();
+    final lastRepliedRole = (data['lastRepliedRole'] ?? '').toString();
+    final assignedLabel = assignedToName.isEmpty
+        ? context.tr('Unassigned')
+        : assignedToName;
+    final lastReplyLabel = lastRepliedBy.isEmpty
+        ? context.tr('No replies yet')
+        : lastRepliedRole.isEmpty
+        ? lastRepliedBy
+        : '$lastRepliedBy • $lastRepliedRole';
 
     return InkWell(
       onTap: onTap,
@@ -433,6 +665,21 @@ class _SupportTicketCard extends StatelessWidget {
                     ),
                   ],
                   const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      _MetaPill(
+                        icon: Icons.assignment_ind_outlined,
+                        label: '${context.tr('Assigned To')}: $assignedLabel',
+                      ),
+                      _MetaPill(
+                        icon: Icons.reply_all_rounded,
+                        label: '${context.tr('Last Reply')}: $lastReplyLabel',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -460,6 +707,23 @@ class _SupportTicketCard extends StatelessWidget {
                           color: Colors.white.withOpacity(0.75),
                         ),
                         itemBuilder: (context) => [
+                          PopupMenuItem(
+                            value: _SupportAction.assignToMe,
+                            child: Text(context.tr('Assign to me')),
+                          ),
+                          PopupMenuItem(
+                            value: _SupportAction.assignToOther,
+                            child: Text(
+                              loadingAgents
+                                  ? context.tr('Loading staff...')
+                                  : context.tr('Assign ticket'),
+                            ),
+                          ),
+                          if (assignedToName.isNotEmpty)
+                            PopupMenuItem(
+                              value: _SupportAction.unassign,
+                              child: Text(context.tr('Unassign')),
+                            ),
                           if (status != 'open')
                             PopupMenuItem(
                               value: _SupportAction.open,
@@ -489,6 +753,39 @@ class _SupportTicketCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _MetaPill extends StatelessWidget {
+  const _MetaPill({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF151E31),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: Colors.white.withOpacity(0.72)),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Colors.white.withOpacity(0.72),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -587,7 +884,15 @@ class _EmptySupportCard extends StatelessWidget {
   }
 }
 
-enum _SupportAction { open, progress, resolve, close }
+enum _SupportAction {
+  assignToMe,
+  assignToOther,
+  unassign,
+  open,
+  progress,
+  resolve,
+  close,
+}
 
 String _ticketStatus(Map<String, dynamic> data) {
   final raw = (data['status'] ?? 'open').toString().trim().toLowerCase();

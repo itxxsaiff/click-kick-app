@@ -37,6 +37,22 @@ class VideoContestApp extends StatelessWidget {
 
   final AppLocaleController localeController;
 
+  Uri _normalizeRouteUri(String routeName) {
+    final parsed = Uri.parse(routeName);
+    if (parsed.fragment.startsWith('/')) {
+      return Uri.parse(parsed.fragment);
+    }
+    if (parsed.hasScheme && parsed.host.isNotEmpty) {
+      return Uri(
+        path: parsed.path.isEmpty ? '/' : parsed.path,
+        queryParameters: parsed.queryParameters.isEmpty
+            ? null
+            : parsed.queryParameters,
+      );
+    }
+    return parsed;
+  }
+
   double _mobileTextScale(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     if (kIsWeb) return 1;
@@ -94,10 +110,12 @@ class VideoContestApp extends StatelessWidget {
                 child: child ?? const SizedBox.shrink(),
               );
             },
-            home: const LanguageSelectionScreen(showContinue: true),
+            home: localeController.hasStoredLanguage
+                ? const HomeRouter()
+                : const LanguageSelectionScreen(showContinue: true),
             onGenerateRoute: (settings) {
               final routeName = settings.name ?? '/';
-              final uri = Uri.parse(routeName);
+              final uri = _normalizeRouteUri(routeName);
               if (uri.path == '/app') {
                 return MaterialPageRoute(builder: (_) => const HomeRouter());
               }
@@ -139,12 +157,22 @@ class VideoContestApp extends StatelessWidget {
               }
               if (uri.path == '/contest-share') {
                 final contestId = uri.queryParameters['contestId'] ?? '';
-                final submissionId = uri.queryParameters['submissionId'];
                 if (contestId.isNotEmpty) {
                   return MaterialPageRoute(
-                    builder: (_) => ContestShareRouteScreen(
-                      contestId: contestId,
-                      focusSubmissionId: submissionId,
+                    builder: (_) => PublicFeedScreen(
+                      initialTabIndex: 1,
+                      sharedContestId: contestId,
+                    ),
+                  );
+                }
+              }
+              if (uri.path == '/feed-video') {
+                final videoId = uri.queryParameters['videoId'] ?? '';
+                if (videoId.isNotEmpty) {
+                  return MaterialPageRoute(
+                    builder: (_) => PublicFeedScreen(
+                      initialTabIndex: 0,
+                      sharedAdminVideoId: videoId,
                     ),
                   );
                 }

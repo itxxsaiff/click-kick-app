@@ -7,8 +7,10 @@ class AppLocaleController extends ChangeNotifier {
   static const _prefKey = 'app_language';
 
   AppLanguage _language = AppLanguage.english;
+  bool _hasStoredLanguage = false;
 
   AppLanguage get language => _language;
+  bool get hasStoredLanguage => _hasStoredLanguage;
 
   Locale get locale {
     switch (_language) {
@@ -23,14 +25,17 @@ class AppLocaleController extends ChangeNotifier {
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
+    _hasStoredLanguage = prefs.containsKey(_prefKey);
     final raw = prefs.getString(_prefKey) ?? 'en';
     _language = _fromCode(raw);
     notifyListeners();
   }
 
   Future<void> setLanguage(AppLanguage language) async {
-    if (_language == language) return;
+    final shouldPersist = !_hasStoredLanguage || _language != language;
+    if (!shouldPersist) return;
     _language = language;
+    _hasStoredLanguage = true;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefKey, _code(language));

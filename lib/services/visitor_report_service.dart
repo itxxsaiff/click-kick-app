@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import 'pdf_branding.dart';
+
 class VisitorSummaryRow {
   const VisitorSummaryRow({
     required this.name,
@@ -36,16 +38,15 @@ class VisitorReportService {
     required List<VisitorSummaryRow> rows,
   }) async {
     final doc = pw.Document();
+    final logo = pw.MemoryImage(await PdfBranding.loadLogoBytes());
     doc.addPage(
       pw.MultiPage(
         pageTheme: _theme(),
         build: (context) => [
-          pw.Text(
-            'Visitors Report',
-            style: pw.TextStyle(
-              fontSize: 18,
-              fontWeight: pw.FontWeight.bold,
-            ),
+          PdfBranding.brandedHeader(
+            logo: logo,
+            title: 'Visitors Report',
+            subtitle: 'Click Kick admin print report',
           ),
           pw.SizedBox(height: 6),
           pw.Text('Total visitors: ${rows.length}'),
@@ -88,16 +89,15 @@ class VisitorReportService {
     required List<VisitorVoteRow> votes,
   }) async {
     final doc = pw.Document();
+    final logo = pw.MemoryImage(await PdfBranding.loadLogoBytes());
     doc.addPage(
       pw.MultiPage(
         pageTheme: _theme(),
         build: (context) => [
-          pw.Text(
-            'Visitor Detail Report',
-            style: pw.TextStyle(
-              fontSize: 18,
-              fontWeight: pw.FontWeight.bold,
-            ),
+          PdfBranding.brandedHeader(
+            logo: logo,
+            title: 'Visitor Detail Report',
+            subtitle: 'Click Kick admin print report',
           ),
           pw.SizedBox(height: 10),
           pw.Text('Name: $visitorName'),
@@ -116,11 +116,7 @@ class VisitorReportService {
                 color: PdfColors.grey300,
               ),
               cellAlignment: pw.Alignment.centerLeft,
-              headers: const [
-                'Contest',
-                'Participant',
-                'Voted At',
-              ],
+              headers: const ['Contest', 'Participant', 'Voted At'],
               data: votes
                   .map(
                     (row) => [

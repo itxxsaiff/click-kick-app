@@ -497,12 +497,14 @@ class _AdminDashboardState extends State<AdminDashboard> {
                             LayoutBuilder(
                               builder: (context, constraints) {
                                 final width = constraints.maxWidth;
-                                final statCols = width > 420 ? 2 : 1;
+                                final statCols = width > 520 ? 2 : 1;
                                 final statRatio = width > 860
                                     ? 1.55
-                                    : width > 560
-                                    ? 1.45
-                                    : 1.95;
+                                    : width > 640
+                                    ? 1.35
+                                    : width > 520
+                                    ? 1.15
+                                    : 1.55;
                                 return GridView.count(
                                   crossAxisCount: statCols,
                                   crossAxisSpacing: 12,

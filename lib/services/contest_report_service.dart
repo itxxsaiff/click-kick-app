@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import 'pdf_branding.dart';
+
 class ContestReportParticipantRow {
   const ContestReportParticipantRow({
     required this.participantName,
@@ -23,10 +25,7 @@ class ContestReportParticipantRow {
 }
 
 class ContestWinnerRow {
-  const ContestWinnerRow({
-    required this.participantName,
-    required this.votes,
-  });
+  const ContestWinnerRow({required this.participantName, required this.votes});
 
   final String participantName;
   final int votes;
@@ -65,7 +64,9 @@ class ContestReportService {
         votingEnd != null && DateTime.now().isAfter(votingEnd);
     final contestStatus = (contestData['status'] ?? '').toString();
     final shouldShowWinners =
-        isCompletedByDate || contestStatus == 'completed' || contestStatus == 'winner_announced';
+        isCompletedByDate ||
+        contestStatus == 'completed' ||
+        contestStatus == 'winner_announced';
 
     for (final doc in submissions) {
       final data = doc.data();
@@ -77,10 +78,14 @@ class ContestReportService {
         if (userNameCache.containsKey(userId)) {
           name = userNameCache[userId]!;
         } else {
-          final userDoc = await _firestore.collection('users').doc(userId).get();
-          name = (userDoc.data()?['displayName'] ?? userDoc.data()?['email'] ?? '')
-              .toString()
-              .trim();
+          final userDoc = await _firestore
+              .collection('users')
+              .doc(userId)
+              .get();
+          name =
+              (userDoc.data()?['displayName'] ?? userDoc.data()?['email'] ?? '')
+                  .toString()
+                  .trim();
           userNameCache[userId] = name;
         }
       }
@@ -132,9 +137,14 @@ class ContestReportService {
           if (userNameCache.containsKey(userId)) {
             name = userNameCache[userId]!;
           } else {
-            final userDoc = await _firestore.collection('users').doc(userId).get();
+            final userDoc = await _firestore
+                .collection('users')
+                .doc(userId)
+                .get();
             name =
-                (userDoc.data()?['displayName'] ?? userDoc.data()?['email'] ?? '')
+                (userDoc.data()?['displayName'] ??
+                        userDoc.data()?['email'] ??
+                        '')
                     .toString()
                     .trim();
             userNameCache[userId] = name;
@@ -156,7 +166,8 @@ class ContestReportService {
       sponsorName: (contestData['sponsorName'] ?? 'Platform').toString(),
       region: (contestData['region'] ?? '-').toString(),
       status: (contestData['status'] ?? '-').toString(),
-      winnerPrize: '\$${(((contestData['winnerPrize'] ?? 0) as num).toDouble()).toStringAsFixed(0)}',
+      winnerPrize:
+          '\$${(((contestData['winnerPrize'] ?? 0) as num).toDouble()).toStringAsFixed(0)}',
       shouldShowWinners: shouldShowWinners,
       totalParticipants: uniqueParticipantIds.length,
       approvedCount: approved,
@@ -189,42 +200,35 @@ class ContestReportService {
     required List<ContestReportParticipantRow> participants,
   }) async {
     final doc = pw.Document();
+    final logo = pw.MemoryImage(await PdfBranding.loadLogoBytes());
     doc.addPage(
       pw.MultiPage(
         pageTheme: _theme(),
         build: (context) => [
-          pw.Text(
-            'Contest Performance Report',
-            style: pw.TextStyle(
-              fontSize: 18,
-              fontWeight: pw.FontWeight.bold,
-            ),
+          PdfBranding.brandedHeader(
+            logo: logo,
+            title: 'Contest Performance Report',
+            subtitle: contestTitle,
           ),
           pw.SizedBox(height: 12),
-          _section(
-            'Contest Summary',
-            [
-              _line('Contest', contestTitle),
-              _line('Type', contestType),
-              _line('Sponsor', sponsorName),
-              _line('Region', region),
-              _line('Status', status),
-              _line('Winner Prize', winnerPrize),
-            ],
-          ),
+          _section('Contest Summary', [
+            _line('Contest', contestTitle),
+            _line('Type', contestType),
+            _line('Sponsor', sponsorName),
+            _line('Region', region),
+            _line('Status', status),
+            _line('Winner Prize', winnerPrize),
+          ]),
           pw.SizedBox(height: 12),
-          _section(
-            'Performance',
-            [
-              _line('Total Participants', totalParticipants.toString()),
-              _line('Approved', approvedCount.toString()),
-              _line('Rejected', rejectedCount.toString()),
-              _line('Pending', pendingCount.toString()),
-              _line('Total Votes', totalVotes.toString()),
-              _line('Total Voters', totalVoters.toString()),
-              _line('Total Shares', totalShares.toString()),
-            ],
-          ),
+          _section('Performance', [
+            _line('Total Participants', totalParticipants.toString()),
+            _line('Approved', approvedCount.toString()),
+            _line('Rejected', rejectedCount.toString()),
+            _line('Pending', pendingCount.toString()),
+            _line('Total Votes', totalVotes.toString()),
+            _line('Total Voters', totalVoters.toString()),
+            _line('Total Shares', totalShares.toString()),
+          ]),
           pw.SizedBox(height: 12),
           pw.Text(
             'Winners',
@@ -235,15 +239,17 @@ class ContestReportService {
             ...(winners.isEmpty
                 ? [pw.Text('No winner data available yet.')]
                 : [
-            pw.Table.fromTextArray(
-              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-              headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
-              headers: const ['Participant', 'Votes'],
-              data: winners
-                  .map((w) => [w.participantName, w.votes.toString()])
-                  .toList(),
-            ),
-          ])
+                    pw.Table.fromTextArray(
+                      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                      headerDecoration: const pw.BoxDecoration(
+                        color: PdfColors.grey300,
+                      ),
+                      headers: const ['Participant', 'Votes'],
+                      data: winners
+                          .map((w) => [w.participantName, w.votes.toString()])
+                          .toList(),
+                    ),
+                  ])
           else
             pw.Text('Winners will appear after voting is completed.'),
           pw.SizedBox(height: 14),
@@ -257,7 +263,9 @@ class ContestReportService {
           else
             pw.Table.fromTextArray(
               headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-              headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+              headerDecoration: const pw.BoxDecoration(
+                color: PdfColors.grey300,
+              ),
               cellAlignment: pw.Alignment.centerLeft,
               headers: const [
                 'Participant',

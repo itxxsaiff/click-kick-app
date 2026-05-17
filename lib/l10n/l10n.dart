@@ -80,10 +80,21 @@ class LanguageSelectionScreen extends StatefulWidget {
 class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
   bool _showUpdated = false;
   bool _hasExplicitSelection = false;
+  AppLanguage? _pendingLanguage;
 
   Future<void> _selectLanguage(AppLanguage language) async {
     final controller = LanguageScope.of(context);
-    if (_hasExplicitSelection && controller.language == language) return;
+    final currentOrPending = _pendingLanguage ?? controller.language;
+    if (_hasExplicitSelection && currentOrPending == language) return;
+    if (widget.showContinue) {
+      setState(() {
+        _pendingLanguage = language;
+        _showUpdated = true;
+        _hasExplicitSelection = true;
+      });
+      return;
+    }
+
     await controller.setLanguage(language);
     if (!mounted) return;
     setState(() {
@@ -100,7 +111,7 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
     }
 
     final controller = LanguageScope.of(context);
-    final language = controller.language;
+    final language = _pendingLanguage ?? controller.language;
     final showSelectedState = !widget.showContinue || _hasExplicitSelection;
 
     return Scaffold(
@@ -261,7 +272,11 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
                 const SizedBox(height: 28),
                 FilledButton(
                   onPressed: _hasExplicitSelection
-                      ? () {
+                      ? () async {
+                          final selectedLanguage =
+                              _pendingLanguage ?? controller.language;
+                          await controller.setLanguage(selectedLanguage);
+                          if (!context.mounted) return;
                           Navigator.pushReplacementNamed(context, '/home');
                         }
                       : null,

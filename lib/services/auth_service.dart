@@ -325,6 +325,34 @@ class AuthService {
     await _auth.sendPasswordResetEmail(email: normalizedEmail);
   }
 
+  Future<void> incrementContestView(String contestId) async {
+    final callable = FirebaseFunctions.instance.httpsCallable(
+      'incrementContestView',
+    );
+    await callable.call<Map<String, dynamic>>({'contestId': contestId});
+  }
+
+  Future<void> incrementContestShare(String contestId) async {
+    final callable = FirebaseFunctions.instance.httpsCallable(
+      'incrementContestShare',
+    );
+    await callable.call<Map<String, dynamic>>({'contestId': contestId});
+  }
+
+  Future<void> incrementAdminVideoView(String videoId) async {
+    final callable = FirebaseFunctions.instance.httpsCallable(
+      'incrementAdminVideoView',
+    );
+    await callable.call<Map<String, dynamic>>({'videoId': videoId});
+  }
+
+  Future<void> incrementAdminVideoShare(String videoId) async {
+    final callable = FirebaseFunctions.instance.httpsCallable(
+      'incrementAdminVideoShare',
+    );
+    await callable.call<Map<String, dynamic>>({'videoId': videoId});
+  }
+
   Future<UserCredential> _signInWithProvider(
     AuthProvider provider, {
     required UserRole roleIfMissing,

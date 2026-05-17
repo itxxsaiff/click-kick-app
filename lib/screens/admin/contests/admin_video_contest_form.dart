@@ -29,6 +29,9 @@ class _AdminVideoContestFormState extends State<AdminVideoContestForm> {
   final _maxVideos = TextEditingController();
   final _winnerPrize = TextEditingController();
 
+  Uint8List? _logoBytes;
+  String _logoUrl = '';
+  String _logoName = '';
   DateTime? _startDate;
   DateTime? _endDate;
   DateTime? _votingStart;
@@ -40,8 +43,15 @@ class _AdminVideoContestFormState extends State<AdminVideoContestForm> {
   String? _contestAdminId;
   String _contestAdminName = '';
   List<Map<String, String>> _admins = const [];
+  List<Map<String, String>> _sponsors = const [];
+  String _contestSource = 'click_kick';
+  String? _sponsorId;
+  String _sponsorName = '';
+  String? _sponsorshipApplicationId;
+  bool _loadingSponsors = true;
   List<String> _selectedRegions = [];
   bool _loadingAdmins = true;
+  bool _titleTouched = false;
 
   bool _saving = false;
 
@@ -50,6 +60,10 @@ class _AdminVideoContestFormState extends State<AdminVideoContestForm> {
     super.initState();
     final data = widget.existing;
     if (data != null) {
+      _contestSource =
+          (data['contestType'] ?? 'video_contest') == 'sponsor_contest'
+          ? 'sponsorship'
+          : 'click_kick';
       _title.text = (data['title'] ?? '').toString();
       _description.text = (data['description'] ?? '').toString();
       final existingRegions = (data['regions'] as List?)
@@ -69,6 +83,7 @@ class _AdminVideoContestFormState extends State<AdminVideoContestForm> {
       _region.text = _selectedRegions.join(', ');
       _maxVideos.text = (data['maxVideos'] ?? '').toString();
       _winnerPrize.text = (data['winnerPrize'] ?? '').toString();
+      _logoUrl = (data['logoUrl'] ?? '').toString();
       _startDate = _readDate(data['submissionStart']);
       _endDate = _readDate(data['submissionEnd']);
       _votingStart = _readDate(data['votingStart']);
@@ -76,8 +91,20 @@ class _AdminVideoContestFormState extends State<AdminVideoContestForm> {
       _videoUrl = (data['contestVideoUrl'] ?? '').toString();
       _contestAdminId = (data['contestAdminId'] ?? '').toString().trim();
       _contestAdminName = (data['contestAdminName'] ?? '').toString().trim();
+      _sponsorId = (data['sponsorId'] ?? '').toString().trim();
+      _sponsorName = (data['sponsorName'] ?? '').toString().trim();
+      _sponsorshipApplicationId = (data['sponsorshipApplicationId'] ?? '')
+          .toString()
+          .trim();
+      _titleTouched = _title.text.trim().isNotEmpty;
     }
+    _title.addListener(() {
+      if (_title.text.trim().isNotEmpty) {
+        _titleTouched = true;
+      }
+    });
     _loadAdmins();
+    _loadSponsors();
   }
 
   @override
@@ -88,6 +115,219 @@ class _AdminVideoContestFormState extends State<AdminVideoContestForm> {
     _maxVideos.dispose();
     _winnerPrize.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadSponsors() async {
+    final snap = await FirebaseFirestore.instance
+        .collection('users')
+        .where('role', isEqualTo: 'sponsor')
+        .get();
+
+    final sponsors =
+        snap.docs
+            .map((doc) {
+              final data = doc.data();
+              final name =
+                  (data['companyName'] ??
+                          data['displayName'] ??
+                          data['email'] ??
+                          '')
+                      .toString()
+                      .trim();
+              if (name.isEmpty) return null;
+              return {
+                'id': doc.id,
+                'name': name,
+                'logoUrl': (data['logoUrl'] ?? '').toString(),
+              };
+            })
+            .whereType<Map<String, String>>()
+            .toList()
+          ..sort(
+            (a, b) => (a['name'] ?? '').toLowerCase().compareTo(
+              (b['name'] ?? '').toLowerCase(),
+            ),
+          );
+
+    if (!mounted) return;
+    setState(() {
+      _sponsors = sponsors;
+      _loadingSponsors = false;
+      if (_sponsorId != null && !_sponsors.any((s) => s['id'] == _sponsorId)) {
+        _sponsorId = null;
+        _sponsorName = '';
+      }
+    });
+    if (_contestSource == 'sponsorship' &&
+        _sponsorId != null &&
+        _sponsorId!.isNotEmpty) {
+      await _applySponsorSelection(_sponsorId!, shouldSuggestTitle: false);
+    }
+  }
+
+  Future<void> _pickLogo() async {
+    final picker = ImagePicker();
+    final file = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    setState(() {
+      _logoBytes = bytes;
+      _logoName = file.name;
+    });
+  }
+
+  Future<String> _uploadLogo(String contestId) async {
+    if (_logoBytes == null) return _logoUrl;
+    final ref = FirebaseStorage.instance.ref().child(
+      'contest_logos/$contestId/${DateTime.now().millisecondsSinceEpoch}.png',
+    );
+    await ref.putData(_logoBytes!);
+    return ref.getDownloadURL();
+  }
+
+  String _extractSponsorVideoUrl(Map<String, dynamic> data) {
+    final directKeys = [
+      'contestVideoUrl',
+      'videoUrl',
+      'introVideoUrl',
+      'officialVideoUrl',
+      'sponsorVideoUrl',
+    ];
+    for (final key in directKeys) {
+      final value = (data[key] ?? '').toString().trim();
+      if (value.isNotEmpty) return value;
+    }
+    final assets = data['productAssetUrls'];
+    if (assets is List) {
+      for (final item in assets) {
+        final value = item.toString();
+        if (value.toLowerCase().contains('.mp4') ||
+            value.toLowerCase().contains('video')) {
+          return value;
+        }
+      }
+    }
+    return '';
+  }
+
+  Future<void> _applySponsorSelection(
+    String sponsorId, {
+    bool shouldSuggestTitle = true,
+  }) async {
+    final selected = _sponsors.cast<Map<String, String>?>().firstWhere(
+      (item) => item?['id'] == sponsorId,
+      orElse: () => null,
+    );
+    final sponsorName = selected?['name'] ?? '';
+    final sponsorLogo = selected?['logoUrl'] ?? '';
+
+    final appSnap = await FirebaseFirestore.instance
+        .collection('sponsorship_applications')
+        .where('sponsorId', isEqualTo: sponsorId)
+        .get();
+    final appDocs = appSnap.docs.toList()
+      ..sort((a, b) {
+        final at =
+            (a.data()['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+        final bt =
+            (b.data()['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+        return bt.compareTo(at);
+      });
+    final latestApp = appDocs.isEmpty ? null : appDocs.first.data();
+    final latestAppId = appDocs.isEmpty ? null : appDocs.first.id;
+
+    if (!mounted) return;
+    setState(() {
+      _sponsorId = sponsorId;
+      _sponsorName = sponsorName;
+      _sponsorshipApplicationId = latestAppId;
+      if (_logoBytes == null) {
+        _logoUrl = (latestApp?['logoUrl'] ?? sponsorLogo).toString();
+      }
+      if (_videoBytes == null) {
+        final sponsorVideo = latestApp == null
+            ? ''
+            : _extractSponsorVideoUrl(latestApp);
+        if (sponsorVideo.isNotEmpty) {
+          _videoUrl = sponsorVideo;
+          _videoPath = '';
+        }
+      }
+      final description = (latestApp?['description'] ?? '').toString().trim();
+      if (description.isNotEmpty && _description.text.trim().isEmpty) {
+        _description.text = description;
+      }
+      final country = (latestApp?['targetCountry'] ?? '').toString().trim();
+      if (country.isNotEmpty) {
+        _selectedRegions = [country];
+        _region.text = country;
+      }
+      final maxVideos = (latestApp?['maxVideos'] ?? '').toString().trim();
+      if (maxVideos.isNotEmpty && _maxVideos.text.trim().isEmpty) {
+        _maxVideos.text = maxVideos;
+      }
+      final winnerPrize = (latestApp?['winnerPrize'] ?? '').toString().trim();
+      if (winnerPrize.isNotEmpty && _winnerPrize.text.trim().isEmpty) {
+        _winnerPrize.text = winnerPrize;
+      }
+      _startDate =
+          _startDate ??
+          _readDate(
+            latestApp?['proposedSubmissionStart'] ??
+                latestApp?['submissionStart'],
+          );
+      _endDate =
+          _endDate ??
+          _readDate(
+            latestApp?['proposedSubmissionEnd'] ?? latestApp?['submissionEnd'],
+          );
+      _votingStart =
+          _votingStart ??
+          _readDate(
+            latestApp?['proposedVotingStart'] ?? latestApp?['votingStart'],
+          );
+      _votingEnd =
+          _votingEnd ??
+          _readDate(latestApp?['proposedVotingEnd'] ?? latestApp?['votingEnd']);
+    });
+
+    if (shouldSuggestTitle) {
+      final appBrand = (latestApp?['brandName'] ?? '').toString().trim();
+      await _suggestContestTitle(
+        baseName: appBrand.isNotEmpty ? appBrand : sponsorName,
+      );
+    }
+  }
+
+  Future<void> _suggestContestTitle({required String baseName}) async {
+    final base = baseName.trim();
+    if (base.isEmpty) return;
+    if (_titleTouched && widget.contestId != null) return;
+    final snap = await FirebaseFirestore.instance.collection('contests').get();
+    final pattern = RegExp(
+      '^${RegExp.escape(base)}\\s+(\\d+)\$',
+      caseSensitive: false,
+    );
+    var maxNumber = 0;
+    for (final doc in snap.docs) {
+      final data = doc.data();
+      final title = (data['title'] ?? '').toString().trim();
+      final match = pattern.firstMatch(title);
+      if (match != null) {
+        final number = int.tryParse(match.group(1) ?? '') ?? 0;
+        if (number > maxNumber) maxNumber = number;
+      }
+    }
+    final nextLabel = '$base ${(maxNumber + 1).toString().padLeft(2, '0')}';
+    if (!mounted) return;
+    setState(() {
+      if (!_titleTouched || _title.text.trim().isEmpty) {
+        _title.text = nextLabel;
+      }
+    });
   }
 
   DateTime? _readDate(dynamic value) {
@@ -166,7 +406,9 @@ class _AdminVideoContestFormState extends State<AdminVideoContestForm> {
                               checkColor: Colors.white,
                               title: Text(
                                 country.name,
-                                style: const TextStyle(color: AppColors.textLight),
+                                style: const TextStyle(
+                                  color: AppColors.textLight,
+                                ),
                               ),
                               controlAffinity: ListTileControlAffinity.leading,
                               onChanged: (value) {
@@ -301,6 +543,11 @@ class _AdminVideoContestFormState extends State<AdminVideoContestForm> {
       _show(context.tr('Please assign a contest admin.'));
       return;
     }
+    if (_contestSource == 'sponsorship' &&
+        (_sponsorId == null || _sponsorId!.trim().isEmpty)) {
+      _show(context.tr('Please select a sponsor.'));
+      return;
+    }
 
     setState(() => _saving = true);
     final nowDate = DateTime.now();
@@ -317,7 +564,10 @@ class _AdminVideoContestFormState extends State<AdminVideoContestForm> {
       'regions': _selectedRegions,
       'maxVideos': int.tryParse(_maxVideos.text.trim()) ?? 0,
       'winnerPrize': winnerPrize,
-      'contestType': 'video_contest',
+      'contestType': _contestSource == 'sponsorship'
+          ? 'sponsor_contest'
+          : 'video_contest',
+      'createdFrom': _contestSource,
       'contestAdminId': _contestAdminId,
       'contestAdminName': _contestAdminName,
       'submissionStart': Timestamp.fromDate(_startDate!),
@@ -326,15 +576,30 @@ class _AdminVideoContestFormState extends State<AdminVideoContestForm> {
       'votingEnd': Timestamp.fromDate(_votingEnd!),
       'status': contestStatus,
       'updatedAt': now,
+      if (_contestSource == 'sponsorship') 'sponsorId': _sponsorId,
+      if (_contestSource == 'sponsorship') 'sponsorName': _sponsorName,
+      if (_contestSource == 'sponsorship' &&
+          (_sponsorshipApplicationId ?? '').isNotEmpty)
+        'sponsorshipApplicationId': _sponsorshipApplicationId,
     };
 
     final col = FirebaseFirestore.instance.collection('contests');
     if (widget.contestId == null) {
       final doc = col.doc();
+      final logoUrl = await _uploadLogo(doc.id);
       final videoUrl = await _uploadVideo(doc.id);
-      await doc.set({...data, 'createdAt': now, 'contestVideoUrl': videoUrl});
+      await doc.set({
+        ...data,
+        'createdAt': now,
+        'contestVideoUrl': videoUrl,
+        if (logoUrl.isNotEmpty) 'logoUrl': logoUrl,
+      });
     } else {
       await col.doc(widget.contestId).update(data);
+      if (_logoBytes != null) {
+        final logoUrl = await _uploadLogo(widget.contestId!);
+        await col.doc(widget.contestId).update({'logoUrl': logoUrl});
+      }
       if (_videoBytes != null) {
         final videoUrl = await _uploadVideo(widget.contestId!);
         await col.doc(widget.contestId).update({'contestVideoUrl': videoUrl});
@@ -404,6 +669,126 @@ class _AdminVideoContestFormState extends State<AdminVideoContestForm> {
           key: _formKey,
           child: Column(
             children: [
+              DropdownButtonFormField<String>(
+                initialValue: _contestSource,
+                decoration: InputDecoration(
+                  labelText: context.tr('Create contest from'),
+                ),
+                items: [
+                  DropdownMenuItem(
+                    value: 'click_kick',
+                    child: Text(context.tr('Click Kick')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'sponsorship',
+                    child: Text(context.tr('Sponsorship')),
+                  ),
+                ],
+                onChanged: (value) async {
+                  if (value == null) return;
+                  setState(() {
+                    _contestSource = value;
+                    if (value == 'click_kick') {
+                      _sponsorId = null;
+                      _sponsorName = '';
+                      _sponsorshipApplicationId = null;
+                    }
+                  });
+                  if (value == 'click_kick') {
+                    await _suggestContestTitle(baseName: 'Click Kick');
+                  } else if (_sponsorId != null && _sponsorId!.isNotEmpty) {
+                    await _applySponsorSelection(_sponsorId!);
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+              if (_contestSource == 'sponsorship')
+                if (_loadingSponsors)
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  )
+                else ...[
+                  DropdownButtonFormField<String>(
+                    initialValue: _sponsorId,
+                    decoration: InputDecoration(
+                      labelText: context.tr('Select Sponsor'),
+                    ),
+                    validator: (value) {
+                      if (_contestSource != 'sponsorship') return null;
+                      return (value == null || value.isEmpty)
+                          ? context.tr('Required')
+                          : null;
+                    },
+                    items: _sponsors
+                        .map(
+                          (s) => DropdownMenuItem<String>(
+                            value: s['id'],
+                            child: Text(s['name'] ?? ''),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) async {
+                      if (value == null || value.isEmpty) return;
+                      await _applySponsorSelection(value);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              GestureDetector(
+                onTap: _pickLogo,
+                child: Container(
+                  height: 110,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: AppColors.card,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: _logoBytes != null || _logoUrl.isNotEmpty
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(22),
+                          child: _logoBytes != null
+                              ? Image.memory(_logoBytes!, fit: BoxFit.cover)
+                              : Image.network(_logoUrl, fit: BoxFit.cover),
+                        )
+                      : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.image_outlined,
+                              color: AppColors.hotPink,
+                              size: 34,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              context.tr('Upload contest logo'),
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+              if (_logoName.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _logoName,
+                    style: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
               GestureDetector(
                 onTap: _pickVideo,
                 child: Container(
@@ -427,7 +812,7 @@ class _AdminVideoContestFormState extends State<AdminVideoContestForm> {
                         _videoPath.isNotEmpty
                             ? '${context.tr('Script video selected')}: $_videoPath'
                             : (_videoUrl.isNotEmpty
-                                  ? context.tr('Script video uploaded')
+                                  ? context.tr('Script video available')
                                   : context.tr(
                                       'Upload script/instruction video (MP4)',
                                     )),
@@ -441,6 +826,7 @@ class _AdminVideoContestFormState extends State<AdminVideoContestForm> {
               const SizedBox(height: 16),
               TextFormField(
                 controller: _title,
+                onChanged: (_) => _titleTouched = true,
                 decoration: InputDecoration(
                   labelText: context.tr('Contest name'),
                 ),

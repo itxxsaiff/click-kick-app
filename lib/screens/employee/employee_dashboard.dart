@@ -11,7 +11,7 @@ import '../../widgets/password_change_layout.dart';
 import '../../widgets/settings_action_tile.dart';
 import '../admin/admin_videos_screen.dart';
 import '../shared/legal_center_screen.dart';
-import '../shared/support_chat_screen.dart';
+import '../admin/admin_support_screen.dart';
 import '../auth/login_screen.dart';
 
 class EmployeeDashboard extends StatefulWidget {
@@ -506,13 +506,7 @@ class _EmployeeProfileTab extends StatelessWidget {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => SupportChatScreen(
-                      threadId: user.uid,
-                      title: context.tr('Support'),
-                      subtitle: user.email,
-                    ),
-                  ),
+                  MaterialPageRoute(builder: (_) => const AdminSupportScreen()),
                 );
               },
             ),

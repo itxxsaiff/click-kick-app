@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import 'pdf_branding.dart';
+
 class EmployeeSummaryRow {
   const EmployeeSummaryRow({
     required this.name,
@@ -40,16 +42,15 @@ class EmployeeReportService {
     required List<EmployeeSummaryRow> rows,
   }) async {
     final doc = pw.Document();
+    final logo = pw.MemoryImage(await PdfBranding.loadLogoBytes());
     doc.addPage(
       pw.MultiPage(
         pageTheme: _theme(),
         build: (context) => [
-          pw.Text(
-            'Employees Moderation Report',
-            style: pw.TextStyle(
-              fontSize: 18,
-              fontWeight: pw.FontWeight.bold,
-            ),
+          PdfBranding.brandedHeader(
+            logo: logo,
+            title: 'Employees Moderation Report',
+            subtitle: 'Click Kick admin print report',
           ),
           pw.SizedBox(height: 6),
           pw.Text('Total employees: ${rows.length}'),
@@ -92,16 +93,15 @@ class EmployeeReportService {
     required List<EmployeeVideoRow> videos,
   }) async {
     final doc = pw.Document();
+    final logo = pw.MemoryImage(await PdfBranding.loadLogoBytes());
     doc.addPage(
       pw.MultiPage(
         pageTheme: _theme(),
         build: (context) => [
-          pw.Text(
-            'Employee Moderation Detail Report',
-            style: pw.TextStyle(
-              fontSize: 18,
-              fontWeight: pw.FontWeight.bold,
-            ),
+          PdfBranding.brandedHeader(
+            logo: logo,
+            title: 'Employee Moderation Detail Report',
+            subtitle: 'Click Kick admin print report',
           ),
           pw.SizedBox(height: 10),
           pw.Text('Name: $employeeName'),
@@ -152,4 +152,3 @@ class EmployeeReportService {
     );
   }
 }
-

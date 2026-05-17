@@ -108,7 +108,7 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
       final existingThreadData =
           existingThread?.data() ?? const <String, dynamic>{};
       final senderRole = widget.isAdmin
-          ? 'admin'
+          ? (userData['role'] ?? 'admin').toString()
           : (userData['role'] ?? 'user').toString();
       final senderName =
           (userData['displayName'] ?? auth.displayName ?? auth.email ?? 'User')
@@ -155,6 +155,17 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
             : _selectedTopic,
         'lastMessage': lastMessage,
         'lastMessageAt': now,
+        'lastRepliedBy': senderName,
+        'lastRepliedById': auth.uid,
+        'lastRepliedRole': senderRole,
+        'lastRepliedAt': now,
+        if (widget.isAdmin) 'status': 'in_progress',
+        if (widget.isAdmin &&
+            ((existingThreadData['assignedTo'] ?? '').toString().isEmpty))
+          'assignedTo': auth.uid,
+        if (widget.isAdmin &&
+            ((existingThreadData['assignedToName'] ?? '').toString().isEmpty))
+          'assignedToName': senderName,
         'updatedAt': now,
       }, SetOptions(merge: true));
 

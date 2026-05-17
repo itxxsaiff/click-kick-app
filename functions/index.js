@@ -193,6 +193,136 @@ exports.checkPasswordResetAvailability = onCall(async (request) => {
   };
 });
 
+exports.incrementContestView = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Authentication required.");
+  }
+
+  const data = request.data || {};
+  const contestId = String(data.contestId || "").trim();
+  if (!contestId) {
+    throw new HttpsError("invalid-argument", "contestId is required.");
+  }
+
+  const contestRef = db.collection("contests").doc(contestId);
+  const viewerRef = contestRef.collection("viewers").doc(request.auth.uid);
+
+  await db.runTransaction(async (tx) => {
+    const [contestSnap, viewerSnap] = await Promise.all([
+      tx.get(contestRef),
+      tx.get(viewerRef),
+    ]);
+
+    if (!contestSnap.exists) {
+      throw new HttpsError("not-found", "Contest not found.");
+    }
+    if (viewerSnap.exists) {
+      return;
+    }
+
+    tx.set(viewerRef, {
+      userId: request.auth.uid,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    tx.set(contestRef, {
+      viewCount: admin.firestore.FieldValue.increment(1),
+      lastViewedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, {merge: true});
+  });
+
+  return {ok: true};
+});
+
+exports.incrementContestShare = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Authentication required.");
+  }
+
+  const data = request.data || {};
+  const contestId = String(data.contestId || "").trim();
+  if (!contestId) {
+    throw new HttpsError("invalid-argument", "contestId is required.");
+  }
+
+  const contestRef = db.collection("contests").doc(contestId);
+  const contestSnap = await contestRef.get();
+  if (!contestSnap.exists) {
+    throw new HttpsError("not-found", "Contest not found.");
+  }
+
+  await contestRef.set({
+    shareCount: admin.firestore.FieldValue.increment(1),
+    lastSharedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, {merge: true});
+
+  return {ok: true};
+});
+
+exports.incrementAdminVideoView = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Authentication required.");
+  }
+
+  const data = request.data || {};
+  const videoId = String(data.videoId || "").trim();
+  if (!videoId) {
+    throw new HttpsError("invalid-argument", "videoId is required.");
+  }
+
+  const videoRef = db.collection("admin_videos").doc(videoId);
+  const viewerRef = videoRef.collection("viewers").doc(request.auth.uid);
+
+  await db.runTransaction(async (tx) => {
+    const [videoSnap, viewerSnap] = await Promise.all([
+      tx.get(videoRef),
+      tx.get(viewerRef),
+    ]);
+
+    if (!videoSnap.exists) {
+      throw new HttpsError("not-found", "Video not found.");
+    }
+    if (viewerSnap.exists) {
+      return;
+    }
+
+    tx.set(viewerRef, {
+      userId: request.auth.uid,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    tx.set(videoRef, {
+      viewCount: admin.firestore.FieldValue.increment(1),
+      lastViewedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, {merge: true});
+  });
+
+  return {ok: true};
+});
+
+exports.incrementAdminVideoShare = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Authentication required.");
+  }
+
+  const data = request.data || {};
+  const videoId = String(data.videoId || "").trim();
+  if (!videoId) {
+    throw new HttpsError("invalid-argument", "videoId is required.");
+  }
+
+  const videoRef = db.collection("admin_videos").doc(videoId);
+  const videoSnap = await videoRef.get();
+  if (!videoSnap.exists) {
+    throw new HttpsError("not-found", "Video not found.");
+  }
+
+  await videoRef.set({
+    shareCount: admin.firestore.FieldValue.increment(1),
+    lastSharedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, {merge: true});
+
+  return {ok: true};
+});
+
 /**
  * Builds invoice number.
  * @return {string}

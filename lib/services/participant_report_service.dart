@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import 'pdf_branding.dart';
+
 class ParticipantSummaryRow {
   const ParticipantSummaryRow({
     required this.name,
@@ -42,16 +44,15 @@ class ParticipantReportService {
     required List<ParticipantSummaryRow> rows,
   }) async {
     final doc = pw.Document();
+    final logo = pw.MemoryImage(await PdfBranding.loadLogoBytes());
     doc.addPage(
       pw.MultiPage(
         pageTheme: _theme(),
         build: (context) => [
-          pw.Text(
-            'Participants Report',
-            style: pw.TextStyle(
-              fontSize: 18,
-              fontWeight: pw.FontWeight.bold,
-            ),
+          PdfBranding.brandedHeader(
+            logo: logo,
+            title: 'Participants Report',
+            subtitle: 'Click Kick admin print report',
           ),
           pw.SizedBox(height: 6),
           pw.Text('Total participants: ${rows.length}'),
@@ -100,16 +101,15 @@ class ParticipantReportService {
     required List<ParticipantContestRow> contests,
   }) async {
     final doc = pw.Document();
+    final logo = pw.MemoryImage(await PdfBranding.loadLogoBytes());
     doc.addPage(
       pw.MultiPage(
         pageTheme: _theme(),
         build: (context) => [
-          pw.Text(
-            'Participant Detail Report',
-            style: pw.TextStyle(
-              fontSize: 18,
-              fontWeight: pw.FontWeight.bold,
-            ),
+          PdfBranding.brandedHeader(
+            logo: logo,
+            title: 'Participant Detail Report',
+            subtitle: 'Click Kick admin print report',
           ),
           pw.SizedBox(height: 10),
           pw.Text('Name: $participantName'),

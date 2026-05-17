@@ -58,7 +58,7 @@ class AccountTypeSelectionScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 26),
                   Text(
-                    _kCreateAccount,
+                    context.tr(_kCreateAccount),
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                       fontSize: 34,
                       fontWeight: FontWeight.w800,
@@ -66,7 +66,7 @@ class AccountTypeSelectionScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    _kSelectAccountType,
+                    context.tr(_kSelectAccountType),
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                       color: AppColors.textMuted,
                       fontSize: 18,
@@ -75,9 +75,10 @@ class AccountTypeSelectionScreen extends StatelessWidget {
                   const SizedBox(height: 34),
                   _AccountTypeTile(
                     icon: Icons.person_outline_rounded,
-                    title: _kPersonalAccount,
-                    description:
-                        'Join as an individual and take part in amazing contests.',
+                    title: context.tr(_kPersonalAccount),
+                    description: context.tr(
+                      'Join as an individual and take part in amazing contests.',
+                    ),
                     accent: AppColors.hotPink,
                     onTap: () =>
                         Navigator.pushNamed(context, '/register?type=user'),
@@ -86,9 +87,10 @@ class AccountTypeSelectionScreen extends StatelessWidget {
                   const SizedBox(height: 18),
                   _AccountTypeTile(
                     icon: Icons.business_center_outlined,
-                    title: _kBusinessAccount,
-                    description:
-                        'Create your brand profile and promote your contests.',
+                    title: context.tr(_kBusinessAccount),
+                    description: context.tr(
+                      'Create your brand profile and promote your contests.',
+                    ),
                     accent: const Color(0xFF47C8FF),
                     onTap: () =>
                         Navigator.pushNamed(context, '/register?type=business'),
@@ -148,7 +150,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         backgroundColor: AppColors.card,
         textStyle: const TextStyle(color: AppColors.textLight),
         inputDecoration: InputDecoration(
-          labelText: _kSearchCountry,
+          labelText: context.tr(_kSearchCountry),
           prefixIcon: const Icon(Icons.search),
         ),
       ),
@@ -178,7 +180,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
     if (!_acceptedTerms) {
-      _showMessage('Please accept the terms to continue.');
+      _showMessage(context.tr('Please accept the terms to continue.'));
       return;
     }
 
@@ -247,7 +249,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _showAgreementModal() async {
-    final title = _isSponsor ? 'Sponsor Agreement' : 'User Agreement';
+    final title = _isSponsor
+        ? context.tr('Sponsor Agreement')
+        : context.tr('User Agreement');
     final body = _isSponsor
         ? context.tr('Sponsor Agreement Content')
         : context.tr('User Agreement Content');
@@ -262,7 +266,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+            child: Text(context.tr('Close')),
           ),
         ],
       ),
@@ -272,39 +276,41 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String _friendlyError(Object e) {
     final text = e.toString();
     if (text.contains('email-already-in-use')) {
-      return 'This email is already linked to another account.';
+      return context.tr('This email is already linked to another account.');
     }
     if (text.contains('phone-number-already-in-use')) {
-      return 'This phone number is already linked to another account.';
+      return context.tr(
+        'This phone number is already linked to another account.',
+      );
     }
     if (text.contains('invalid-email')) {
-      return 'Invalid email address.';
+      return context.tr('Invalid email address.');
     }
     if (text.contains('weak-password')) {
-      return 'Password is too weak.';
+      return context.tr('Password is too weak.');
     }
     if (text.contains('operation-not-allowed')) {
-      return 'Email/password sign-in not enabled in Firebase.';
+      return context.tr('Email/password sign-in not enabled in Firebase.');
     }
     if (text.contains('permission-denied')) {
-      return 'Firestore permission denied. Check rules.';
+      return context.tr('Firestore permission denied. Check rules.');
     }
     if (text.contains('invalid-phone-number')) {
-      return 'Phone number is required.';
+      return context.tr('Phone number is required.');
     }
     if (text.contains('No phone number')) {
-      return 'No phone number found for this account.';
+      return context.tr('No phone number found for this account.');
     }
     if (text.contains('WhatsApp OTP is not configured')) {
-      return 'WhatsApp OTP is not configured.';
+      return context.tr('WhatsApp OTP is not configured.');
     }
     if (text.contains('Unable to send OTP')) {
-      return 'Unable to send OTP. Please try again.';
+      return context.tr('Unable to send OTP. Please try again.');
     }
     if (text.contains('Please wait')) {
-      return 'Please wait before requesting another OTP.';
+      return context.tr('Please wait before requesting another OTP.');
     }
-    return 'Registration failed. Please try again.';
+    return context.tr('Registration failed. Please try again.');
   }
 
   @override
@@ -328,7 +334,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        _isSponsor ? _kBusinessAccount : _kPersonalAccount,
+                        context.tr(
+                          _isSponsor ? _kBusinessAccount : _kPersonalAccount,
+                        ),
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const Spacer(),
@@ -338,9 +346,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   const SizedBox(height: 16),
                   const SizedBox(height: 8),
                   _AuthCard(
-                    title: _isSponsor
-                        ? _kCreateBusinessAccount
-                        : _kJoinTheContest,
+                    title: context.tr(
+                      _isSponsor ? _kCreateBusinessAccount : _kJoinTheContest,
+                    ),
                     subtitle: '',
                     children: [
                       Form(
@@ -358,16 +366,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 ),
                               ],
                               decoration: InputDecoration(
-                                labelText: _kFullName,
+                                labelText: context.tr(_kFullName),
                                 prefixIcon: const Icon(Icons.person_outline),
                                 prefixIconColor: AppColors.textMuted,
                               ),
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) {
-                                  return 'Full name is required.';
+                                  return context.tr('Full name is required.');
                                 }
                                 if (_arabicScriptRegExp.hasMatch(value)) {
-                                  return 'Use English only.';
+                                  return context.tr('Use English only.');
                                 }
                                 return null;
                               },
@@ -377,16 +385,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               controller: _emailController,
                               keyboardType: TextInputType.emailAddress,
                               decoration: InputDecoration(
-                                labelText: _kEmail,
+                                labelText: context.tr(_kEmail),
                                 prefixIcon: const Icon(Icons.email_outlined),
                                 prefixIconColor: AppColors.textMuted,
                               ),
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) {
-                                  return 'Email is required.';
+                                  return context.tr('Email is required.');
                                 }
                                 if (!value.contains('@')) {
-                                  return 'Enter a valid email.';
+                                  return context.tr('Enter a valid email.');
                                 }
                                 return null;
                               },
@@ -408,7 +416,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                     ),
                                     bottomSheetHeight: 560,
                                     inputDecoration: InputDecoration(
-                                      labelText: _kSearchCountry,
+                                      labelText: context.tr(_kSearchCountry),
                                       prefixIcon: const Icon(Icons.search),
                                     ),
                                   ),
@@ -423,7 +431,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               },
                               child: InputDecorator(
                                 decoration: InputDecoration(
-                                  labelText: _kCode,
+                                  labelText: context.tr(_kCode),
                                   prefixIcon: const Icon(Icons.flag_outlined),
                                   prefixIconColor: AppColors.textMuted,
                                   contentPadding: const EdgeInsets.symmetric(
@@ -445,7 +453,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               controller: _phoneController,
                               keyboardType: TextInputType.phone,
                               decoration: InputDecoration(
-                                labelText: _kPhoneNumber,
+                                labelText: context.tr(_kPhoneNumber),
                                 prefixIcon: const Icon(Icons.phone_outlined),
                                 prefixIconColor: AppColors.textMuted,
                                 contentPadding: const EdgeInsets.symmetric(
@@ -456,14 +464,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               validator: (value) {
                                 final raw = (value ?? '').trim();
                                 if (raw.isEmpty) {
-                                  return 'Phone number is required.';
+                                  return context.tr(
+                                    'Phone number is required.',
+                                  );
                                 }
                                 final digitsOnly = raw.replaceAll(
                                   RegExp(r'[^0-9]'),
                                   '',
                                 );
                                 if (digitsOnly.length < 7) {
-                                  return 'Enter valid phone number.';
+                                  return context.tr(
+                                    'Enter valid phone number.',
+                                  );
                                 }
                                 return null;
                               },
@@ -475,7 +487,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 readOnly: true,
                                 onTap: _pickSponsorCountry,
                                 decoration: InputDecoration(
-                                  labelText: _kCountry,
+                                  labelText: context.tr(_kCountry),
                                   prefixIcon: const Icon(Icons.public),
                                   suffixIcon: IconButton(
                                     onPressed: _pickSponsorCountry,
@@ -486,7 +498,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 validator: (value) {
                                   if (!_isSponsor) return null;
                                   if (value == null || value.trim().isEmpty) {
-                                    return 'Country is required.';
+                                    return context.tr('Country is required.');
                                   }
                                   return null;
                                 },
@@ -500,17 +512,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   ),
                                 ],
                                 decoration: InputDecoration(
-                                  labelText: _kCompanyName,
+                                  labelText: context.tr(_kCompanyName),
                                   prefixIcon: const Icon(Icons.business),
                                   prefixIconColor: AppColors.textMuted,
                                 ),
                                 validator: (value) {
                                   if (!_isSponsor) return null;
                                   if (value == null || value.trim().isEmpty) {
-                                    return 'Company name is required.';
+                                    return context.tr(
+                                      'Company name is required.',
+                                    );
                                   }
                                   if (_arabicScriptRegExp.hasMatch(value)) {
-                                    return 'Use English only.';
+                                    return context.tr('Use English only.');
                                   }
                                   return null;
                                 },
@@ -521,7 +535,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               controller: _passwordController,
                               obscureText: _obscurePassword,
                               decoration: InputDecoration(
-                                labelText: _kPassword,
+                                labelText: context.tr(_kPassword),
                                 prefixIcon: const Icon(Icons.lock_outline),
                                 prefixIconColor: AppColors.textMuted,
                                 suffixIcon: IconButton(
@@ -537,10 +551,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return 'Password is required.';
+                                  return context.tr('Password is required.');
                                 }
                                 if (value.length < 6) {
-                                  return 'Minimum 6 characters.';
+                                  return context.tr('Minimum 6 characters.');
                                 }
                                 return null;
                               },
@@ -550,7 +564,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               controller: _confirmController,
                               obscureText: _obscureConfirmPassword,
                               decoration: InputDecoration(
-                                labelText: _kConfirmPassword,
+                                labelText: context.tr(_kConfirmPassword),
                                 prefixIcon: const Icon(Icons.lock_outline),
                                 prefixIconColor: AppColors.textMuted,
                                 suffixIcon: IconButton(
@@ -567,10 +581,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
-                                  return 'Confirm your password.';
+                                  return context.tr('Confirm your password.');
                                 }
                                 if (value != _passwordController.text) {
-                                  return 'Passwords do not match.';
+                                  return context.tr('Passwords do not match.');
                                 }
                                 return null;
                               },
@@ -589,51 +603,69 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           );
                         },
                         icon: const Icon(Icons.privacy_tip_outlined),
-                        label: const Text(_kLegalPrivacy),
+                        label: Text(context.tr(_kLegalPrivacy)),
                       ),
                       const SizedBox(height: 8),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Checkbox(
-                            value: _acceptedTerms,
-                            onChanged: (value) {
-                              setState(() => _acceptedTerms = value ?? false);
-                            },
-                          ),
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.only(top: 12),
-                              child: Text.rich(
-                                TextSpan(
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                  children: [
-                                    TextSpan(text: _kTermsPrefix),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () {
+                          setState(() => _acceptedTerms = !_acceptedTerms);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Checkbox(
+                                value: _acceptedTerms,
+                                onChanged: (value) {
+                                  setState(
+                                    () => _acceptedTerms = value ?? false,
+                                  );
+                                },
+                              ),
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.only(top: 12),
+                                  child: Text.rich(
                                     TextSpan(
-                                      text: _kTerms,
-                                      style: const TextStyle(
-                                        color: AppColors.hotPink,
-                                        decoration: TextDecoration.underline,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                      recognizer: TapGestureRecognizer()
-                                        ..onTap = _showAgreementModal,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodyMedium,
+                                      children: [
+                                        TextSpan(
+                                          text: context.tr(_kTermsPrefix),
+                                        ),
+                                        TextSpan(
+                                          text: context.tr(_kTerms),
+                                          style: const TextStyle(
+                                            color: AppColors.hotPink,
+                                            decoration:
+                                                TextDecoration.underline,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                          recognizer: TapGestureRecognizer()
+                                            ..onTap = _showAgreementModal,
+                                        ),
+                                        const TextSpan(text: '.'),
+                                      ],
                                     ),
-                                    const TextSpan(text: '.'),
-                                  ],
+                                  ),
                                 ),
                               ),
-                            ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                       const SizedBox(height: 12),
                       GradientButton(
                         label: _isLoading
-                            ? 'Creating...'
-                            : (_isSponsor
-                                  ? _kCreateBusinessAccount
-                                  : _kCreateAccount),
+                            ? context.tr('Creating...')
+                            : context.tr(
+                                _isSponsor
+                                    ? _kCreateBusinessAccount
+                                    : _kCreateAccount,
+                              ),
                         onPressed: _isLoading ? () {} : _handleRegister,
                       ),
                     ],
@@ -643,14 +675,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        _kAlreadyHaveAccount,
-                        style: TextStyle(color: AppColors.textMuted),
+                        context.tr(_kAlreadyHaveAccount),
+                        style: const TextStyle(color: AppColors.textMuted),
                       ),
                       const SizedBox(width: 8),
                       TextButton(
                         onPressed: () =>
                             Navigator.pushReplacementNamed(context, '/login'),
-                        child: const Text(_kLogin),
+                        child: Text(context.tr(_kLogin)),
                       ),
                     ],
                   ),

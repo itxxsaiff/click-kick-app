@@ -12,6 +12,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../config/stripe_config.dart';
 import '../firebase_options.dart';
+import 'pdf_branding.dart';
 
 class PaymentService {
   PaymentService({FirebaseFirestore? firestore, FirebaseStorage? storage})
@@ -61,11 +62,18 @@ class PaymentService {
     required String currency,
   }) async {
     final doc = pw.Document();
+    final logo = pw.MemoryImage(await PdfBranding.loadLogoBytes());
 
     doc.addPage(
       pw.MultiPage(
         margin: const pw.EdgeInsets.all(26),
         build: (context) => [
+          PdfBranding.brandedHeader(
+            logo: logo,
+            title: 'Sponsorship Invoice',
+            subtitle: invoiceNumber,
+          ),
+          pw.SizedBox(height: 6),
           pw.Container(
             padding: const pw.EdgeInsets.all(16),
             decoration: pw.BoxDecoration(
@@ -420,8 +428,7 @@ class PaymentService {
     final data = await createSponsorshipPaymentIntentData(
       applicationId: applicationId,
     );
-    final paymentIntentClientSecret =
-        data['paymentIntentClientSecret'] ?? '';
+    final paymentIntentClientSecret = data['paymentIntentClientSecret'] ?? '';
     final customerId = data['customerId'] ?? '';
     final ephemeralKeySecret = data['ephemeralKeySecret'] ?? '';
     final merchantDisplayName =
@@ -440,9 +447,7 @@ class PaymentService {
     await Stripe.instance.presentPaymentSheet();
   }
 
-  Future<void> openSponsorshipCheckout({
-    required String applicationId,
-  }) async {
+  Future<void> openSponsorshipCheckout({required String applicationId}) async {
     final url = await createSponsorshipCheckoutSession(
       applicationId: applicationId,
     );
@@ -475,8 +480,7 @@ class PaymentService {
     final data = await createSponsorshipPaymentIntentData(
       applicationId: applicationId,
     );
-    final paymentIntentClientSecret =
-        data['paymentIntentClientSecret'] ?? '';
+    final paymentIntentClientSecret = data['paymentIntentClientSecret'] ?? '';
     if (paymentIntentClientSecret.isEmpty) {
       throw FirebaseFunctionsException(
         code: 'internal',

@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.videocontestshow.app",
+      "sha256_cert_fingerprints": [
+        "78:32:63:1B:F1:33:73:D0:B3:5E:23:42:A2:A5:73:B9:43:CD:13:A6:F0:58:5A:C9:4A:8B:F8:49:00:25:24:65"
+      ]
+    }
+  }
+]

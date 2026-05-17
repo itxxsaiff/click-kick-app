@@ -25,15 +25,65 @@ import '../shared/support_chat_screen.dart';
 import '../user/contest_detail_screen.dart';
 import '../auth/login_screen.dart';
 
+const _shareBaseUrl = 'https://video-contest-show-b788b.firebaseapp.com';
+final Set<Future<void> Function()> _feedStopHandlers =
+    <Future<void> Function()>{};
+bool _feedPlaybackLocked = false;
+
+Future<void> stopAllFeedPlayback({bool lock = true}) async {
+  if (lock) {
+    _feedPlaybackLocked = true;
+  }
+  final handlers = List<Future<void> Function()>.from(_feedStopHandlers);
+  for (final handler in handlers) {
+    try {
+      await handler();
+    } catch (_) {}
+  }
+}
+
+void unlockFeedPlayback() {
+  _feedPlaybackLocked = false;
+}
+
+String _contestShareLink(String contestId, {String? submissionId}) {
+  final params = <String, String>{'contestId': contestId};
+  if (submissionId != null && submissionId.isNotEmpty) {
+    params['submissionId'] = submissionId;
+  }
+  final query = Uri(queryParameters: params).query;
+  return '$_shareBaseUrl/contest-share?$query';
+}
+
+String _feedVideoShareLink(String adminVideoId) {
+  final query = Uri(queryParameters: {'videoId': adminVideoId}).query;
+  return '$_shareBaseUrl/feed-video?$query';
+}
+
 class PublicFeedScreen extends StatefulWidget {
-  const PublicFeedScreen({super.key});
+  const PublicFeedScreen({
+    super.key,
+    this.initialTabIndex = 0,
+    this.sharedContestId,
+    this.sharedAdminVideoId,
+  });
+
+  final int initialTabIndex;
+  final String? sharedContestId;
+  final String? sharedAdminVideoId;
 
   @override
   State<PublicFeedScreen> createState() => _PublicFeedScreenState();
 }
 
 class _PublicFeedScreenState extends State<PublicFeedScreen> {
-  int _tabIndex = 0;
+  late int _tabIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabIndex = widget.initialTabIndex;
+  }
 
   String _headerTitle(
     BuildContext context,
@@ -96,8 +146,14 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
               Icons.person,
             ],
             pages: <Widget>[
-              _HomeFeedTab(isVisible: _tabIndex == 0),
-              _PublicContestsTab(isVisible: _tabIndex == 1),
+              _HomeFeedTab(
+                isVisible: _tabIndex == 0,
+                sharedAdminVideoId: widget.sharedAdminVideoId,
+              ),
+              _PublicContestsTab(
+                isVisible: _tabIndex == 1,
+                sharedContestId: widget.sharedContestId,
+              ),
               const _LoginRequiredCard(),
             ],
           );
@@ -125,14 +181,14 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
             final labels = nav.isParticipant
                 ? (nav.hasUploads
                       ? const <String>[
-                          'Dashboard',
+                          'Home',
                           'Contests',
                           'Prizes',
                           'Dashboard',
                           'Profile',
                         ]
                       : const <String>[
-                          'Dashboard',
+                          'Home',
                           'Contests',
                           'Dashboard',
                           'Profile',
@@ -142,14 +198,14 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
             final icons = nav.isParticipant
                 ? (nav.hasUploads
                       ? const <IconData>[
-                          Icons.dashboard_outlined,
+                          Icons.home_outlined,
                           Icons.local_fire_department_outlined,
                           Icons.card_giftcard_outlined,
                           Icons.dashboard_outlined,
                           Icons.person_outline,
                         ]
                       : const <IconData>[
-                          Icons.dashboard_outlined,
+                          Icons.home_outlined,
                           Icons.local_fire_department_outlined,
                           Icons.dashboard_outlined,
                           Icons.person_outline,
@@ -163,14 +219,14 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
             final activeIcons = nav.isParticipant
                 ? (nav.hasUploads
                       ? const <IconData>[
-                          Icons.dashboard_customize,
+                          Icons.home,
                           Icons.local_fire_department,
                           Icons.card_giftcard,
                           Icons.dashboard_customize,
                           Icons.person,
                         ]
                       : const <IconData>[
-                          Icons.dashboard_customize,
+                          Icons.home,
                           Icons.local_fire_department,
                           Icons.dashboard_customize,
                           Icons.person,
@@ -184,21 +240,39 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
             final pages = nav.isParticipant
                 ? (nav.hasUploads
                       ? <Widget>[
-                          _HomeFeedTab(isVisible: _tabIndex == 0),
-                          _PublicContestsTab(isVisible: _tabIndex == 1),
+                          _HomeFeedTab(
+                            isVisible: _tabIndex == 0,
+                            sharedAdminVideoId: widget.sharedAdminVideoId,
+                          ),
+                          _PublicContestsTab(
+                            isVisible: _tabIndex == 1,
+                            sharedContestId: widget.sharedContestId,
+                          ),
                           const _WinnersFeedTab(),
                           const _DashboardGateTab(),
                           const _ProfileGateTab(),
                         ]
                       : <Widget>[
-                          _HomeFeedTab(isVisible: _tabIndex == 0),
-                          _PublicContestsTab(isVisible: _tabIndex == 1),
+                          _HomeFeedTab(
+                            isVisible: _tabIndex == 0,
+                            sharedAdminVideoId: widget.sharedAdminVideoId,
+                          ),
+                          _PublicContestsTab(
+                            isVisible: _tabIndex == 1,
+                            sharedContestId: widget.sharedContestId,
+                          ),
                           const _DashboardGateTab(),
                           const _ProfileGateTab(),
                         ])
                 : <Widget>[
-                    _HomeFeedTab(isVisible: _tabIndex == 0),
-                    _PublicContestsTab(isVisible: _tabIndex == 1),
+                    _HomeFeedTab(
+                      isVisible: _tabIndex == 0,
+                      sharedAdminVideoId: widget.sharedAdminVideoId,
+                    ),
+                    _PublicContestsTab(
+                      isVisible: _tabIndex == 1,
+                      sharedContestId: widget.sharedContestId,
+                    ),
                     const _ProfileGateTab(),
                   ];
 
@@ -328,9 +402,10 @@ class _PublicNavConfig {
 }
 
 class _HomeFeedTab extends StatefulWidget {
-  const _HomeFeedTab({required this.isVisible});
+  const _HomeFeedTab({required this.isVisible, this.sharedAdminVideoId});
 
   final bool isVisible;
+  final String? sharedAdminVideoId;
 
   @override
   State<_HomeFeedTab> createState() => _HomeFeedTabState();
@@ -345,6 +420,14 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
   bool _pendingAutoplay = false;
   bool _isVideoLoading = false;
   int _videoRequestId = 0;
+  bool _appliedSharedTarget = false;
+  String? _lastTrackedAdminVideoId;
+
+  @override
+  void initState() {
+    super.initState();
+    _feedStopHandlers.add(_clearActiveVideo);
+  }
 
   @override
   void didChangeDependencies() {
@@ -367,6 +450,7 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
   @override
   void dispose() {
     appRouteObserver.unsubscribe(this);
+    _feedStopHandlers.remove(_clearActiveVideo);
     _videoController?.dispose();
     _pageController.dispose();
     super.dispose();
@@ -379,6 +463,7 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
 
   @override
   void didPopNext() {
+    unlockFeedPlayback();
     _handleVisibilityChange();
   }
 
@@ -387,6 +472,7 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
       await _clearActiveVideo();
       return;
     }
+    unlockFeedPlayback();
     if (!mounted) return;
     setState(() {});
   }
@@ -462,8 +548,13 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
     if (_currentVideoUrl.isEmpty && _videoController == null) return;
     _videoRequestId++;
     _currentVideoUrl = '';
+    _pendingVideoUrl = null;
+    _pendingAutoplay = false;
     final controller = _videoController;
     _videoController = null;
+    try {
+      await controller?.setVolume(0);
+    } catch (_) {}
     await controller?.pause();
     await controller?.dispose();
     if (mounted) {
@@ -472,6 +563,7 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
   }
 
   void _scheduleActiveVideoSync(_FeedItem item, {required bool autoplay}) {
+    if (_feedPlaybackLocked) return;
     final desiredUrl = item.hasVideo && item.videoUrl.isNotEmpty
         ? item.videoUrl
         : '';
@@ -501,6 +593,17 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
       await controller.play();
     }
     if (mounted) setState(() {});
+  }
+
+  Future<void> _trackAdminVideoView(_FeedItem item) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    if (item.adminVideoId.isEmpty) return;
+    if (_lastTrackedAdminVideoId == item.adminVideoId) return;
+    _lastTrackedAdminVideoId = item.adminVideoId;
+    try {
+      await AuthService().incrementAdminVideoView(item.adminVideoId);
+    } catch (_) {}
   }
 
   @override
@@ -554,10 +657,37 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
               );
             }
 
+            if (!_appliedSharedTarget &&
+                widget.sharedAdminVideoId != null &&
+                widget.sharedAdminVideoId!.isNotEmpty) {
+              final targetIndex = feedItems.indexWhere(
+                (item) => item.adminVideoId == widget.sharedAdminVideoId,
+              );
+              if (targetIndex >= 0) {
+                _appliedSharedTarget = true;
+                _activeIndex = targetIndex;
+                WidgetsBinding.instance.addPostFrameCallback((_) async {
+                  if (!mounted || !_pageController.hasClients) return;
+                  _pageController.jumpToPage(targetIndex);
+                  if (widget.isVisible) {
+                    await _setActiveVideo(
+                      feedItems[targetIndex].videoUrl,
+                      autoplay: true,
+                    );
+                  }
+                });
+              }
+            }
+
             final safeIndex = _activeIndex.clamp(0, feedItems.length - 1);
             final activeItem = feedItems[safeIndex];
             if (widget.isVisible) {
               _scheduleActiveVideoSync(activeItem, autoplay: true);
+              if (activeItem.isAdminVideo) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _trackAdminVideoView(activeItem);
+                });
+              }
             }
 
             return PageView.builder(
@@ -566,7 +696,7 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
               itemCount: feedItems.length,
               onPageChanged: (i) async {
                 setState(() => _activeIndex = i);
-                if (!widget.isVisible) return;
+                if (!widget.isVisible || _feedPlaybackLocked) return;
                 final item = feedItems[i];
                 if (item.hasVideo && item.videoUrl.isNotEmpty) {
                   await _setActiveVideo(item.videoUrl, autoplay: true);
@@ -620,9 +750,10 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
 }
 
 class _PublicContestsTab extends StatefulWidget {
-  const _PublicContestsTab({required this.isVisible});
+  const _PublicContestsTab({required this.isVisible, this.sharedContestId});
 
   final bool isVisible;
+  final String? sharedContestId;
 
   @override
   State<_PublicContestsTab> createState() => _PublicContestsTabState();
@@ -637,6 +768,14 @@ class _PublicContestsTabState extends State<_PublicContestsTab>
   String? _pendingVideoUrl;
   bool _isVideoLoading = false;
   int _videoRequestId = 0;
+  bool _appliedSharedTarget = false;
+  String? _lastTrackedContestId;
+
+  @override
+  void initState() {
+    super.initState();
+    _feedStopHandlers.add(_clearActiveVideo);
+  }
 
   @override
   void didChangeDependencies() {
@@ -659,6 +798,7 @@ class _PublicContestsTabState extends State<_PublicContestsTab>
   @override
   void dispose() {
     appRouteObserver.unsubscribe(this);
+    _feedStopHandlers.remove(_clearActiveVideo);
     _videoController?.dispose();
     _pageController.dispose();
     super.dispose();
@@ -671,6 +811,7 @@ class _PublicContestsTabState extends State<_PublicContestsTab>
 
   @override
   void didPopNext() {
+    unlockFeedPlayback();
     _handleVisibilityChange();
   }
 
@@ -679,6 +820,7 @@ class _PublicContestsTabState extends State<_PublicContestsTab>
       await _clearActiveVideo();
       return;
     }
+    unlockFeedPlayback();
     if (!mounted) return;
     setState(() {});
   }
@@ -745,8 +887,12 @@ class _PublicContestsTabState extends State<_PublicContestsTab>
   Future<void> _clearActiveVideo() async {
     _videoRequestId++;
     _currentVideoUrl = '';
+    _pendingVideoUrl = null;
     final controller = _videoController;
     _videoController = null;
+    try {
+      await controller?.setVolume(0);
+    } catch (_) {}
     await controller?.pause();
     await controller?.dispose();
     if (mounted) {
@@ -755,6 +901,7 @@ class _PublicContestsTabState extends State<_PublicContestsTab>
   }
 
   void _scheduleActiveVideoSync(_ContestFeedItem item) {
+    if (_feedPlaybackLocked) return;
     final desiredUrl = item.videoUrl;
     if (_pendingVideoUrl == desiredUrl) return;
     _pendingVideoUrl = desiredUrl;
@@ -780,6 +927,16 @@ class _PublicContestsTabState extends State<_PublicContestsTab>
       await controller.play();
     }
     if (mounted) setState(() {});
+  }
+
+  Future<void> _trackContestView(_ContestFeedItem item) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    if (_lastTrackedContestId == item.id) return;
+    _lastTrackedContestId = item.id;
+    try {
+      await AuthService().incrementContestView(item.id);
+    } catch (_) {}
   }
 
   @override
@@ -818,10 +975,33 @@ class _PublicContestsTabState extends State<_PublicContestsTab>
         }
 
         final items = docs.map(_ContestFeedItem.fromDoc).toList();
+
+        if (!_appliedSharedTarget &&
+            widget.sharedContestId != null &&
+            widget.sharedContestId!.isNotEmpty) {
+          final targetIndex = items.indexWhere(
+            (item) => item.id == widget.sharedContestId,
+          );
+          if (targetIndex >= 0) {
+            _appliedSharedTarget = true;
+            _activeIndex = targetIndex;
+            WidgetsBinding.instance.addPostFrameCallback((_) async {
+              if (!mounted || !_pageController.hasClients) return;
+              _pageController.jumpToPage(targetIndex);
+              if (widget.isVisible) {
+                await _setActiveVideo(items[targetIndex].videoUrl);
+              }
+            });
+          }
+        }
+
         final safeIndex = _activeIndex.clamp(0, items.length - 1);
         final activeItem = items[safeIndex];
         if (widget.isVisible) {
           _scheduleActiveVideoSync(activeItem);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _trackContestView(activeItem);
+          });
         }
 
         return PageView.builder(
@@ -830,7 +1010,7 @@ class _PublicContestsTabState extends State<_PublicContestsTab>
           itemCount: items.length,
           onPageChanged: (index) async {
             setState(() => _activeIndex = index);
-            if (!widget.isVisible) return;
+            if (!widget.isVisible || _feedPlaybackLocked) return;
             await _setActiveVideo(items[index].videoUrl);
           },
           itemBuilder: (context, index) {
@@ -919,6 +1099,8 @@ class _ContestFeedCard extends StatelessWidget {
   final VoidCallback? onTapVideo;
 
   Future<void> _requireAuth(BuildContext context) async {
+    await stopAllFeedPlayback();
+    var navigated = false;
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -926,15 +1108,19 @@ class _ContestFeedCard extends StatelessWidget {
         content: Text(context.tr('Please sign up or login first to continue.')),
         actions: [
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(dialogContext);
+              navigated = true;
+              await stopAllFeedPlayback();
               Navigator.pushNamed(context, '/register');
             },
             child: Text(context.tr('Sign Up')),
           ),
           FilledButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(dialogContext);
+              navigated = true;
+              await stopAllFeedPlayback();
               Navigator.pushNamed(context, '/login');
             },
             child: Text(context.tr('Login')),
@@ -942,6 +1128,9 @@ class _ContestFeedCard extends StatelessWidget {
         ],
       ),
     );
+    if (!navigated) {
+      unlockFeedPlayback();
+    }
   }
 
   void _openContest(BuildContext context) {
@@ -950,13 +1139,16 @@ class _ContestFeedCard extends StatelessWidget {
       _requireAuth(context);
       return;
     }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) =>
-            ContestDetailScreen(contestId: item.id, data: item.data),
-      ),
-    );
+    stopAllFeedPlayback().then((_) {
+      if (!context.mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              ContestDetailScreen(contestId: item.id, data: item.data),
+        ),
+      );
+    });
   }
 
   DateTime? _readDate(dynamic value) {
@@ -985,6 +1177,16 @@ class _ContestFeedCard extends StatelessWidget {
     return true;
   }
 
+  String _formatMetric(int value) {
+    if (value >= 1000000) {
+      return '${(value / 1000000).toStringAsFixed(value >= 10000000 ? 0 : 1)}M';
+    }
+    if (value >= 1000) {
+      return '${(value / 1000).toStringAsFixed(value >= 10000 ? 0 : 1)}K';
+    }
+    return value.toString();
+  }
+
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
@@ -1001,6 +1203,16 @@ class _ContestFeedCard extends StatelessWidget {
       votingStart: votingStart,
       votingEnd: votingEnd,
     );
+    final viewCount =
+        ((item.data['viewCount'] ?? item.data['views'] ?? 0) as num).toInt();
+    final shareCount = ((item.data['shareCount'] ?? 0) as num).toInt();
+    final joinedCount =
+        ((item.data['participantCount'] ??
+                    item.data['submissionCount'] ??
+                    item.data['joinedCount'] ??
+                    0)
+                as num)
+            .toInt();
 
     return GestureDetector(
       onTap: onTapVideo,
@@ -1072,6 +1284,44 @@ class _ContestFeedCard extends StatelessWidget {
               ),
             ),
           Positioned(
+            left: 14,
+            top: 180,
+            child: Column(
+              children: [
+                _FeedMetricButton(
+                  icon: Icons.visibility_outlined,
+                  value: _formatMetric(viewCount),
+                  label: context.tr('Views'),
+                ),
+                const SizedBox(height: 14),
+                _FeedMetricButton(
+                  icon: Icons.share_outlined,
+                  value: _formatMetric(shareCount),
+                  label: context.tr('Shares'),
+                  onTap: () async {
+                    if (FirebaseAuth.instance.currentUser == null) {
+                      await _requireAuth(context);
+                      return;
+                    }
+                    final link = _contestShareLink(item.id);
+                    final text =
+                        '${item.title}\n${item.description}\n${context.tr('Winner Prize')}: \$${item.winnerPrize.toStringAsFixed(0)}\n$link';
+                    try {
+                      await AuthService().incrementContestShare(item.id);
+                    } catch (_) {}
+                    await Share.share(text, subject: item.title);
+                  },
+                ),
+                const SizedBox(height: 14),
+                _FeedMetricButton(
+                  icon: Icons.groups_2_outlined,
+                  value: _formatMetric(joinedCount),
+                  label: context.tr('Joined'),
+                ),
+              ],
+            ),
+          ),
+          Positioned(
             right: 10,
             bottom: 102,
             child: _FeedActionRail(
@@ -1103,20 +1353,6 @@ class _ContestFeedCard extends StatelessWidget {
                     target: votingEnd,
                     accent: const Color(0xFF9BFF5C),
                   ),
-                _FeedActionButton(
-                  icon: Icons.share_rounded,
-                  label: context.tr('Share'),
-                  compact: true,
-                  onTap: () async {
-                    if (FirebaseAuth.instance.currentUser == null) {
-                      await _requireAuth(context);
-                      return;
-                    }
-                    final text =
-                        '${item.title}\n${item.description}\n${context.tr('Winner Prize')}: \$${item.winnerPrize.toStringAsFixed(0)}';
-                    await Share.share(text, subject: item.title);
-                  },
-                ),
               ],
             ),
           ),
@@ -1298,6 +1534,8 @@ class _FeedItem {
     this.videoUrl = '',
     this.adminName = '',
     this.adminVideoId = '',
+    this.viewCount = 0,
+    this.shareCount = 0,
   });
 
   final String type;
@@ -1308,6 +1546,8 @@ class _FeedItem {
   final String videoUrl;
   final String adminName;
   final String adminVideoId;
+  final int viewCount;
+  final int shareCount;
 
   bool get isNews => type == 'news';
   bool get isAdminVideo => type == 'admin_video';
@@ -1336,6 +1576,8 @@ class _FeedItem {
       videoUrl: (data['videoUrl'] ?? '').toString(),
       adminName: (data['adminName'] ?? 'Admin').toString(),
       adminVideoId: doc.id,
+      viewCount: ((data['views'] ?? data['viewCount'] ?? 0) as num).toInt(),
+      shareCount: ((data['shareCount'] ?? 0) as num).toInt(),
     );
   }
 }
@@ -1367,6 +1609,8 @@ class _AdminVideoFeedCard extends StatelessWidget {
   final VoidCallback? onTapVideo;
 
   Future<void> _requireAuth(BuildContext context) async {
+    await stopAllFeedPlayback();
+    var navigated = false;
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -1374,15 +1618,19 @@ class _AdminVideoFeedCard extends StatelessWidget {
         content: Text(context.tr('Please sign up or login first to continue.')),
         actions: [
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(dialogContext);
+              navigated = true;
+              await stopAllFeedPlayback();
               Navigator.pushNamed(context, '/register');
             },
             child: Text(context.tr('Sign Up')),
           ),
           FilledButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(dialogContext);
+              navigated = true;
+              await stopAllFeedPlayback();
               Navigator.pushNamed(context, '/login');
             },
             child: Text(context.tr('Login')),
@@ -1390,10 +1638,23 @@ class _AdminVideoFeedCard extends StatelessWidget {
         ],
       ),
     );
+    if (!navigated) {
+      unlockFeedPlayback();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    String formatMetric(int value) {
+      if (value >= 1000000) {
+        return '${(value / 1000000).toStringAsFixed(value >= 10000000 ? 0 : 1)}M';
+      }
+      if (value >= 1000) {
+        return '${(value / 1000).toStringAsFixed(value >= 10000 ? 0 : 1)}K';
+      }
+      return value.toString();
+    }
+
     return GestureDetector(
       onTap: onTapVideo,
       behavior: HitTestBehavior.opaque,
@@ -1465,22 +1726,35 @@ class _AdminVideoFeedCard extends StatelessWidget {
             ),
           Positioned(
             right: 14,
-            bottom: 132,
+            top: 210,
             child: _FeedActionRail(
               children: [
-                _FeedActionButton(
-                  icon: Icons.share_rounded,
-                  label: context.tr('Share'),
+                _FeedMetricButton(
+                  icon: Icons.visibility_outlined,
+                  value: formatMetric(item.viewCount),
+                  label: context.tr('Views'),
+                ),
+                const SizedBox(height: 14),
+                _FeedMetricButton(
+                  icon: Icons.share_outlined,
+                  value: formatMetric(item.shareCount),
+                  label: context.tr('Shares'),
                   onTap: () async {
                     if (FirebaseAuth.instance.currentUser == null) {
                       await _requireAuth(context);
                       return;
                     }
-                    final text =
-                        '${item.adminName}\n${item.description}\n${item.videoUrl}';
+                    final link = _feedVideoShareLink(item.adminVideoId);
+                    final text = '${item.adminName}\nClick Kick\n$link';
+                    try {
+                      await AuthService().incrementAdminVideoShare(
+                        item.adminVideoId,
+                      );
+                    } catch (_) {}
                     await Share.share(text, subject: item.adminName);
                   },
                 ),
+                const SizedBox(height: 14),
                 _FeedActionButton(
                   icon: Icons.flag_outlined,
                   label: context.tr('Report'),
@@ -1585,6 +1859,76 @@ class _FeedActionButton extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _FeedMetricButton extends StatelessWidget {
+  const _FeedMetricButton({
+    required this.icon,
+    required this.value,
+    required this.label,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Column(
+      children: [
+        Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.28),
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.hotPink.withValues(alpha: 0.5)),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.hotPink.withValues(alpha: 0.22),
+                blurRadius: 16,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: Icon(icon, color: AppColors.hotPink, size: 28),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 2),
+        SizedBox(
+          width: 70,
+          child: Text(
+            label,
+            maxLines: 2,
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
+
+    if (onTap == null) return content;
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: onTap,
+      child: content,
     );
   }
 }
@@ -1854,6 +2198,8 @@ class _NewsFeedCardState extends State<_NewsFeedCard> {
   bool _expanded = false;
 
   Future<void> _requireAuth(BuildContext context) async {
+    await stopAllFeedPlayback();
+    var navigated = false;
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -1861,15 +2207,19 @@ class _NewsFeedCardState extends State<_NewsFeedCard> {
         content: Text(context.tr('Please sign up or login first to continue.')),
         actions: [
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(dialogContext);
+              navigated = true;
+              await stopAllFeedPlayback();
               Navigator.pushNamed(context, '/register');
             },
             child: Text(context.tr('Sign Up')),
           ),
           FilledButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(dialogContext);
+              navigated = true;
+              await stopAllFeedPlayback();
               Navigator.pushNamed(context, '/login');
             },
             child: Text(context.tr('Login')),
@@ -1877,6 +2227,9 @@ class _NewsFeedCardState extends State<_NewsFeedCard> {
         ],
       ),
     );
+    if (!navigated) {
+      unlockFeedPlayback();
+    }
   }
 
   @override
@@ -3888,8 +4241,12 @@ class _LoginRequiredCard extends StatelessWidget {
                           ],
                         ),
                         child: ElevatedButton.icon(
-                          onPressed: () =>
-                              Navigator.pushNamed(context, '/login'),
+                          onPressed: () {
+                            stopAllFeedPlayback().then((_) {
+                              if (!context.mounted) return;
+                              Navigator.pushNamed(context, '/login');
+                            });
+                          },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.transparent,
                             shadowColor: Colors.transparent,
@@ -3911,8 +4268,12 @@ class _LoginRequiredCard extends StatelessWidget {
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
-                        onPressed: () =>
-                            Navigator.pushNamed(context, '/register'),
+                        onPressed: () {
+                          stopAllFeedPlayback().then((_) {
+                            if (!context.mounted) return;
+                            Navigator.pushNamed(context, '/register');
+                          });
+                        },
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
                           side: BorderSide(
@@ -4099,6 +4460,154 @@ class _InlineVideoDialogState extends State<_InlineVideoDialog> {
         child: _controller != null && _controller!.value.isInitialized
             ? VideoPlayer(_controller!)
             : const Center(child: CircularProgressIndicator()),
+      ),
+    );
+  }
+}
+
+class FeedVideoShareRouteScreen extends StatelessWidget {
+  const FeedVideoShareRouteScreen({super.key, required this.videoId});
+
+  final String videoId;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('admin_videos')
+          .doc(videoId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Scaffold(
+            appBar: AppBar(backgroundColor: AppColors.deepSpace),
+            body: Center(child: Text(context.tr('Unable to load video.'))),
+          );
+        }
+        if (!snapshot.hasData) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final data = snapshot.data!.data();
+        if (data == null) {
+          return Scaffold(
+            appBar: AppBar(backgroundColor: AppColors.deepSpace),
+            body: Center(child: Text(context.tr('Video not found.'))),
+          );
+        }
+        final adminName = (data['adminName'] ?? 'Click Kick').toString();
+        final caption = (data['caption'] ?? '').toString();
+        final videoUrl = (data['videoUrl'] ?? '').toString();
+
+        return Scaffold(
+          backgroundColor: AppColors.deepSpace,
+          appBar: AppBar(
+            backgroundColor: AppColors.deepSpace,
+            title: Text(adminName),
+          ),
+          body: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (videoUrl.isNotEmpty)
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(18),
+                      child: _InlineVideoPlayer(videoUrl: videoUrl),
+                    ),
+                  )
+                else
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.card,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Center(
+                        child: Text(context.tr('Video not found.')),
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 16),
+                Text(
+                  adminName,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                if (caption.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    caption,
+                    style: const TextStyle(color: AppColors.textMuted),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _InlineVideoPlayer extends StatefulWidget {
+  const _InlineVideoPlayer({required this.videoUrl});
+
+  final String videoUrl;
+
+  @override
+  State<_InlineVideoPlayer> createState() => _InlineVideoPlayerState();
+}
+
+class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
+  VideoPlayerController? _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl))
+      ..initialize().then((_) {
+        if (!mounted) return;
+        _controller?.play();
+        setState(() {});
+      });
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return GestureDetector(
+      onTap: () {
+        if (controller.value.isPlaying) {
+          controller.pause();
+        } else {
+          controller.play();
+        }
+        setState(() {});
+      },
+      child: Container(
+        color: Colors.black,
+        child: FittedBox(
+          fit: BoxFit.cover,
+          child: SizedBox(
+            width: controller.value.size.width,
+            height: controller.value.size.height,
+            child: VideoPlayer(controller),
+          ),
+        ),
       ),
     );
   }

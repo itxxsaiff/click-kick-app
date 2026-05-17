@@ -86,24 +86,26 @@ class _LoginScreenState extends State<LoginScreen> {
   String _friendlySocialError(Object e) {
     final text = e.toString();
     if (text.contains('social-link-required')) {
-      return 'This email already exists. Login with your password once to link this social account.';
+      return context.tr(
+        'This email already exists. Login with your password once to link this social account.',
+      );
     }
     if (text.contains('operation-not-allowed')) {
-      return 'This social provider is not enabled in Firebase yet.';
+      return context.tr('This social provider is not enabled in Firebase yet.');
     }
     if (text.contains('popup-closed-by-user')) {
-      return 'Login cancelled.';
+      return context.tr('Login cancelled.');
     }
     if (text.contains('web-context-cancelled')) {
-      return 'Login cancelled.';
+      return context.tr('Login cancelled.');
     }
     if (text.contains('network-request-failed')) {
-      return 'Network issue. Please try again.';
+      return context.tr('Network issue. Please try again.');
     }
     if (text.contains('facebook-login-failed')) {
       return text;
     }
-    return 'Social login failed. Please try again.';
+    return context.tr('Social login failed. Please try again.');
   }
 
   String _friendlyError(Object e) {
@@ -169,7 +171,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     SizedBox(height: isCompact ? 8 : 14),
                     Text(
-                      context.tr('Welcome Back!'),
+                      context.tr('Welcome Back'),
                       style: Theme.of(context).textTheme.headlineSmall
                           ?.copyWith(fontWeight: FontWeight.w800),
                     ),
@@ -307,7 +309,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                           child: Text(
-                            context.tr('or continue with'),
+                            context.tr('Or login with'),
                             style: const TextStyle(color: AppColors.textMuted),
                           ),
                         ),
@@ -355,7 +357,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          context.tr('Don’t have an account?'),
+                          context.tr("Don't have an account?"),
                           style: const TextStyle(color: AppColors.textMuted),
                         ),
                         const SizedBox(width: 8),
@@ -363,7 +365,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           onPressed: () {
                             Navigator.pushNamed(context, '/register');
                           },
-                          child: Text(context.tr('Create account')),
+                          child: Text(context.tr('Create Account')),
                         ),
                       ],
                     ),

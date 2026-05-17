@@ -9,6 +9,8 @@ import '../../widgets/gradient_button.dart';
 import '../../widgets/report_video_dialog.dart';
 import 'video_upload_screen.dart';
 
+const _shareBaseUrl = 'https://video-contest-show-b788b.firebaseapp.com';
+
 class ContestDetailScreen extends StatelessWidget {
   const ContestDetailScreen({
     super.key,
@@ -509,19 +511,23 @@ class _LuckyDrawWinnersSection extends StatelessWidget {
             children: [
               Text(
                 context.tr('Lucky Draw Winners'),
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 6),
               Text(
-                context.tr('Five random voters win \$10 each for this contest.'),
+                context.tr(
+                  'Five random voters win \$10 each for this contest.',
+                ),
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 12),
               if (docs.isEmpty)
                 Text(
-                  context.tr('Lucky draw winners will appear after the contest ends.'),
+                  context.tr(
+                    'Lucky draw winners will appear after the contest ends.',
+                  ),
                   style: const TextStyle(color: AppColors.textMuted),
                 )
               else
@@ -956,13 +962,16 @@ class _VotingGrid extends StatelessWidget {
                         IconButton(
                           tooltip: context.tr('Share'),
                           onPressed: () async {
-                            final base = Uri.base.origin;
-                            final link = '$base/#/contest-share?contestId=$contestId&submissionId=${doc.id}';
-                            final text = '${context.tr('Vote for my video')}: $contestTitle\n$link';
+                            final link =
+                                '$_shareBaseUrl/contest-share?contestId=$contestId&submissionId=${doc.id}';
+                            final text =
+                                '${context.tr('Vote for my video')}: $contestTitle\n$link';
                             try {
                               await doc.reference.update({
                                 'shareCount': FieldValue.increment(1),
-                                'lastSharedAt': Timestamp.fromDate(DateTime.now()),
+                                'lastSharedAt': Timestamp.fromDate(
+                                  DateTime.now(),
+                                ),
                               });
                             } catch (_) {}
                             await Share.share(text, subject: contestTitle);
@@ -1640,7 +1649,6 @@ class _GlowOrb extends StatelessWidget {
   }
 }
 
-
 class ContestShareRouteScreen extends StatelessWidget {
   const ContestShareRouteScreen({
     super.key,
@@ -1654,7 +1662,10 @@ class ContestShareRouteScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('contests').doc(contestId).snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('contests')
+          .doc(contestId)
+          .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Scaffold(

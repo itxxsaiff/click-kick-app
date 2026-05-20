@@ -56,12 +56,15 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
   String _statusLabel(BuildContext context, String status) {
     switch (status.toLowerCase()) {
       case 'live':
+      case 'active':
         return context.tr('Active');
       case 'contest_created':
+      case 'upcoming':
         return context.tr('Upcoming');
       case 'draft':
         return context.tr('Draft');
       case 'ended':
+      case 'completed':
         return context.tr('Ended');
       case 'cancelled':
         return context.tr('Cancelled');
@@ -120,12 +123,13 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
 
   String _contestLifecycle(Map<String, dynamic> data, DateTime now) {
     final status = (data['status'] ?? '').toString().toLowerCase();
+    if (status == 'draft') return 'draft';
+    if (status == 'cancelled' || status == 'rejected') return 'cancelled';
     final votingStart = _readDate(data['votingStart']);
     final votingEnd =
         _readDate(data['votingEnd']) ??
         _readDate(data['submissionEnd']) ??
         _readDate(data['endDate']);
-    if (status == 'cancelled' || status == 'rejected') return 'ended';
     if (votingEnd != null && !votingEnd.isAfter(now)) return 'ended';
     if (votingStart != null && votingStart.isAfter(now)) return 'upcoming';
     return 'active';
@@ -138,6 +142,25 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
     return diff.inHours <= 24
         ? 1
         : diff.inDays + (diff.inHours % 24 == 0 ? 0 : 1);
+  }
+
+  double? _contestProgress(Map<String, dynamic> data, DateTime now) {
+    final start =
+        _readDate(data['votingStart']) ??
+        _readDate(data['submissionStart']) ??
+        _readDate(data['startDate']);
+    final end =
+        _readDate(data['votingEnd']) ??
+        _readDate(data['submissionEnd']) ??
+        _readDate(data['endDate']);
+    if (start == null || end == null) return null;
+    if (!end.isAfter(start)) return null;
+    if (now.isBefore(start)) return 0;
+    if (now.isAfter(end)) return 1;
+    final total = end.difference(start).inSeconds;
+    if (total <= 0) return null;
+    final done = now.difference(start).inSeconds;
+    return (done / total).clamp(0, 1);
   }
 
   bool _matchesDateFilter(Map<String, dynamic> data, DateTime now) {
@@ -337,6 +360,9 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
               int activeCount = 0;
               int upcomingCount = 0;
               int endedCount = 0;
+              int draftCount = 0;
+              int cancelledCount = 0;
+              int totalViews = 0;
 
               for (final doc in docs) {
                 final data = doc.data();
@@ -352,6 +378,7 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
                   'votesCount',
                   'totalVotes',
                 ]);
+                totalViews += _readInt(data, const ['viewCount', 'views']);
                 switch (_contestLifecycle(data, now)) {
                   case 'active':
                     activeCount++;
@@ -361,6 +388,12 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
                     break;
                   case 'ended':
                     endedCount++;
+                    break;
+                  case 'draft':
+                    draftCount++;
+                    break;
+                  case 'cancelled':
+                    cancelledCount++;
                     break;
                 }
               }
@@ -435,12 +468,36 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
                         note: context.tr('Finished contests'),
                       ),
                       _ContestStatCard(
+                        icon: Icons.edit_note_rounded,
+                        iconColor: const Color(0xFFA67BFF),
+                        label: context.tr('Draft'),
+                        value: draftCount.toString(),
+                        accent: const Color(0xFFA67BFF),
+                        note: context.tr('Saved only'),
+                      ),
+                      _ContestStatCard(
+                        icon: Icons.cancel_outlined,
+                        iconColor: const Color(0xFFFF647A),
+                        label: context.tr('Cancelled'),
+                        value: cancelledCount.toString(),
+                        accent: const Color(0xFFFF647A),
+                        note: context.tr('Stopped contests'),
+                      ),
+                      _ContestStatCard(
                         icon: Icons.groups_2_outlined,
                         iconColor: const Color(0xFF64A8FF),
                         label: context.tr('Total Participants'),
                         value: _compactNumber(totalParticipants),
                         accent: const Color(0xFF3A7EFF),
                         note: context.tr('Joined users'),
+                      ),
+                      _ContestStatCard(
+                        icon: Icons.remove_red_eye_outlined,
+                        iconColor: const Color(0xFFB166FF),
+                        label: context.tr('Total Views'),
+                        value: _compactNumber(totalViews),
+                        accent: const Color(0xFF8A54F7),
+                        note: context.tr('Contest views'),
                       ),
                       _ContestStatCard(
                         icon: Icons.how_to_vote_rounded,
@@ -453,6 +510,35 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
                     ],
                   ),
                   const SizedBox(height: 14),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final status in const [
+                          'all',
+                          'active',
+                          'upcoming',
+                          'ended',
+                          'draft',
+                          'cancelled',
+                        ])
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text(
+                                status == 'all'
+                                    ? context.tr('All')
+                                    : _statusLabel(context, status),
+                              ),
+                              selected: _statusFilter == status,
+                              onSelected: (_) =>
+                                  setState(() => _statusFilter = status),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(
@@ -564,11 +650,20 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
                         child: _FilterSelect(
                           label: context.tr('Status'),
                           value: _statusFilter,
-                          options: const ['all', 'active', 'upcoming', 'ended'],
+                          options: const [
+                            'all',
+                            'active',
+                            'upcoming',
+                            'ended',
+                            'draft',
+                            'cancelled',
+                          ],
                           valueLabel: (value) => switch (value) {
                             'active' => context.tr('Active'),
                             'upcoming' => context.tr('Upcoming'),
                             'ended' => context.tr('Ended'),
+                            'draft' => context.tr('Draft'),
+                            'cancelled' => context.tr('Cancelled'),
                             _ => context.tr('All'),
                           },
                           onChanged: (value) =>
@@ -690,8 +785,13 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
                         'votesCount',
                         'totalVotes',
                       ]);
+                      final views = _readInt(data, const [
+                        'viewCount',
+                        'views',
+                      ]);
                       final lifecycle = _contestLifecycle(data, now);
                       final daysLeft = _daysUntilVotingStart(data, now);
+                      final progress = _contestProgress(data, now);
                       final statusColor = _statusColor(lifecycle);
                       final statusLabel = _statusLabel(context, lifecycle);
                       final isCompactCard = screenWidth < 900;
@@ -975,9 +1075,9 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
                                       ? (screenWidth - 88) / 2
                                       : (screenWidth - 216) / 4,
                                   child: _ContestInfoCell(
-                                    icon: Icons.how_to_vote_outlined,
-                                    label: context.tr('Votes'),
-                                    value: _compactNumber(votes),
+                                    icon: Icons.remove_red_eye_outlined,
+                                    label: context.tr('Views'),
+                                    value: _compactNumber(views),
                                   ),
                                 ),
                                 SizedBox(
@@ -1001,14 +1101,22 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
                                     child: Column(
                                       children: [
                                         Text(
-                                          lifecycle == 'ended'
+                                          lifecycle == 'cancelled'
+                                              ? context.tr('Cancelled')
+                                              : lifecycle == 'draft'
+                                              ? context.tr('Draft')
+                                              : lifecycle == 'ended'
                                               ? context.tr('Ended')
                                               : lifecycle == 'active'
-                                              ? context.tr('Live')
+                                              ? '${((progress ?? 0) * 100).round()}%'
                                               : '${daysLeft ?? 0}',
                                           textAlign: TextAlign.center,
                                           style: TextStyle(
-                                            color: lifecycle == 'ended'
+                                            color: lifecycle == 'cancelled'
+                                                ? const Color(0xFFFF647A)
+                                                : lifecycle == 'draft'
+                                                ? const Color(0xFFA67BFF)
+                                                : lifecycle == 'ended'
                                                 ? AppColors.textMuted
                                                 : lifecycle == 'active'
                                                 ? const Color(0xFF39DF79)
@@ -1019,10 +1127,14 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
-                                          lifecycle == 'ended'
+                                          lifecycle == 'cancelled'
+                                              ? context.tr('Stopped')
+                                              : lifecycle == 'draft'
+                                              ? context.tr('Continue Edit')
+                                              : lifecycle == 'ended'
                                               ? context.tr('Finished')
                                               : lifecycle == 'active'
-                                              ? context.tr('Voting Live')
+                                              ? context.tr('Progress')
                                               : context.tr('Days Left'),
                                           textAlign: TextAlign.center,
                                           style: const TextStyle(
@@ -1035,6 +1147,43 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
                                     ),
                                   ),
                                 ),
+                                if (!isCompactCard)
+                                  SizedBox(
+                                    width: 124,
+                                    child: lifecycle == 'ended'
+                                        ? OutlinedButton(
+                                            onPressed: () async {
+                                              await _openContestReport(
+                                                contestId: doc.id,
+                                                data: data,
+                                              );
+                                            },
+                                            child: Text(
+                                              context.tr('View Report'),
+                                            ),
+                                          )
+                                        : lifecycle == 'draft'
+                                        ? OutlinedButton(
+                                            onPressed: () async {
+                                              await Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (_) =>
+                                                      AdminVideoContestForm(
+                                                        contestId: doc.id,
+                                                        existing: data,
+                                                      ),
+                                                ),
+                                              );
+                                            },
+                                            child: Text(context.tr('Edit')),
+                                          )
+                                        : _ContestInfoCell(
+                                            icon: Icons.how_to_vote_outlined,
+                                            label: context.tr('Votes'),
+                                            value: _compactNumber(votes),
+                                          ),
+                                  ),
                               ],
                             ),
                           ],

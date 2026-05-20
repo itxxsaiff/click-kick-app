@@ -697,9 +697,29 @@ class _AdminAdsScreenState extends State<AdminAdsScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
           children: [
-            Text(
-              context.tr('Application Details'),
-              style: Theme.of(context).textTheme.titleLarge,
+            Row(
+              children: [
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    color: Colors.white,
+                  ),
+                  tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    context.tr('Application Details'),
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded, color: Colors.white),
+                  tooltip: context.tr('Close'),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             ...[

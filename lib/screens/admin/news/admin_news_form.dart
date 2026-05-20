@@ -26,6 +26,8 @@ class _AdminNewsFormState extends State<AdminNewsForm> {
   String _imageUrl = '';
   Uint8List? _imageBytes;
   bool _saving = false;
+  DateTime? _publishStart;
+  DateTime? _publishEnd;
 
   @override
   void initState() {
@@ -35,6 +37,10 @@ class _AdminNewsFormState extends State<AdminNewsForm> {
       _title.text = (data['title'] ?? '').toString();
       _body.text = (data['body'] ?? '').toString();
       _imageUrl = (data['imageUrl'] ?? '').toString();
+      _publishStart =
+          (data['publishStart'] as Timestamp?)?.toDate() ??
+          (data['scheduledAt'] as Timestamp?)?.toDate();
+      _publishEnd = (data['publishEnd'] as Timestamp?)?.toDate();
     }
   }
 
@@ -67,6 +73,14 @@ class _AdminNewsFormState extends State<AdminNewsForm> {
 
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    if (_publishStart == null || _publishEnd == null) {
+      _show(context.tr('Please select start and end time.'));
+      return;
+    }
+    if (!_publishEnd!.isAfter(_publishStart!)) {
+      _show(context.tr('End time must be after start time.'));
+      return;
+    }
     setState(() => _saving = true);
     final now = Timestamp.fromDate(DateTime.now());
     try {
@@ -78,6 +92,9 @@ class _AdminNewsFormState extends State<AdminNewsForm> {
           'title': _title.text.trim(),
           'body': _body.text.trim(),
           'imageUrl': image,
+          'publishStart': Timestamp.fromDate(_publishStart!),
+          'publishEnd': Timestamp.fromDate(_publishEnd!),
+          'scheduledAt': Timestamp.fromDate(_publishStart!),
           'createdAt': now,
           'updatedAt': now,
         });
@@ -87,6 +104,9 @@ class _AdminNewsFormState extends State<AdminNewsForm> {
           'title': _title.text.trim(),
           'body': _body.text.trim(),
           'imageUrl': image,
+          'publishStart': Timestamp.fromDate(_publishStart!),
+          'publishEnd': Timestamp.fromDate(_publishEnd!),
+          'scheduledAt': Timestamp.fromDate(_publishStart!),
           'updatedAt': now,
         });
       }
@@ -107,6 +127,51 @@ class _AdminNewsFormState extends State<AdminNewsForm> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       ),
+    );
+  }
+
+  String _formatDateTime(DateTime? date) {
+    if (date == null) return context.tr('Select date & time');
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
+    final minute = date.minute.toString().padLeft(2, '0');
+    final suffix = date.hour >= 12 ? 'PM' : 'AM';
+    return '${date.day.toString().padLeft(2, '0')} ${months[date.month - 1]} ${date.year} • $hour:$minute $suffix';
+  }
+
+  Future<void> _pickDateTime({
+    required DateTime? initial,
+    required ValueChanged<DateTime> onSelected,
+  }) async {
+    final now = DateTime.now();
+    final initialDate = initial ?? now;
+    final date = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 5),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initial ?? now),
+    );
+    if (time == null) return;
+    onSelected(
+      DateTime(date.year, date.month, date.day, time.hour, time.minute),
     );
   }
 
@@ -196,6 +261,26 @@ class _AdminNewsFormState extends State<AdminNewsForm> {
                         ? context.tr('Details are required.')
                         : null,
                   ),
+                  const SizedBox(height: 12),
+                  _DateTimeField(
+                    label: context.tr('Publish start'),
+                    value: _formatDateTime(_publishStart),
+                    onTap: () => _pickDateTime(
+                      initial: _publishStart,
+                      onSelected: (value) =>
+                          setState(() => _publishStart = value),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _DateTimeField(
+                    label: context.tr('Publish end'),
+                    value: _formatDateTime(_publishEnd),
+                    onTap: () => _pickDateTime(
+                      initial: _publishEnd ?? _publishStart,
+                      onSelected: (value) =>
+                          setState(() => _publishEnd = value),
+                    ),
+                  ),
                   const SizedBox(height: 22),
                   GradientButton(
                     label: _saving
@@ -210,6 +295,67 @@ class _AdminNewsFormState extends State<AdminNewsForm> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DateTimeField extends StatelessWidget {
+  const _DateTimeField({
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  final String label;
+  final String value;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Ink(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.schedule_outlined, color: AppColors.textMuted),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    value,
+                    style: const TextStyle(
+                      color: AppColors.textLight,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.calendar_today_outlined,
+              color: AppColors.textMuted,
+              size: 18,
+            ),
+          ],
+        ),
       ),
     );
   }

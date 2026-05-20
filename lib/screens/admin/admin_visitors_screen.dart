@@ -37,7 +37,19 @@ class _AdminVisitorsScreenState extends State<AdminVisitorsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(context.tr('Visitors')),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(context.tr('Visitors Management')),
+            Text(
+              context.tr('View and manage all visitors'),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Colors.white.withOpacity(0.68),
+              ),
+            ),
+          ],
+        ),
         backgroundColor: AppColors.deepSpace,
         actions: [
           IconButton(
@@ -144,16 +156,6 @@ class _AdminVisitorsScreenState extends State<AdminVisitorsScreen> {
                         return _sortDesc ? bt.compareTo(at) : at.compareTo(bt);
                       });
 
-                    final totalVisitors = docs.length;
-                    final blockedVisitors = docs
-                        .where(
-                          (doc) =>
-                              (doc.data()['accountStatus'] ?? 'active')
-                                  .toString() ==
-                              'disabled',
-                        )
-                        .length;
-
                     final filtered = docs.where((doc) {
                       final data = doc.data();
                       final isBlocked =
@@ -182,204 +184,152 @@ class _AdminVisitorsScreenState extends State<AdminVisitorsScreen> {
                       );
                     }
 
-                    return Column(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                          child: Row(
-                            children: [
-                              _CountCard(
-                                label: context.tr('Total Visitors'),
-                                value: totalVisitors.toString(),
-                                color: AppColors.magenta,
-                                icon: Icons.visibility,
-                              ),
-                              const SizedBox(width: 10),
-                              _CountCard(
-                                label: context.tr('Visible'),
-                                value: filtered.length.toString(),
-                                color: AppColors.hotPink,
-                                icon: Icons.remove_red_eye_outlined,
-                              ),
-                              const SizedBox(width: 10),
-                              _CountCard(
-                                label: context.tr('Blocked'),
-                                value: blockedVisitors.toString(),
-                                color: Colors.redAccent,
-                                icon: Icons.block,
-                              ),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: ListView.separated(
-                            padding: const EdgeInsets.all(16),
-                            itemCount: filtered.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: 12),
-                            itemBuilder: (context, index) {
-                              final doc = filtered[index];
-                              final data = doc.data();
-                              final name =
-                                  (data['displayName'] ?? 'User').toString();
-                              final email = (data['email'] ?? '').toString();
-                              final phone = (data['phoneE164'] ?? '').toString();
-                              final isBlocked =
-                                  (data['accountStatus'] ?? 'active')
-                                      .toString() ==
-                                  'disabled';
-                              return Container(
-                                padding: const EdgeInsets.all(14),
-                                decoration: BoxDecoration(
-                                  color: AppColors.card,
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(color: AppColors.border),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                      color: Color(0x40000000),
-                                      blurRadius: 12,
-                                      offset: Offset(0, 6),
-                                    ),
-                                  ],
-                                ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 46,
-                                      height: 46,
-                                      decoration: BoxDecoration(
-                                        color: isBlocked
-                                            ? Colors.redAccent.withOpacity(0.18)
-                                            : AppColors.magenta.withOpacity(0.2),
-                                        borderRadius: BorderRadius.circular(14),
-                                      ),
-                                      child: Icon(
-                                        isBlocked
-                                            ? Icons.block
-                                            : Icons.visibility,
-                                        color: isBlocked
-                                            ? Colors.redAccent
-                                            : AppColors.magenta,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            name,
-                                            style: Theme.of(
-                                              context,
-                                            ).textTheme.titleMedium,
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            email,
-                                            style: Theme.of(
-                                              context,
-                                            ).textTheme.bodySmall,
-                                          ),
-                                          if (phone.isNotEmpty)
-                                            Text(
-                                              phone,
-                                              style: Theme.of(
-                                                context,
-                                              ).textTheme.bodySmall,
-                                            ),
-                                          const SizedBox(height: 6),
-                                          Container(
-                                            padding:
-                                                const EdgeInsets.symmetric(
-                                                  horizontal: 8,
-                                                  vertical: 4,
-                                                ),
-                                            decoration: BoxDecoration(
-                                              color: isBlocked
-                                                  ? Colors.redAccent
-                                                        .withOpacity(0.18)
-                                                  : AppColors.neonGreen
-                                                        .withOpacity(0.18),
-                                              borderRadius:
-                                                  BorderRadius.circular(999),
-                                            ),
-                                            child: Text(
-                                              context.tr(
-                                                isBlocked
-                                                    ? 'Blocked'
-                                                    : 'Active',
-                                              ),
-                                              style: TextStyle(
-                                                color: isBlocked
-                                                    ? Colors.redAccent
-                                                    : AppColors.neonGreen,
-                                                fontWeight: FontWeight.w700,
-                                                fontSize: 11,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    IconButton(
-                                      tooltip: context.tr('View Details'),
-                                      onPressed: () => _openDetails(
-                                        visitorId: doc.id,
-                                        data: data,
-                                      ),
-                                      icon: const Icon(
-                                        Icons.visibility_outlined,
-                                        color: AppColors.hotPink,
-                                      ),
-                                    ),
-                                    IconButton(
-                                      tooltip: context.tr('Visitor Report'),
-                                      onPressed: () => _openVisitorReport(
-                                        visitorId: doc.id,
-                                        data: data,
-                                      ),
-                                      icon: const Icon(
-                                        Icons.picture_as_pdf,
-                                        color: AppColors.sunset,
-                                      ),
-                                    ),
-                                    PopupMenuButton<String>(
-                                      onSelected: (value) async {
-                                        if (value == 'block') {
-                                          await _setVisitorStatus(
-                                            visitorId: doc.id,
-                                            status: 'disabled',
-                                          );
-                                        } else if (value == 'unblock') {
-                                          await _setVisitorStatus(
-                                            visitorId: doc.id,
-                                            status: 'active',
-                                          );
-                                        }
-                                      },
-                                      itemBuilder: (context) => [
-                                        PopupMenuItem(
-                                          value: isBlocked
-                                              ? 'unblock'
-                                              : 'block',
-                                          child: Text(
-                                            context.tr(
-                                              isBlocked
-                                                  ? 'Unblock Visitor'
-                                                  : 'Block Visitor',
-                                            ),
-                                          ),
+                    return FutureBuilder<_VisitorDashboardMetrics>(
+                      future: _loadVisitorDashboardMetrics(docs),
+                      builder: (context, metricsSnap) {
+                        final metrics =
+                            metricsSnap.data ??
+                            _VisitorDashboardMetrics.empty(filtered.length);
+                        return ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          itemCount: filtered.length + 1,
+                          separatorBuilder: (_, index) => index == 0
+                              ? const SizedBox(height: 14)
+                              : const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            if (index == 0) {
+                              return LayoutBuilder(
+                                builder: (context, constraints) {
+                                  final width = constraints.maxWidth;
+                                  final cardWidth = width >= 1100
+                                      ? (width - 50) / 6
+                                      : width >= 760
+                                      ? (width - 30) / 3
+                                      : (width - 10) / 2;
+                                  return Wrap(
+                                    spacing: 10,
+                                    runSpacing: 10,
+                                    children: [
+                                      SizedBox(
+                                        width: cardWidth,
+                                        child: _CountCard(
+                                          label: context.tr('Total Visitors'),
+                                          value: metrics.totalVisitors
+                                              .toString(),
+                                          hint: context.tr('All time'),
+                                          color: AppColors.magenta,
+                                          icon: Icons.people_alt_rounded,
                                         ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
+                                      ),
+                                      SizedBox(
+                                        width: cardWidth,
+                                        child: _CountCard(
+                                          label: context.tr('Active Visitors'),
+                                          value: metrics.activeVisitors
+                                              .toString(),
+                                          hint:
+                                              '${metrics.activePercent.toStringAsFixed(1)}% ${context.tr('of total')}',
+                                          color: AppColors.neonGreen,
+                                          icon: Icons.verified_user_outlined,
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: cardWidth,
+                                        child: _CountCard(
+                                          label: context.tr('Blocked Visitors'),
+                                          value: metrics.blockedVisitors
+                                              .toString(),
+                                          hint:
+                                              '${metrics.blockedPercent.toStringAsFixed(1)}% ${context.tr('of total')}',
+                                          color: Colors.redAccent,
+                                          icon: Icons.block_rounded,
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: cardWidth,
+                                        child: _CountCard(
+                                          label: context.tr('Total Shares'),
+                                          value: metrics.totalShares.toString(),
+                                          hint: context.tr('All visitors'),
+                                          color: AppColors.hotPink,
+                                          icon: Icons.share_outlined,
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: cardWidth,
+                                        child: _CountCard(
+                                          label: context.tr(
+                                            'Total Video Views',
+                                          ),
+                                          value: metrics.totalViews.toString(),
+                                          hint: context.tr('All visitors'),
+                                          color: AppColors.sunset,
+                                          icon: Icons.play_circle_outline,
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: cardWidth,
+                                        child: _CountCard(
+                                          label: context.tr('Total Votes'),
+                                          value: metrics.totalVotes.toString(),
+                                          hint: context.tr('All visitors'),
+                                          color: AppColors.magenta,
+                                          icon: Icons.how_to_vote_outlined,
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
                               );
-                            },
-                          ),
-                        ),
-                      ],
+                            }
+
+                            final doc = filtered[index - 1];
+                            final data = doc.data();
+                            final name = (data['displayName'] ?? 'User')
+                                .toString();
+                            final email = (data['email'] ?? '').toString();
+                            final phone = (data['phoneE164'] ?? '').toString();
+                            final country =
+                                (data['country'] ?? data['region'] ?? '-')
+                                    .toString();
+                            final isBlocked =
+                                (data['accountStatus'] ?? 'active')
+                                    .toString() ==
+                                'disabled';
+                            final lastActive = _formatLastActive(
+                              data['updatedAt'] ?? data['createdAt'],
+                            );
+                            final shares =
+                                metrics.perVisitorShares[doc.id] ?? 0;
+                            final views = metrics.perVisitorViews[doc.id] ?? 0;
+                            final votes = metrics.perVisitorVotes[doc.id] ?? 0;
+                            final contests =
+                                metrics.perVisitorContests[doc.id] ?? 0;
+                            return _VisitorManagementCard(
+                              name: name,
+                              email: email,
+                              phone: phone,
+                              country: country,
+                              isBlocked: isBlocked,
+                              shares: shares,
+                              views: views,
+                              votes: votes,
+                              contests: contests,
+                              lastActive: lastActive,
+                              onView: () =>
+                                  _openDetails(visitorId: doc.id, data: data),
+                              onReport: () => _openVisitorReport(
+                                visitorId: doc.id,
+                                data: data,
+                              ),
+                              onToggleBlock: () => _setVisitorStatus(
+                                visitorId: doc.id,
+                                status: isBlocked ? 'active' : 'disabled',
+                              ),
+                            );
+                          },
+                        );
+                      },
                     );
                   },
                 ),
@@ -415,14 +365,100 @@ class _AdminVisitorsScreenState extends State<AdminVisitorsScreen> {
     );
   }
 
+  Future<_VisitorDashboardMetrics> _loadVisitorDashboardMetrics(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) async {
+    final userIds = docs.map((doc) => doc.id).toSet().toList();
+    final totalVisitors = docs.length;
+    final blockedVisitors = docs
+        .where(
+          (doc) =>
+              (doc.data()['accountStatus'] ?? 'active').toString() ==
+              'disabled',
+        )
+        .length;
+    final activeVisitors = totalVisitors - blockedVisitors;
+
+    final perVisitorShares = <String, int>{};
+    final perVisitorViews = <String, int>{};
+    for (final doc in docs) {
+      final data = doc.data();
+      perVisitorShares[doc.id] = ((data['shareCount'] ?? 0) as num).toInt();
+      perVisitorViews[doc.id] =
+          ((data['viewCount'] ?? data['views'] ?? 0) as num).toInt();
+    }
+
+    final votesSnap = await FirebaseFirestore.instance
+        .collectionGroup('votes')
+        .get();
+    final perVisitorVotes = <String, int>{};
+    final perVisitorContests = <String, Set<String>>{};
+    for (final vote in votesSnap.docs) {
+      final data = vote.data();
+      final voterId = (data['voterId'] ?? vote.id).toString();
+      if (!userIds.contains(voterId)) continue;
+      perVisitorVotes[voterId] = (perVisitorVotes[voterId] ?? 0) + 1;
+      final contestId = (data['contestId'] ?? '').toString();
+      if (contestId.isNotEmpty) {
+        perVisitorContests
+            .putIfAbsent(voterId, () => <String>{})
+            .add(contestId);
+      }
+    }
+
+    return _VisitorDashboardMetrics(
+      totalVisitors: totalVisitors,
+      activeVisitors: activeVisitors,
+      blockedVisitors: blockedVisitors,
+      totalShares: perVisitorShares.values.fold(0, (a, b) => a + b),
+      totalViews: perVisitorViews.values.fold(0, (a, b) => a + b),
+      totalVotes: perVisitorVotes.values.fold(0, (a, b) => a + b),
+      perVisitorShares: perVisitorShares,
+      perVisitorViews: perVisitorViews,
+      perVisitorVotes: perVisitorVotes,
+      perVisitorContests: perVisitorContests.map(
+        (key, value) => MapEntry(key, value.length),
+      ),
+    );
+  }
+
+  String _formatLastActive(dynamic value) {
+    if (value is Timestamp) {
+      final dt = value.toDate();
+      return '${dt.day.toString().padLeft(2, '0')} ${_monthShort(dt.month)} ${dt.year} • ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    }
+    return '-';
+  }
+
+  String _monthShort(int month) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return months[(month - 1).clamp(0, 11)];
+  }
+
   Future<void> _openAllVisitorsReport() async {
     final usersSnap = await FirebaseFirestore.instance
         .collection('users')
         .where('role', isEqualTo: 'user')
         .get();
-    final votesSnap = await FirebaseFirestore.instance.collectionGroup('votes').get();
+    final votesSnap = await FirebaseFirestore.instance
+        .collectionGroup('votes')
+        .get();
 
-    final byVisitor = <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+    final byVisitor =
+        <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
     for (final doc in votesSnap.docs) {
       final voterId = (doc.data()['voterId'] ?? doc.id).toString();
       if (voterId.isEmpty) continue;
@@ -511,7 +547,9 @@ class _AdminVisitorsScreenState extends State<AdminVisitorsScreen> {
   }
 
   Future<_VisitorStats> _loadVisitorStats(String visitorId) async {
-    final votesSnap = await FirebaseFirestore.instance.collectionGroup('votes').get();
+    final votesSnap = await FirebaseFirestore.instance
+        .collectionGroup('votes')
+        .get();
     final visitorVotes = votesSnap.docs.where((doc) {
       final data = doc.data();
       final voterId = (data['voterId'] ?? doc.id).toString();
@@ -546,12 +584,10 @@ class _AdminVisitorsScreenState extends State<AdminVisitorsScreen> {
       final submissionId = (data['submissionId'] ?? '').toString();
       return VisitorVoteRow(
         contestName: contestMap[contestId] ?? contestId,
-        participantName:
-            submissionParticipantMap[submissionId] ?? submissionId,
+        participantName: submissionParticipantMap[submissionId] ?? submissionId,
         createdAtText: dateText(data['createdAt'] as Timestamp?),
       );
-    }).toList()
-      ..sort((a, b) => b.createdAtText.compareTo(a.createdAtText));
+    }).toList()..sort((a, b) => b.createdAtText.compareTo(a.createdAtText));
 
     return _VisitorStats(
       totalContestsVoted: contestIds.length,
@@ -604,7 +640,9 @@ class _AdminVisitorsScreenState extends State<AdminVisitorsScreen> {
       }
     }
     final result = <String, String>{};
-    for (final doc in submissionsSnap.docs.where((doc) => submissionIds.contains(doc.id))) {
+    for (final doc in submissionsSnap.docs.where(
+      (doc) => submissionIds.contains(doc.id),
+    )) {
       final userId = (doc.data()['userId'] ?? '').toString();
       result[doc.id] = userMap[userId] ?? userId;
     }
@@ -622,6 +660,51 @@ class _VisitorStats {
   final int totalContestsVoted;
   final int totalVotes;
   final List<VisitorVoteRow> votes;
+}
+
+class _VisitorDashboardMetrics {
+  const _VisitorDashboardMetrics({
+    required this.totalVisitors,
+    required this.activeVisitors,
+    required this.blockedVisitors,
+    required this.totalShares,
+    required this.totalViews,
+    required this.totalVotes,
+    required this.perVisitorShares,
+    required this.perVisitorViews,
+    required this.perVisitorVotes,
+    required this.perVisitorContests,
+  });
+
+  factory _VisitorDashboardMetrics.empty(int totalVisitors) =>
+      _VisitorDashboardMetrics(
+        totalVisitors: totalVisitors,
+        activeVisitors: totalVisitors,
+        blockedVisitors: 0,
+        totalShares: 0,
+        totalViews: 0,
+        totalVotes: 0,
+        perVisitorShares: const {},
+        perVisitorViews: const {},
+        perVisitorVotes: const {},
+        perVisitorContests: const {},
+      );
+
+  final int totalVisitors;
+  final int activeVisitors;
+  final int blockedVisitors;
+  final int totalShares;
+  final int totalViews;
+  final int totalVotes;
+  final Map<String, int> perVisitorShares;
+  final Map<String, int> perVisitorViews;
+  final Map<String, int> perVisitorVotes;
+  final Map<String, int> perVisitorContests;
+
+  double get activePercent =>
+      totalVisitors == 0 ? 0 : (activeVisitors / totalVisitors) * 100;
+  double get blockedPercent =>
+      totalVisitors == 0 ? 0 : (blockedVisitors / totalVisitors) * 100;
 }
 
 class _VisitorDetailScreen extends StatelessWidget {
@@ -679,8 +762,10 @@ class _VisitorDetailScreen extends StatelessWidget {
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     const SizedBox(height: 6),
-                    Text('ID: $visitorId',
-                        style: const TextStyle(color: AppColors.textMuted)),
+                    Text(
+                      'ID: $visitorId',
+                      style: const TextStyle(color: AppColors.textMuted),
+                    ),
                   ],
                 ),
               ),
@@ -690,6 +775,7 @@ class _VisitorDetailScreen extends StatelessWidget {
                   _CountCard(
                     label: context.tr('Total Contests Voted'),
                     value: stats.totalContestsVoted.toString(),
+                    hint: context.tr('Voting history'),
                     color: AppColors.hotPink,
                     icon: Icons.how_to_vote_rounded,
                   ),
@@ -697,6 +783,7 @@ class _VisitorDetailScreen extends StatelessWidget {
                   _CountCard(
                     label: context.tr('Total Votes'),
                     value: stats.totalVotes.toString(),
+                    hint: context.tr('All time'),
                     color: AppColors.magenta,
                     icon: Icons.favorite_rounded,
                   ),
@@ -739,14 +826,259 @@ class _VisitorDetailScreen extends StatelessWidget {
                         Text(
                           '${context.tr('Participant')}: ${row.participantName}',
                         ),
-                        Text(
-                          '${context.tr('Voted At')}: ${row.createdAtText}',
-                        ),
+                        Text('${context.tr('Voted At')}: ${row.createdAtText}'),
                       ],
                     ),
                   ),
                 ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VisitorManagementCard extends StatelessWidget {
+  const _VisitorManagementCard({
+    required this.name,
+    required this.email,
+    required this.phone,
+    required this.country,
+    required this.isBlocked,
+    required this.shares,
+    required this.views,
+    required this.votes,
+    required this.contests,
+    required this.lastActive,
+    required this.onView,
+    required this.onReport,
+    required this.onToggleBlock,
+  });
+
+  final String name;
+  final String email;
+  final String phone;
+  final String country;
+  final bool isBlocked;
+  final int shares;
+  final int views;
+  final int votes;
+  final int contests;
+  final String lastActive;
+  final VoidCallback onView;
+  final VoidCallback onReport;
+  final VoidCallback onToggleBlock;
+
+  @override
+  Widget build(BuildContext context) {
+    final statusColor = isBlocked ? Colors.redAccent : AppColors.neonGreen;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x40000000),
+            blurRadius: 12,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 26,
+                backgroundColor: isBlocked
+                    ? Colors.redAccent.withOpacity(0.18)
+                    : AppColors.magenta.withOpacity(0.20),
+                child: Text(
+                  _initials(name),
+                  style: TextStyle(
+                    color: statusColor,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: statusColor.withOpacity(0.16),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            context.tr(isBlocked ? 'Blocked' : 'Active'),
+                            style: TextStyle(
+                              color: statusColor,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(email, style: Theme.of(context).textTheme.bodySmall),
+                    if (phone.isNotEmpty)
+                      Text(phone, style: Theme.of(context).textTheme.bodySmall),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _VisitorInlineInfo(
+                icon: Icons.public,
+                label: context.tr('Country'),
+                value: country,
+              ),
+              _VisitorInlineInfo(
+                icon: Icons.share_outlined,
+                label: context.tr('Shares'),
+                value: shares.toString(),
+              ),
+              _VisitorInlineInfo(
+                icon: Icons.visibility_outlined,
+                label: context.tr('Views'),
+                value: views.toString(),
+              ),
+              _VisitorInlineInfo(
+                icon: Icons.how_to_vote_outlined,
+                label: context.tr('Votes'),
+                value: votes.toString(),
+              ),
+              _VisitorInlineInfo(
+                icon: Icons.emoji_events_outlined,
+                label: context.tr('Contests'),
+                value: contests.toString(),
+              ),
+              _VisitorInlineInfo(
+                icon: Icons.schedule_outlined,
+                label: context.tr('Last Active'),
+                value: lastActive,
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onView,
+                  icon: const Icon(Icons.visibility_outlined),
+                  label: Text(context.tr('View Details')),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onReport,
+                  icon: const Icon(Icons.picture_as_pdf),
+                  label: Text(context.tr('Visitor Report')),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: onToggleBlock,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: isBlocked
+                        ? AppColors.neonGreen
+                        : Colors.redAccent,
+                    foregroundColor: Colors.white,
+                  ),
+                  icon: Icon(
+                    isBlocked ? Icons.lock_open_rounded : Icons.block_rounded,
+                  ),
+                  label: Text(
+                    context.tr(isBlocked ? 'Unblock Visitor' : 'Block Visitor'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VisitorInlineInfo extends StatelessWidget {
+  const _VisitorInlineInfo({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: AppColors.cardSoft,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: AppColors.hotPink),
+          const SizedBox(width: 8),
+          Flexible(
+            child: RichText(
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              text: TextSpan(
+                children: [
+                  TextSpan(
+                    text: '$label: ',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.textMuted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  TextSpan(
+                    text: value,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -774,7 +1106,8 @@ class _PdfPreviewScreen extends StatelessWidget {
         actions: [
           IconButton(
             tooltip: context.tr('Download'),
-            onPressed: () => Printing.sharePdf(bytes: bytes, filename: filename),
+            onPressed: () =>
+                Printing.sharePdf(bytes: bytes, filename: filename),
             icon: const Icon(Icons.download),
           ),
         ],
@@ -812,64 +1145,89 @@ class _CountCard extends StatelessWidget {
   const _CountCard({
     required this.label,
     required this.value,
+    required this.hint,
     required this.color,
     required this.icon,
   });
 
   final String label;
   final String value;
+  final String hint;
   final Color color;
   final IconData icon;
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppColors.card,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x33000000),
-              blurRadius: 10,
-              offset: Offset(0, 4),
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x33000000),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.16),
+              borderRadius: BorderRadius.circular(12),
             ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.16),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: color, size: 17),
+            child: Icon(icon, color: color, size: 18),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
             ),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: TextStyle(
-                color: color,
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-              ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
             ),
-            Text(
-              label,
-              style: const TextStyle(
-                color: AppColors.textMuted,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            hint,
+            style: const TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
+}
+
+String _initials(String value) {
+  final parts = value
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .toList();
+  if (parts.isEmpty) return 'U';
+  if (parts.length == 1) {
+    final first = parts.first;
+    return first.substring(0, first.length >= 2 ? 2 : 1).toUpperCase();
+  }
+  return (parts.first.substring(0, 1) + parts.last.substring(0, 1))
+      .toUpperCase();
 }

@@ -111,6 +111,7 @@ class _AdminFeedVideoFormState extends State<AdminFeedVideoForm> {
         'videoUrl': videoUrl,
         'adminId': user.uid,
         'adminName': adminName,
+        'isVisibleOnFeed': true,
         'createdAt': now,
         'updatedAt': now,
       });

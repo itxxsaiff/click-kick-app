@@ -413,6 +413,7 @@ class _HomeFeedTab extends StatefulWidget {
 
 class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
   final _pageController = PageController();
+  final Set<String> _failedAdminVideoUrls = <String>{};
   int _activeIndex = 0;
   VideoPlayerController? _videoController;
   String _currentVideoUrl = '';
@@ -535,7 +536,12 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
       }
     } catch (_) {
       await controller.dispose();
-      if (mounted) setState(() => _isVideoLoading = false);
+      if (mounted) {
+        setState(() {
+          _isVideoLoading = false;
+          _failedAdminVideoUrls.add(url);
+        });
+      }
       return;
     }
     if (!mounted) return;
@@ -645,7 +651,12 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
             }
 
             final newsDocs = newsSnapshot.data!.docs;
-            final adminVideoDocs = adminVideosSnapshot.data!.docs;
+            final adminVideoDocs = adminVideosSnapshot.data!.docs.where((doc) {
+              final data = doc.data();
+              final isVisible = data['isVisibleOnFeed'];
+              if (isVisible is bool) return isVisible;
+              return true;
+            }).toList();
             final feedItems = _buildFeedItems(newsDocs, adminVideoDocs);
 
             if (feedItems.isEmpty) {
@@ -743,7 +754,13 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
   ) {
     final items = <_FeedItem>[
       ...newsDocs.map(_FeedItem.fromNews),
-      ...adminVideoDocs.map(_FeedItem.fromAdminVideo),
+      ...adminVideoDocs
+          .where((doc) {
+            final videoUrl = (doc.data()['videoUrl'] ?? '').toString().trim();
+            return videoUrl.isNotEmpty &&
+                !_failedAdminVideoUrls.contains(videoUrl);
+          })
+          .map(_FeedItem.fromAdminVideo),
     ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return items;
   }

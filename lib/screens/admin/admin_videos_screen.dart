@@ -19,6 +19,7 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
   final _searchController = TextEditingController();
   String _search = '';
   String _statusFilter = 'all';
+  String _sortBy = 'newest';
 
   @override
   void dispose() {
@@ -203,6 +204,18 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                                   'rejected',
                             )
                             .length;
+                        final totalVotes = docs.fold<int>(
+                          0,
+                          (sum, d) =>
+                              sum +
+                              (((d.data()['voteCount'] ?? 0) as num).toInt()),
+                        );
+                        final totalShares = docs.fold<int>(
+                          0,
+                          (sum, d) =>
+                              sum +
+                              (((d.data()['shareCount'] ?? 0) as num).toInt()),
+                        );
 
                         final filtered = docs.where((doc) {
                           final status = (doc.data()['status'] ?? 'pending')
@@ -232,57 +245,289 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                               userId.contains(_search);
                         }).toList();
 
-                        return Column(
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF18152A),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: AppColors.border),
+                        if (_sortBy == 'oldest') {
+                          filtered.sort((a, b) {
+                            final at =
+                                (a.data()['createdAt'] as Timestamp?)
+                                    ?.millisecondsSinceEpoch ??
+                                0;
+                            final bt =
+                                (b.data()['createdAt'] as Timestamp?)
+                                    ?.millisecondsSinceEpoch ??
+                                0;
+                            return at.compareTo(bt);
+                          });
+                        } else if (_sortBy == 'most_votes') {
+                          filtered.sort((a, b) {
+                            final av = ((a.data()['voteCount'] ?? 0) as num)
+                                .toInt();
+                            final bv = ((b.data()['voteCount'] ?? 0) as num)
+                                .toInt();
+                            return bv.compareTo(av);
+                          });
+                        } else if (_sortBy == 'most_shared') {
+                          filtered.sort((a, b) {
+                            final av = ((a.data()['shareCount'] ?? 0) as num)
+                                .toInt();
+                            final bv = ((b.data()['shareCount'] ?? 0) as num)
+                                .toInt();
+                            return bv.compareTo(av);
+                          });
+                        }
+
+                        return SingleChildScrollView(
+                          child: Column(
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  0,
+                                  16,
+                                  12,
+                                ),
+                                child: LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final width = constraints.maxWidth;
+                                    final crossAxisCount = width > 880
+                                        ? 5
+                                        : width > 620
+                                        ? 3
+                                        : 2;
+                                    return GridView.count(
+                                      crossAxisCount: crossAxisCount,
+                                      shrinkWrap: true,
+                                      physics:
+                                          const NeverScrollableScrollPhysics(),
+                                      crossAxisSpacing: 10,
+                                      mainAxisSpacing: 10,
+                                      childAspectRatio: width > 620
+                                          ? 1.55
+                                          : 1.8,
+                                      children: [
+                                        _ModerationStatCard(
+                                          label: context.tr('Pending'),
+                                          value:
+                                              '${pendingCount + underReviewCount}',
+                                          icon: Icons.hourglass_top_rounded,
+                                          color: AppColors.sunset,
+                                        ),
+                                        _ModerationStatCard(
+                                          label: context.tr('Approved'),
+                                          value: '$approvedCount',
+                                          icon: Icons.verified_rounded,
+                                          color: const Color(0xFF2DAF6F),
+                                        ),
+                                        _ModerationStatCard(
+                                          label: context.tr('Rejected'),
+                                          value: '$rejectedCount',
+                                          icon: Icons.cancel_rounded,
+                                          color: const Color(0xFFC53D5D),
+                                        ),
+                                        _ModerationStatCard(
+                                          label: context.tr('Total Votes'),
+                                          value: '$totalVotes',
+                                          icon: Icons.how_to_vote_rounded,
+                                          color: const Color(0xFF5AB4FF),
+                                        ),
+                                        _ModerationStatCard(
+                                          label: context.tr('Total Shares'),
+                                          value: '$totalShares',
+                                          icon: Icons.share_rounded,
+                                          color: const Color(0xFFFF5BD2),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  0,
+                                  16,
+                                  10,
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF18152A),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(color: AppColors.border),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: _ModerationTab(
+                                          label:
+                                              '${context.tr('Pending')} (${pendingCount + underReviewCount})',
+                                          selected:
+                                              _statusFilter == 'pending' ||
+                                              _statusFilter == 'under_review',
+                                          onTap: () => setState(
+                                            () => _statusFilter = 'pending',
+                                          ),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: _ModerationTab(
+                                          label:
+                                              '${context.tr('Approved')} ($approvedCount)',
+                                          selected: _statusFilter == 'approved',
+                                          onTap: () => setState(
+                                            () => _statusFilter = 'approved',
+                                          ),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: _ModerationTab(
+                                          label:
+                                              '${context.tr('Rejected')} ($rejectedCount)',
+                                          selected: _statusFilter == 'rejected',
+                                          onTap: () => setState(
+                                            () => _statusFilter = 'rejected',
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  0,
+                                  16,
+                                  12,
                                 ),
                                 child: Row(
                                   children: [
                                     Expanded(
-                                      child: _ModerationTab(
-                                        label:
-                                            '${context.tr('Pending')} (${pendingCount + underReviewCount})',
-                                        selected:
-                                            _statusFilter == 'pending' ||
-                                            _statusFilter == 'under_review',
-                                        onTap: () => setState(
-                                          () => _statusFilter = 'pending',
+                                      child: SingleChildScrollView(
+                                        scrollDirection: Axis.horizontal,
+                                        child: Row(
+                                          children: [
+                                            _ModerationChip(
+                                              label: context.tr('All'),
+                                              selected: _statusFilter == 'all',
+                                              onTap: () => setState(
+                                                () => _statusFilter = 'all',
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            _ModerationChip(
+                                              label: context.tr('Pending'),
+                                              selected:
+                                                  _statusFilter == 'pending' ||
+                                                  _statusFilter ==
+                                                      'under_review',
+                                              dotColor: AppColors.sunset,
+                                              onTap: () => setState(
+                                                () => _statusFilter = 'pending',
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            _ModerationChip(
+                                              label: context.tr('Approved'),
+                                              selected:
+                                                  _statusFilter == 'approved',
+                                              dotColor: const Color(0xFF2DAF6F),
+                                              onTap: () => setState(
+                                                () =>
+                                                    _statusFilter = 'approved',
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            _ModerationChip(
+                                              label: context.tr('Rejected'),
+                                              selected:
+                                                  _statusFilter == 'rejected',
+                                              dotColor: const Color(0xFFC53D5D),
+                                              onTap: () => setState(
+                                                () =>
+                                                    _statusFilter = 'rejected',
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     ),
-                                    Expanded(
-                                      child: _ModerationTab(
-                                        label:
-                                            '${context.tr('Approved')} ($approvedCount)',
-                                        selected: _statusFilter == 'approved',
-                                        onTap: () => setState(
-                                          () => _statusFilter = 'approved',
+                                    const SizedBox(width: 10),
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF18152A),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: AppColors.border,
                                         ),
                                       ),
-                                    ),
-                                    Expanded(
-                                      child: _ModerationTab(
-                                        label:
-                                            '${context.tr('Rejected')} ($rejectedCount)',
-                                        selected: _statusFilter == 'rejected',
-                                        onTap: () => setState(
-                                          () => _statusFilter = 'rejected',
+                                      child: PopupMenuButton<String>(
+                                        initialValue: _sortBy,
+                                        color: AppColors.card,
+                                        onSelected: (value) =>
+                                            setState(() => _sortBy = value),
+                                        itemBuilder: (context) => [
+                                          PopupMenuItem(
+                                            value: 'newest',
+                                            child: Text(
+                                              context.tr('Newest First'),
+                                            ),
+                                          ),
+                                          PopupMenuItem(
+                                            value: 'oldest',
+                                            child: Text(
+                                              context.tr('Oldest First'),
+                                            ),
+                                          ),
+                                          PopupMenuItem(
+                                            value: 'most_votes',
+                                            child: Text(
+                                              context.tr('Most Voted'),
+                                            ),
+                                          ),
+                                          PopupMenuItem(
+                                            value: 'most_shared',
+                                            child: Text(
+                                              context.tr('Most Shared'),
+                                            ),
+                                          ),
+                                        ],
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 10,
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                context.tr(switch (_sortBy) {
+                                                  'oldest' => 'Oldest First',
+                                                  'most_votes' => 'Most Voted',
+                                                  'most_shared' =>
+                                                    'Most Shared',
+                                                  _ => 'Newest First',
+                                                }),
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              const Icon(
+                                                Icons.expand_more_rounded,
+                                                color: AppColors.textMuted,
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
-                            ),
-                            Expanded(
-                              child: ListView.separated(
+                              ListView.separated(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
                                 padding: const EdgeInsets.fromLTRB(
                                   16,
                                   0,
@@ -557,6 +802,111 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                                                     label:
                                                         '${context.tr('Submitted')}: ${_formatShortDate(createdAt)}',
                                                   ),
+                                                  const SizedBox(height: 8),
+                                                  Wrap(
+                                                    spacing: 12,
+                                                    runSpacing: 8,
+                                                    children: [
+                                                      _VideoMeta(
+                                                        icon: Icons
+                                                            .how_to_vote_rounded,
+                                                        label:
+                                                            '${((data['voteCount'] ?? 0) as num).toInt()} ${context.tr('Votes')}',
+                                                      ),
+                                                      _VideoMeta(
+                                                        icon: Icons
+                                                            .share_outlined,
+                                                        label:
+                                                            '${((data['shareCount'] ?? 0) as num).toInt()} ${context.tr('Shares')}',
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  if (status == 'pending' ||
+                                                      status ==
+                                                          'under_review') ...[
+                                                    const SizedBox(height: 10),
+                                                    Row(
+                                                      children: [
+                                                        Expanded(
+                                                          child: OutlinedButton.icon(
+                                                            onPressed: () =>
+                                                                _approve(
+                                                                  context,
+                                                                  doc.reference,
+                                                                  data,
+                                                                ),
+                                                            icon: const Icon(
+                                                              Icons.check,
+                                                              size: 16,
+                                                            ),
+                                                            label: Text(
+                                                              context.tr(
+                                                                'Approve',
+                                                              ),
+                                                            ),
+                                                            style: OutlinedButton.styleFrom(
+                                                              foregroundColor:
+                                                                  const Color(
+                                                                    0xFF2DAF6F,
+                                                                  ),
+                                                              side: const BorderSide(
+                                                                color: Color(
+                                                                  0xFF2DAF6F,
+                                                                ),
+                                                              ),
+                                                              padding:
+                                                                  const EdgeInsets.symmetric(
+                                                                    horizontal:
+                                                                        10,
+                                                                    vertical:
+                                                                        10,
+                                                                  ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        const SizedBox(
+                                                          width: 8,
+                                                        ),
+                                                        Expanded(
+                                                          child: OutlinedButton.icon(
+                                                            onPressed: () =>
+                                                                _reject(
+                                                                  context,
+                                                                  doc.reference,
+                                                                  data,
+                                                                ),
+                                                            icon: const Icon(
+                                                              Icons.close,
+                                                              size: 16,
+                                                            ),
+                                                            label: Text(
+                                                              context.tr(
+                                                                'Reject',
+                                                              ),
+                                                            ),
+                                                            style: OutlinedButton.styleFrom(
+                                                              foregroundColor:
+                                                                  const Color(
+                                                                    0xFFC53D5D,
+                                                                  ),
+                                                              side: const BorderSide(
+                                                                color: Color(
+                                                                  0xFFC53D5D,
+                                                                ),
+                                                              ),
+                                                              padding:
+                                                                  const EdgeInsets.symmetric(
+                                                                    horizontal:
+                                                                        10,
+                                                                    vertical:
+                                                                        10,
+                                                                  ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ],
                                                 ],
                                               );
                                             },
@@ -657,8 +1007,8 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                                   );
                                 },
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         );
                       },
                     );
@@ -1148,6 +1498,121 @@ class _ModerationTab extends StatelessWidget {
               fontWeight: FontWeight.w700,
               fontSize: 12,
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ModerationStatCard extends StatelessWidget {
+  const _ModerationStatCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF151324),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.18),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: color, size: 18),
+          ),
+          const Spacer(),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w800,
+              fontSize: 24,
+            ),
+          ),
+          Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModerationChip extends StatelessWidget {
+  const _ModerationChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.dotColor,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final Color? dotColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFF5E4C72) : const Color(0xFF18152A),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (dotColor != null) ...[
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: dotColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
           ),
         ),
       ),

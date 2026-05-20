@@ -497,61 +497,72 @@ class _AdminDashboardState extends State<AdminDashboard> {
                             LayoutBuilder(
                               builder: (context, constraints) {
                                 final width = constraints.maxWidth;
-                                final statCols = width > 520 ? 2 : 1;
-                                final statRatio = width > 860
-                                    ? 1.55
+                                final statCols = width > 340 ? 2 : 1;
+                                final statHeight = width > 860
+                                    ? 148.0
                                     : width > 640
-                                    ? 1.35
-                                    : width > 520
-                                    ? 1.15
-                                    : 1.55;
-                                return GridView.count(
-                                  crossAxisCount: statCols,
-                                  crossAxisSpacing: 12,
-                                  mainAxisSpacing: 12,
+                                    ? 154.0
+                                    : 164.0;
+                                return GridView.builder(
                                   shrinkWrap: true,
                                   physics: const NeverScrollableScrollPhysics(),
-                                  childAspectRatio: statRatio,
-                                  children: [
-                                    _DashboardStatCard(
-                                      icon: Icons.groups_rounded,
-                                      accent: AppColors.hotPink,
-                                      value: stats.totalUsers.toString(),
-                                      label: context.tr('Total Users'),
-                                      hint: context.tr(
-                                        'All registered accounts',
+                                  gridDelegate:
+                                      SliverGridDelegateWithFixedCrossAxisCount(
+                                        crossAxisCount: statCols,
+                                        crossAxisSpacing: 12,
+                                        mainAxisSpacing: 12,
+                                        mainAxisExtent: statHeight,
                                       ),
-                                      footer:
-                                          '${stats.activeUsers} ${context.tr('active')}',
-                                    ),
-                                    _DashboardStatCard(
-                                      icon: Icons.badge_outlined,
-                                      accent: const Color(0xFF69E8FF),
-                                      value: stats.totalEmployees.toString(),
-                                      label: context.tr('Employees'),
-                                      hint: context.tr('Admins & moderators'),
-                                      footer:
-                                          '${stats.totalSponsors} ${context.tr('sponsors')}',
-                                    ),
-                                    _DashboardStatCard(
-                                      icon: Icons.emoji_events_outlined,
-                                      accent: AppColors.sunset,
-                                      value: stats.totalContests.toString(),
-                                      label: context.tr('Contests'),
-                                      hint: context.tr('Created contests'),
-                                      footer:
-                                          '${stats.activeContests} ${context.tr('live')}',
-                                    ),
-                                    _DashboardStatCard(
-                                      icon: Icons.support_agent_outlined,
-                                      accent: AppColors.neonGreen,
-                                      value: stats.openTickets.toString(),
-                                      label: context.tr('Open Tickets'),
-                                      hint: context.tr('Need attention'),
-                                      footer:
-                                          '\$${stats.revenue.toStringAsFixed(0)} ${context.tr('revenue')}',
-                                    ),
-                                  ],
+                                  itemCount: 4,
+                                  itemBuilder: (context, index) {
+                                    switch (index) {
+                                      case 0:
+                                        return _DashboardStatCard(
+                                          icon: Icons.groups_rounded,
+                                          accent: AppColors.hotPink,
+                                          value: stats.totalUsers.toString(),
+                                          label: context.tr('Total Users'),
+                                          hint: context.tr(
+                                            'All registered accounts',
+                                          ),
+                                          footer:
+                                              '${stats.activeUsers} ${context.tr('active')}',
+                                        );
+                                      case 1:
+                                        return _DashboardStatCard(
+                                          icon: Icons.badge_outlined,
+                                          accent: const Color(0xFF69E8FF),
+                                          value: stats.totalEmployees
+                                              .toString(),
+                                          label: context.tr('Employees'),
+                                          hint: context.tr(
+                                            'Admins & moderators',
+                                          ),
+                                          footer:
+                                              '${stats.totalSponsors} ${context.tr('sponsors')}',
+                                        );
+                                      case 2:
+                                        return _DashboardStatCard(
+                                          icon: Icons.emoji_events_outlined,
+                                          accent: AppColors.sunset,
+                                          value: stats.totalContests.toString(),
+                                          label: context.tr('Contests'),
+                                          hint: context.tr('Created contests'),
+                                          footer:
+                                              '${stats.activeContests} ${context.tr('live')}',
+                                        );
+                                      default:
+                                        return _DashboardStatCard(
+                                          icon: Icons.support_agent_outlined,
+                                          accent: AppColors.neonGreen,
+                                          value: stats.openTickets.toString(),
+                                          label: context.tr('Open Tickets'),
+                                          hint: context.tr('Need attention'),
+                                          footer:
+                                              '\$${stats.revenue.toStringAsFixed(0)} ${context.tr('revenue')}',
+                                        );
+                                    }
+                                  },
                                 );
                               },
                             ),

@@ -21,10 +21,14 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
   final _phoneCode = TextEditingController(text: '+1');
   final _phoneNumber = TextEditingController();
   final _currentPassword = TextEditingController();
+  final _newPassword = TextEditingController();
+  final _confirmPassword = TextEditingController();
   String _phoneIso = 'US';
   bool _saving = false;
   bool _loading = true;
   bool _obscureCurrentPassword = true;
+  bool _obscureNewPassword = true;
+  bool _obscureConfirmPassword = true;
 
   @override
   void initState() {
@@ -39,6 +43,8 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
     _phoneCode.dispose();
     _phoneNumber.dispose();
     _currentPassword.dispose();
+    _newPassword.dispose();
+    _confirmPassword.dispose();
     super.dispose();
   }
 
@@ -69,20 +75,45 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
       final newEmail = _email.text.trim().toLowerCase();
       final willUpdateEmail =
           newEmail.isNotEmpty && newEmail != (user.email ?? '');
+      final newPassword = _newPassword.text.trim();
+      final confirmPassword = _confirmPassword.text.trim();
+      final willUpdatePassword =
+          newPassword.isNotEmpty || confirmPassword.isNotEmpty;
+      if (willUpdatePassword && newPassword != confirmPassword) {
+        _show(context.tr('New password and confirm password do not match.'));
+        return;
+      }
       if (willUpdateEmail) {
         if (_currentPassword.text.trim().isEmpty) {
           _show(context.tr('Current password is required.'));
           return;
         }
+      }
+      if (willUpdatePassword) {
+        if (_currentPassword.text.trim().isEmpty) {
+          _show(context.tr('Current password is required.'));
+          return;
+        }
+        if (newPassword.length < 6) {
+          _show(context.tr('New password must be at least 6 characters.'));
+          return;
+        }
+      }
+      if (willUpdateEmail || willUpdatePassword) {
         final credential = EmailAuthProvider.credential(
           email: (user.email ?? '').trim(),
           password: _currentPassword.text.trim(),
         );
         await user.reauthenticateWithCredential(credential);
+      }
+      if (willUpdateEmail) {
         await user.verifyBeforeUpdateEmail(
           newEmail,
           AuthService.emailActionCodeSettings(),
         );
+      }
+      if (willUpdatePassword) {
+        await user.updatePassword(newPassword);
       }
       await user.updateDisplayName(_name.text.trim());
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
@@ -103,6 +134,9 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
               )
             : context.tr('Profile updated.'),
       );
+      _currentPassword.clear();
+      _newPassword.clear();
+      _confirmPassword.clear();
     } catch (e) {
       _show(context.tr('Update failed.'));
     } finally {
@@ -218,6 +252,67 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
                         ),
                       ),
                       const SizedBox(height: 20),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          context.tr('Security'),
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _newPassword,
+                        obscureText: _obscureNewPassword,
+                        decoration: InputDecoration(
+                          labelText: context.tr('New Password (optional)'),
+                          suffixIcon: IconButton(
+                            onPressed: () => setState(
+                              () => _obscureNewPassword = !_obscureNewPassword,
+                            ),
+                            icon: Icon(
+                              _obscureNewPassword
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _confirmPassword,
+                        obscureText: _obscureConfirmPassword,
+                        decoration: InputDecoration(
+                          labelText: context.tr('Confirm New Password'),
+                          suffixIcon: IconButton(
+                            onPressed: () => setState(
+                              () => _obscureConfirmPassword =
+                                  !_obscureConfirmPassword,
+                            ),
+                            icon: Icon(
+                              _obscureConfirmPassword
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.language_outlined),
+                        title: Text(context.tr('Language')),
+                        subtitle: Text(context.tr('Choose language')),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const LanguageSelectionScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 12),
                       GradientButton(
                         label: _saving
                             ? context.tr('Saving...')

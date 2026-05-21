@@ -3525,22 +3525,11 @@ class _SponsorProfileTab extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             SettingsActionTile(
-              icon: Icons.badge_outlined,
-              title: context.tr('Profile Info'),
-              subtitle: context.tr('View your account information.'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => _SponsorProfileInfoScreen(user: user),
-                  ),
-                );
-              },
-            ),
-            SettingsActionTile(
-              icon: Icons.edit_outlined,
-              title: context.tr('Profile Update'),
-              subtitle: context.tr('Update your name, email, and phone.'),
+              icon: Icons.person_outline,
+              title: context.tr('Profile'),
+              subtitle: context.tr(
+                'Manage profile, language, and security in one place.',
+              ),
               onTap: () {
                 Navigator.push(
                   context,
@@ -3549,32 +3538,6 @@ class _SponsorProfileTab extends StatelessWidget {
                       user: user,
                       displayName: displayName,
                     ),
-                  ),
-                );
-              },
-            ),
-            SettingsActionTile(
-              icon: Icons.lock_outline,
-              title: context.tr('Change Password'),
-              subtitle: context.tr('Update your account password securely.'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const _SponsorSecurityScreen(),
-                  ),
-                );
-              },
-            ),
-            SettingsActionTile(
-              icon: Icons.language_outlined,
-              title: context.tr('Language'),
-              subtitle: context.tr('Choose language'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const LanguageSelectionScreen(),
                   ),
                 );
               },
@@ -3772,9 +3735,13 @@ class _SponsorProfileUpdateScreenState
   final _phoneNumber = TextEditingController();
   String _phoneIso = 'US';
   final _currentPassword = TextEditingController();
+  final _newPassword = TextEditingController();
+  final _confirmPassword = TextEditingController();
   bool _saving = false;
   bool _loading = true;
   bool _obscureCurrentPassword = true;
+  bool _obscureNewPassword = true;
+  bool _obscureConfirmPassword = true;
 
   @override
   void initState() {
@@ -3809,6 +3776,8 @@ class _SponsorProfileUpdateScreenState
     _phoneCode.dispose();
     _phoneNumber.dispose();
     _currentPassword.dispose();
+    _newPassword.dispose();
+    _confirmPassword.dispose();
     super.dispose();
   }
 
@@ -3819,7 +3788,21 @@ class _SponsorProfileUpdateScreenState
     try {
       await user.updateDisplayName(_name.text.trim());
       final newEmail = _email.text.trim().toLowerCase();
-      if (newEmail.isNotEmpty && newEmail != (user.email ?? '')) {
+      final willUpdateEmail =
+          newEmail.isNotEmpty && newEmail != (user.email ?? '');
+      final newPassword = _newPassword.text.trim();
+      final confirmPassword = _confirmPassword.text.trim();
+      final willUpdatePassword =
+          newPassword.isNotEmpty || confirmPassword.isNotEmpty;
+      if (willUpdatePassword && newPassword != confirmPassword) {
+        _showSponsorMessage(
+          context,
+          context.tr('New password and confirm password do not match.'),
+        );
+        setState(() => _saving = false);
+        return;
+      }
+      if (willUpdateEmail || willUpdatePassword) {
         final currentEmail = (user.email ?? '').trim();
         if (currentEmail.isEmpty) {
           _showSponsorMessage(
@@ -3837,15 +3820,28 @@ class _SponsorProfileUpdateScreenState
           setState(() => _saving = false);
           return;
         }
+        if (willUpdatePassword && newPassword.length < 6) {
+          _showSponsorMessage(
+            context,
+            context.tr('New password must be at least 6 characters.'),
+          );
+          setState(() => _saving = false);
+          return;
+        }
         final credential = EmailAuthProvider.credential(
           email: currentEmail,
           password: _currentPassword.text.trim(),
         );
         await user.reauthenticateWithCredential(credential);
+      }
+      if (willUpdateEmail) {
         await user.verifyBeforeUpdateEmail(
           newEmail,
           AuthService.emailActionCodeSettings(),
         );
+      }
+      if (willUpdatePassword) {
+        await user.updatePassword(newPassword);
       }
 
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
@@ -3858,17 +3854,20 @@ class _SponsorProfileUpdateScreenState
         'phoneCountryIso': _phoneIso,
         'phoneNumber': _phoneNumber.text.trim(),
         'phoneE164': '${_phoneCode.text.trim()}${_phoneNumber.text.trim()}',
-        if (newEmail != (user.email ?? '')) 'pendingEmail': newEmail,
+        if (willUpdateEmail) 'pendingEmail': newEmail,
         'updatedAt': DateTime.now().toUtc(),
       }, SetOptions(merge: true));
       _showSponsorMessage(
         context,
-        newEmail.isNotEmpty && newEmail != (user.email ?? '')
+        willUpdateEmail
             ? context.tr(
                 'Verification email sent. Confirm it to complete email change.',
               )
             : context.tr('Profile updated.'),
       );
+      _currentPassword.clear();
+      _newPassword.clear();
+      _confirmPassword.clear();
     } on FirebaseAuthException catch (e) {
       if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
         _showSponsorMessage(
@@ -3994,6 +3993,73 @@ class _SponsorProfileUpdateScreenState
                   ),
                 ),
                 const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    context.tr('Security'),
+                    style: const TextStyle(
+                      color: AppColors.textLight,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _newPassword,
+                  obscureText: _obscureNewPassword,
+                  decoration: InputDecoration(
+                    labelText: context.tr('New Password (optional)'),
+                    suffixIcon: IconButton(
+                      onPressed: () => setState(
+                        () => _obscureNewPassword = !_obscureNewPassword,
+                      ),
+                      icon: Icon(
+                        _obscureNewPassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _confirmPassword,
+                  obscureText: _obscureConfirmPassword,
+                  decoration: InputDecoration(
+                    labelText: context.tr('Confirm New Password'),
+                    suffixIcon: IconButton(
+                      onPressed: () => setState(
+                        () =>
+                            _obscureConfirmPassword = !_obscureConfirmPassword,
+                      ),
+                      icon: Icon(
+                        _obscureConfirmPassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(
+                    Icons.language_outlined,
+                    color: AppColors.textLight,
+                  ),
+                  title: Text(context.tr('Language')),
+                  subtitle: Text(context.tr('Choose language')),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const LanguageSelectionScreen(),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 14),
                 GradientButton(
                   label: _saving
                       ? context.tr('Saving...')

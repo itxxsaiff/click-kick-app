@@ -445,22 +445,11 @@ class _EmployeeProfileTab extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             SettingsActionTile(
-              icon: Icons.badge_outlined,
-              title: context.tr('Profile Info'),
-              subtitle: context.tr('View your account information.'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => _EmployeeProfileInfoScreen(user: user),
-                  ),
-                );
-              },
-            ),
-            SettingsActionTile(
-              icon: Icons.edit_outlined,
-              title: context.tr('Profile Update'),
-              subtitle: context.tr('Update your name, email, and phone.'),
+              icon: Icons.person_outline,
+              title: context.tr('Profile'),
+              subtitle: context.tr(
+                'Manage profile, language, and security in one place.',
+              ),
               onTap: () {
                 Navigator.push(
                   context,
@@ -469,32 +458,6 @@ class _EmployeeProfileTab extends StatelessWidget {
                       user: user,
                       displayName: displayName,
                     ),
-                  ),
-                );
-              },
-            ),
-            SettingsActionTile(
-              icon: Icons.lock_outline,
-              title: context.tr('Change Password'),
-              subtitle: context.tr('Update your account password securely.'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const _EmployeeSecurityScreen(),
-                  ),
-                );
-              },
-            ),
-            SettingsActionTile(
-              icon: Icons.language_outlined,
-              title: context.tr('Language'),
-              subtitle: context.tr('Choose language'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const LanguageSelectionScreen(),
                   ),
                 );
               },
@@ -678,10 +641,14 @@ class _EmployeeProfileUpdateScreenState
   final _phoneCode = TextEditingController(text: '+1');
   final _phoneNumber = TextEditingController();
   final _currentPassword = TextEditingController();
+  final _newPassword = TextEditingController();
+  final _confirmPassword = TextEditingController();
   String _phoneIso = 'US';
   bool _loading = true;
   bool _saving = false;
   bool _obscureCurrentPassword = true;
+  bool _obscureNewPassword = true;
+  bool _obscureConfirmPassword = true;
 
   @override
   void initState() {
@@ -712,6 +679,8 @@ class _EmployeeProfileUpdateScreenState
     _phoneCode.dispose();
     _phoneNumber.dispose();
     _currentPassword.dispose();
+    _newPassword.dispose();
+    _confirmPassword.dispose();
     super.dispose();
   }
 
@@ -723,11 +692,29 @@ class _EmployeeProfileUpdateScreenState
       final newEmail = _email.text.trim().toLowerCase();
       final willUpdateEmail =
           newEmail.isNotEmpty && newEmail != (user.email ?? '');
-      if (willUpdateEmail) {
+      final newPassword = _newPassword.text.trim();
+      final confirmPassword = _confirmPassword.text.trim();
+      final willUpdatePassword =
+          newPassword.isNotEmpty || confirmPassword.isNotEmpty;
+      if (willUpdatePassword && newPassword != confirmPassword) {
+        _showEmployeeMessage(
+          context,
+          context.tr('New password and confirm password do not match.'),
+        );
+        return;
+      }
+      if (willUpdateEmail || willUpdatePassword) {
         if (_currentPassword.text.trim().isEmpty) {
           _showEmployeeMessage(
             context,
             context.tr('Current password is required.'),
+          );
+          return;
+        }
+        if (willUpdatePassword && newPassword.length < 6) {
+          _showEmployeeMessage(
+            context,
+            context.tr('New password must be at least 6 characters.'),
           );
           return;
         }
@@ -736,10 +723,15 @@ class _EmployeeProfileUpdateScreenState
           password: _currentPassword.text.trim(),
         );
         await user.reauthenticateWithCredential(credential);
+      }
+      if (willUpdateEmail) {
         await user.verifyBeforeUpdateEmail(
           newEmail,
           AuthService.emailActionCodeSettings(),
         );
+      }
+      if (willUpdatePassword) {
+        await user.updatePassword(newPassword);
       }
 
       await user.updateDisplayName(_name.text.trim());
@@ -763,6 +755,9 @@ class _EmployeeProfileUpdateScreenState
               )
             : context.tr('Profile updated.'),
       );
+      _currentPassword.clear();
+      _newPassword.clear();
+      _confirmPassword.clear();
     } on FirebaseAuthException catch (e) {
       if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
         _showEmployeeMessage(
@@ -873,6 +868,73 @@ class _EmployeeProfileUpdateScreenState
                   ),
                 ),
                 const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    context.tr('Security'),
+                    style: const TextStyle(
+                      color: AppColors.textLight,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _newPassword,
+                  obscureText: _obscureNewPassword,
+                  decoration: InputDecoration(
+                    labelText: context.tr('New Password (optional)'),
+                    suffixIcon: IconButton(
+                      onPressed: () => setState(
+                        () => _obscureNewPassword = !_obscureNewPassword,
+                      ),
+                      icon: Icon(
+                        _obscureNewPassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _confirmPassword,
+                  obscureText: _obscureConfirmPassword,
+                  decoration: InputDecoration(
+                    labelText: context.tr('Confirm New Password'),
+                    suffixIcon: IconButton(
+                      onPressed: () => setState(
+                        () =>
+                            _obscureConfirmPassword = !_obscureConfirmPassword,
+                      ),
+                      icon: Icon(
+                        _obscureConfirmPassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(
+                    Icons.language_outlined,
+                    color: AppColors.textLight,
+                  ),
+                  title: Text(context.tr('Language')),
+                  subtitle: Text(context.tr('Choose language')),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const LanguageSelectionScreen(),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 14),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(

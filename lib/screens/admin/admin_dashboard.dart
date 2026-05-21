@@ -299,20 +299,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
         },
       ),
       _AdminModuleItem(
-        title: context.tr('Language'),
-        subtitle: context.tr('Change app language'),
-        icon: Icons.language,
-        accent: const Color(0xFF65E8FF),
-        badgeValue: '2',
-        badge: context.tr('Languages'),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const LanguageSelectionScreen()),
-          );
-        },
-      ),
-      _AdminModuleItem(
         title: context.tr('Videos'),
         subtitle: context.tr('Approve / reject submissions'),
         icon: Icons.video_library,
@@ -326,7 +312,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
       ),
       _AdminModuleItem(
         title: context.tr('Profile'),
-        subtitle: context.tr('Update admin information'),
+        subtitle: context.tr('Manage profile, language, and security'),
         icon: Icons.person,
         accent: AppColors.neonGreen,
         badgeValue: context.tr('Updated'),
@@ -346,19 +332,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const AdminVideoReportsScreen()),
-          );
-        },
-      ),
-      _AdminModuleItem(
-        title: context.tr('Security'),
-        subtitle: context.tr('Change password'),
-        icon: Icons.lock,
-        accent: AppColors.sunset,
-        badgeValue: context.tr('Secure'),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const AdminSecurityScreen()),
           );
         },
       ),

@@ -2132,7 +2132,7 @@ class _FeedCountdownTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'D : H : M : S',
+                  context.tr('D : H : M : S'),
                   maxLines: 1,
                   textAlign: TextAlign.center,
                   style: TextStyle(
@@ -3409,53 +3409,16 @@ class _PublicUserProfileTab extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             SettingsActionTile(
-              icon: Icons.badge_outlined,
-              title: context.tr('Profile Info'),
-              subtitle: context.tr('View your account information.'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => _PublicUserProfileInfoScreen(user: user),
-                  ),
-                );
-              },
-            ),
-            SettingsActionTile(
-              icon: Icons.edit_outlined,
-              title: context.tr('Profile Update'),
-              subtitle: context.tr('Update your name, email, and phone.'),
+              icon: Icons.person_outline,
+              title: context.tr('Profile'),
+              subtitle: context.tr(
+                'Manage profile, language, and security in one place.',
+              ),
               onTap: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) => _PublicUserProfileUpdateScreen(user: user),
-                  ),
-                );
-              },
-            ),
-            SettingsActionTile(
-              icon: Icons.lock_outline,
-              title: context.tr('Change Password'),
-              subtitle: context.tr('Update your account password securely.'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => _PublicUserPasswordScreen(user: user),
-                  ),
-                );
-              },
-            ),
-            SettingsActionTile(
-              icon: Icons.language_outlined,
-              title: context.tr('Language'),
-              subtitle: context.tr('Choose language'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const LanguageSelectionScreen(),
                   ),
                 );
               },
@@ -3628,6 +3591,14 @@ class _PublicUserProfileUpdateScreenState
   bool _saving = false;
   Uint8List? _photoBytes;
   String _photoUrl = '';
+  final TextEditingController _currentPasswordController =
+      TextEditingController();
+  final TextEditingController _newPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
+  bool _obscureCurrentPassword = true;
+  bool _obscureNewPassword = true;
+  bool _obscureConfirmPassword = true;
 
   @override
   void initState() {
@@ -3663,6 +3634,9 @@ class _PublicUserProfileUpdateScreenState
     _emailController.dispose();
     _phoneCodeController.dispose();
     _phoneNumberController.dispose();
+    _currentPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -3697,11 +3671,43 @@ class _PublicUserProfileUpdateScreenState
       final newEmail = _emailController.text.trim().toLowerCase();
       final willUpdateEmail =
           newEmail.isNotEmpty && newEmail != (user.email ?? '');
+      final newPassword = _newPasswordController.text.trim();
+      final confirmPassword = _confirmPasswordController.text.trim();
+      final willUpdatePassword =
+          newPassword.isNotEmpty || confirmPassword.isNotEmpty;
+      if (willUpdatePassword && newPassword != confirmPassword) {
+        _show(
+          context,
+          context.tr('New password and confirm password do not match.'),
+        );
+        return;
+      }
+      if (willUpdateEmail || willUpdatePassword) {
+        if (_currentPasswordController.text.trim().isEmpty) {
+          _show(context, context.tr('Current password is required.'));
+          return;
+        }
+        if (willUpdatePassword && newPassword.length < 6) {
+          _show(
+            context,
+            context.tr('New password must be at least 6 characters.'),
+          );
+          return;
+        }
+        final credential = EmailAuthProvider.credential(
+          email: user.email ?? '',
+          password: _currentPasswordController.text.trim(),
+        );
+        await user.reauthenticateWithCredential(credential);
+      }
       if (willUpdateEmail) {
         await user.verifyBeforeUpdateEmail(
           newEmail,
           AuthService.emailActionCodeSettings(),
         );
+      }
+      if (willUpdatePassword) {
+        await user.updatePassword(newPassword);
       }
       final uploadedPhotoUrl = await _uploadProfilePhoto(user.uid);
       await user.updateDisplayName(newName);
@@ -3724,6 +3730,9 @@ class _PublicUserProfileUpdateScreenState
       if (!mounted) return;
       _photoUrl = uploadedPhotoUrl;
       _photoBytes = null;
+      _currentPasswordController.clear();
+      _newPasswordController.clear();
+      _confirmPasswordController.clear();
       _show(
         context,
         willUpdateEmail
@@ -3894,6 +3903,96 @@ class _PublicUserProfileUpdateScreenState
                                   ),
                                 ),
                               ],
+                            ),
+                            const SizedBox(height: 16),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                context.tr('Security'),
+                                style: const TextStyle(
+                                  color: AppColors.textLight,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            TextField(
+                              controller: _currentPasswordController,
+                              obscureText: _obscureCurrentPassword,
+                              decoration: InputDecoration(
+                                labelText: context.tr('Current Password'),
+                                suffixIcon: IconButton(
+                                  onPressed: () => setState(
+                                    () => _obscureCurrentPassword =
+                                        !_obscureCurrentPassword,
+                                  ),
+                                  icon: Icon(
+                                    _obscureCurrentPassword
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _newPasswordController,
+                              obscureText: _obscureNewPassword,
+                              decoration: InputDecoration(
+                                labelText: context.tr(
+                                  'New Password (optional)',
+                                ),
+                                suffixIcon: IconButton(
+                                  onPressed: () => setState(
+                                    () => _obscureNewPassword =
+                                        !_obscureNewPassword,
+                                  ),
+                                  icon: Icon(
+                                    _obscureNewPassword
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _confirmPasswordController,
+                              obscureText: _obscureConfirmPassword,
+                              decoration: InputDecoration(
+                                labelText: context.tr('Confirm New Password'),
+                                suffixIcon: IconButton(
+                                  onPressed: () => setState(
+                                    () => _obscureConfirmPassword =
+                                        !_obscureConfirmPassword,
+                                  ),
+                                  icon: Icon(
+                                    _obscureConfirmPassword
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: const Icon(
+                                Icons.language_outlined,
+                                color: AppColors.textLight,
+                              ),
+                              title: Text(context.tr('Language')),
+                              subtitle: Text(context.tr('Choose language')),
+                              trailing: const Icon(Icons.chevron_right_rounded),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        const LanguageSelectionScreen(),
+                                  ),
+                                );
+                              },
                             ),
                             const SizedBox(height: 16),
                             SizedBox(

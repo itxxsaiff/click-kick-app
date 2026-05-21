@@ -1555,6 +1555,31 @@ class _UserProfileTabState extends State<_UserProfileTab> {
           ),
         ),
         const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: ListTile(
+            leading: const Icon(
+              Icons.language_outlined,
+              color: AppColors.textLight,
+            ),
+            title: Text(context.tr('Language')),
+            subtitle: Text(context.tr('Choose language')),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const LanguageSelectionScreen(),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(

@@ -3,9 +3,8 @@ import '../../l10n/l10n.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/gradient_button.dart';
-import '../../widgets/social_icon_button.dart';
 
-enum _SocialProvider { google, facebook }
+enum _SocialProvider { google }
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -101,9 +100,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     if (text.contains('network-request-failed')) {
       return context.tr('Network issue. Please try again.');
-    }
-    if (text.contains('facebook-login-failed')) {
-      return text;
     }
     return context.tr('Social login failed. Please try again.');
   }
@@ -320,33 +316,60 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     SizedBox(height: isCompact ? 10 : 12),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        SocialIconButton(
-                          onPressed: _isLoading
-                              ? () {}
-                              : () =>
-                                    _handleSocialLogin(_SocialProvider.google),
-                          child: const Text(
-                            'G',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w700,
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _isLoading
+                                ? null
+                                : () => _handleSocialLogin(
+                                    _SocialProvider.google,
+                                  ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: const BorderSide(color: AppColors.border),
+                              backgroundColor: AppColors.card,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        SocialIconButton(
-                          onPressed: _isLoading
-                              ? () {}
-                              : () => _handleSocialLogin(
-                                  _SocialProvider.facebook,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  width: 34,
+                                  height: 34,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.08),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: const Text(
+                                    'G',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
                                 ),
-                          child: const Icon(
-                            Icons.facebook,
-                            color: Colors.white,
-                            size: 24,
+                                const SizedBox(width: 12),
+                                Flexible(
+                                  child: Text(
+                                    context.tr('Login with Google'),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],

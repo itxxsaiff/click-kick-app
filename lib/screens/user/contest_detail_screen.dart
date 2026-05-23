@@ -1,9 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 import '../../l10n/l10n.dart';
+import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/gradient_button.dart';
 import '../../widgets/report_video_dialog.dart';
@@ -1082,47 +1084,11 @@ class _VotingGrid extends StatelessWidget {
       return;
     }
 
-    final contestRef = FirebaseFirestore.instance
-        .collection('contests')
-        .doc(contestId);
-    final voteRef = contestRef.collection('votes').doc(userId);
-    final submissionRef = contestRef
-        .collection('submissions')
-        .doc(submissionId);
-
     try {
-      await FirebaseFirestore.instance.runTransaction((tx) async {
-        final voteSnap = await tx.get(voteRef);
-        if (voteSnap.exists) {
-          throw Exception('already-voted');
-        }
-
-        final subSnap = await tx.get(submissionRef);
-        if (!subSnap.exists) {
-          throw Exception('submission-not-found');
-        }
-
-        final status = (subSnap.data()?['status'] ?? '').toString();
-        if (status != 'approved') {
-          throw Exception('submission-not-approved');
-        }
-        final submissionOwnerId = (subSnap.data()?['userId'] ?? '').toString();
-        if (submissionOwnerId == userId) {
-          throw Exception('cannot-self-vote');
-        }
-
-        final now = Timestamp.fromDate(DateTime.now());
-        tx.set(voteRef, {
-          'contestId': contestId,
-          'submissionId': submissionId,
-          'voterId': userId,
-          'createdAt': now,
-        });
-        tx.update(submissionRef, {
-          'voteCount': FieldValue.increment(1),
-          'updatedAt': now,
-        });
-      });
+      await AuthService().incrementContestVote(
+        contestId: contestId,
+        submissionId: submissionId,
+      );
 
       _snack(
         context,
@@ -1131,11 +1097,34 @@ class _VotingGrid extends StatelessWidget {
         ),
       );
     } catch (e) {
+      if (e is FirebaseFunctionsException) {
+        if (e.code == 'already-exists') {
+          _snack(context, context.tr('You already voted in this contest.'));
+          return;
+        }
+        final details = (e.message ?? '').toString();
+        if (details.contains('own video')) {
+          _snack(context, context.tr('You cannot vote for your own video.'));
+          return;
+        }
+        if (details.contains('not started yet')) {
+          _snack(context, context.tr('Voting has not started yet.'));
+          return;
+        }
+        if (details.contains('already ended')) {
+          _snack(context, context.tr('Voting has already ended.'));
+          return;
+        }
+      }
       final msg = e.toString();
       if (msg.contains('already-voted')) {
         _snack(context, context.tr('You already voted in this contest.'));
       } else if (msg.contains('cannot-self-vote')) {
         _snack(context, context.tr('You cannot vote for your own video.'));
+      } else if (msg.contains('Voting has not started yet')) {
+        _snack(context, context.tr('Voting has not started yet.'));
+      } else if (msg.contains('Voting has already ended')) {
+        _snack(context, context.tr('Voting has already ended.'));
       } else {
         _snack(context, context.tr('Vote failed. Please retry.'));
       }

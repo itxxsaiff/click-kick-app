@@ -2,10 +2,39 @@ import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../l10n/l10n.dart';
 import '../../../theme/app_colors.dart';
+import '../../../widgets/pdf_preview_screen.dart';
+
+Future<void> _openInvoicePreview(BuildContext context, _InvoiceRow row) async {
+  if (row.invoiceUrl.isEmpty) return;
+  try {
+    final bytes = (await NetworkAssetBundle(
+      Uri.parse(row.invoiceUrl),
+    ).load('')).buffer.asUint8List();
+    if (!context.mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PdfPreviewScreen(
+          title: row.invoiceNumber,
+          bytes: bytes,
+          filename: '${row.invoiceNumber}.pdf',
+        ),
+      ),
+    );
+  } catch (_) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(context.tr('Unable to load invoice preview right now.')),
+      ),
+    );
+  }
+}
 
 class AdminInvoicesScreen extends StatelessWidget {
   const AdminInvoicesScreen({super.key});
@@ -144,6 +173,17 @@ class AdminInvoicesScreen extends StatelessWidget {
                             ),
                           );
                         },
+                      ),
+                      const SizedBox(height: 16),
+                      _DashboardPanel(
+                        title: context.tr('Revenue Insights'),
+                        expandChild: false,
+                        child: _RevenueInsightsPanel(
+                          totalRevenue: totalRevenue,
+                          paidAmount: paidAmount,
+                          pendingAmount: pendingAmount,
+                          series: revenueSeries,
+                        ),
                       ),
                       const SizedBox(height: 16),
                       LayoutBuilder(
@@ -697,6 +737,156 @@ class _RecentTransactionsTable extends StatelessWidget {
   }
 }
 
+class _RevenueInsightsPanel extends StatelessWidget {
+  const _RevenueInsightsPanel({
+    required this.totalRevenue,
+    required this.paidAmount,
+    required this.pendingAmount,
+    required this.series,
+  });
+
+  final double totalRevenue;
+  final double paidAmount;
+  final double pendingAmount;
+  final List<_MonthlyPoint> series;
+
+  @override
+  Widget build(BuildContext context) {
+    final values = series.map((e) => e.amount).toList();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth > 760;
+        final metrics = Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            _MiniRevenueStat(
+              label: context.tr('Total Revenue'),
+              value: '\$${totalRevenue.toStringAsFixed(0)}',
+              color: AppColors.hotPink,
+            ),
+            _MiniRevenueStat(
+              label: context.tr('Paid Amount'),
+              value: '\$${paidAmount.toStringAsFixed(0)}',
+              color: AppColors.neonGreen,
+            ),
+            _MiniRevenueStat(
+              label: context.tr('Pending Amount'),
+              value: '\$${pendingAmount.toStringAsFixed(0)}',
+              color: AppColors.sunset,
+            ),
+          ],
+        );
+
+        final chart = Container(
+          height: 220,
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+          decoration: BoxDecoration(
+            color: AppColors.cardSoft.withOpacity(0.28),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.05)),
+          ),
+          child: Column(
+            children: [
+              Expanded(
+                child: CustomPaint(
+                  painter: _LineChartPainter(
+                    values: values,
+                    lineColor: const Color(0xFF8F79FF),
+                    fillColor: const Color(0x338F79FF),
+                  ),
+                  child: Container(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  for (final point in series)
+                    Expanded(
+                      child: Text(
+                        point.label,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+
+        if (wide) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(width: 250, child: metrics),
+              const SizedBox(width: 14),
+              Expanded(child: chart),
+            ],
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [metrics, const SizedBox(height: 14), chart],
+        );
+      },
+    );
+  }
+}
+
+class _MiniRevenueStat extends StatelessWidget {
+  const _MiniRevenueStat({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 250,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.cardSoft.withOpacity(0.24),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _TransactionsHeader extends StatelessWidget {
   const _TransactionsHeader({required this.labels});
 
@@ -802,11 +992,13 @@ class _TransactionRow extends StatelessWidget {
                       color: const Color(0xFF151E31),
                       padding: EdgeInsets.zero,
                       onSelected: (value) async {
-                        final uri = value == 'download'
-                            ? Uri.parse(
-                                _downloadUrl(row.invoiceUrl, row.invoiceNumber),
-                              )
-                            : Uri.parse(row.invoiceUrl);
+                        if (value == 'view') {
+                          await _openInvoicePreview(context, row);
+                          return;
+                        }
+                        final uri = Uri.parse(
+                          _downloadUrl(row.invoiceUrl, row.invoiceNumber),
+                        );
                         await launchUrl(
                           uri,
                           mode: LaunchMode.externalApplication,

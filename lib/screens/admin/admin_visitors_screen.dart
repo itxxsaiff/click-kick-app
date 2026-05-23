@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 
 import '../../l10n/l10n.dart';
+import '../../services/auth_service.dart';
 import '../../services/visitor_report_service.dart';
 import '../../theme/app_colors.dart';
 
@@ -18,6 +19,7 @@ class AdminVisitorsScreen extends StatefulWidget {
 class _AdminVisitorsScreenState extends State<AdminVisitorsScreen> {
   final _searchController = TextEditingController();
   final _reportService = VisitorReportService();
+  final _authService = AuthService();
   String _search = '';
   bool _sortDesc = true;
   String _filter = 'all';
@@ -159,8 +161,7 @@ class _AdminVisitorsScreenState extends State<AdminVisitorsScreen> {
                     final filtered = docs.where((doc) {
                       final data = doc.data();
                       final isBlocked =
-                          (data['accountStatus'] ?? 'active').toString() ==
-                          'disabled';
+                          _effectiveAccountStatus(data) == 'disabled';
                       if (_filter == 'blocked' && !isBlocked) return false;
                       if (_filter == 'active' && isBlocked) return false;
                       if (_search.isEmpty) return true;
@@ -326,6 +327,10 @@ class _AdminVisitorsScreenState extends State<AdminVisitorsScreen> {
                                 visitorId: doc.id,
                                 status: isBlocked ? 'active' : 'disabled',
                               ),
+                              onDelete: () => _confirmDeleteVisitor(
+                                visitorId: doc.id,
+                                name: name,
+                              ),
                             );
                           },
                         );
@@ -346,6 +351,7 @@ class _AdminVisitorsScreenState extends State<AdminVisitorsScreen> {
     required String status,
   }) async {
     await FirebaseFirestore.instance.collection('users').doc(visitorId).set({
+      'status': status,
       'accountStatus': status,
       'updatedAt': DateTime.now().toUtc(),
       if (status == 'disabled') 'accessBlockedAt': DateTime.now().toUtc(),
@@ -365,17 +371,59 @@ class _AdminVisitorsScreenState extends State<AdminVisitorsScreen> {
     );
   }
 
+  Future<void> _confirmDeleteVisitor({
+    required String visitorId,
+    required String name,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.card,
+        title: Text(context.tr('Delete Visitor Permanently')),
+        content: Text(
+          context.tr(
+            'Delete this visitor permanently? This removes the user from the app and authentication so the same email can register again.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(context.tr('Cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            child: Text(context.tr('Delete')),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await _authService.deleteUserAccountPermanently(visitorId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr('Visitor deleted permanently.'))),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.tr('Unable to delete this visitor right now.')),
+        ),
+      );
+    }
+  }
+
   Future<_VisitorDashboardMetrics> _loadVisitorDashboardMetrics(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
   ) async {
     final userIds = docs.map((doc) => doc.id).toSet().toList();
     final totalVisitors = docs.length;
     final blockedVisitors = docs
-        .where(
-          (doc) =>
-              (doc.data()['accountStatus'] ?? 'active').toString() ==
-              'disabled',
-        )
+        .where((doc) => _effectiveAccountStatus(doc.data()) == 'disabled')
         .length;
     final activeVisitors = totalVisitors - blockedVisitors;
 
@@ -428,6 +476,12 @@ class _AdminVisitorsScreenState extends State<AdminVisitorsScreen> {
       return '${dt.day.toString().padLeft(2, '0')} ${_monthShort(dt.month)} ${dt.year} • ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
     }
     return '-';
+  }
+
+  String _effectiveAccountStatus(Map<String, dynamic> data) {
+    final status = (data['status'] ?? '').toString().trim().toLowerCase();
+    if (status.isNotEmpty) return status;
+    return (data['accountStatus'] ?? 'active').toString().trim().toLowerCase();
   }
 
   String _monthShort(int month) {
@@ -854,6 +908,7 @@ class _VisitorManagementCard extends StatelessWidget {
     required this.onView,
     required this.onReport,
     required this.onToggleBlock,
+    required this.onDelete,
   });
 
   final String name;
@@ -869,6 +924,7 @@ class _VisitorManagementCard extends StatelessWidget {
   final VoidCallback onView;
   final VoidCallback onReport;
   final VoidCallback onToggleBlock;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -991,41 +1047,119 @@ class _VisitorManagementCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: OutlinedButton.icon(
+                child: _VisitorActionButton(
                   onPressed: onView,
-                  icon: const Icon(Icons.visibility_outlined),
-                  label: Text(context.tr('View Details')),
+                  icon: Icons.visibility_outlined,
+                  label: context.tr('Details'),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: OutlinedButton.icon(
+                child: _VisitorActionButton(
                   onPressed: onReport,
-                  icon: const Icon(Icons.picture_as_pdf),
-                  label: Text(context.tr('Visitor Report')),
+                  icon: Icons.picture_as_pdf,
+                  label: context.tr('Report'),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: FilledButton.icon(
+                child: _VisitorActionButton(
                   onPressed: onToggleBlock,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: isBlocked
-                        ? AppColors.neonGreen
-                        : Colors.redAccent,
-                    foregroundColor: Colors.white,
-                  ),
-                  icon: Icon(
-                    isBlocked ? Icons.lock_open_rounded : Icons.block_rounded,
-                  ),
-                  label: Text(
-                    context.tr(isBlocked ? 'Unblock Visitor' : 'Block Visitor'),
-                  ),
+                  icon: isBlocked
+                      ? Icons.lock_open_rounded
+                      : Icons.block_rounded,
+                  label: context.tr(isBlocked ? 'Unblock' : 'Block'),
+                  filled: true,
+                  backgroundColor: isBlocked
+                      ? AppColors.neonGreen
+                      : Colors.redAccent,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 10),
+              SizedBox(
+                width: 56,
+                child: _VisitorActionButton(
+                  onPressed: onDelete,
+                  icon: Icons.delete_forever_rounded,
+                  label: '',
+                  filled: true,
+                  backgroundColor: const Color(0xFF902B36),
+                  foregroundColor: Colors.white,
+                  iconOnly: true,
                 ),
               ),
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _VisitorActionButton extends StatelessWidget {
+  const _VisitorActionButton({
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+    this.filled = false,
+    this.backgroundColor,
+    this.foregroundColor,
+    this.iconOnly = false,
+  });
+
+  final VoidCallback onPressed;
+  final IconData icon;
+  final String label;
+  final bool filled;
+  final Color? backgroundColor;
+  final Color? foregroundColor;
+  final bool iconOnly;
+
+  @override
+  Widget build(BuildContext context) {
+    final child = iconOnly
+        ? Icon(icon, size: 20)
+        : Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 18),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          );
+
+    if (filled) {
+      return SizedBox(
+        height: 56,
+        child: FilledButton(
+          onPressed: onPressed,
+          style: FilledButton.styleFrom(
+            backgroundColor: backgroundColor,
+            foregroundColor: foregroundColor,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          ),
+          child: child,
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 56,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        ),
+        child: child,
       ),
     );
   }

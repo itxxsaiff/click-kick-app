@@ -1194,6 +1194,17 @@ class _ContestFeedCard extends StatelessWidget {
     return true;
   }
 
+  bool _isVotingOpen({
+    required DateTime now,
+    DateTime? votingStart,
+    DateTime? votingEnd,
+  }) {
+    if (votingStart == null) return false;
+    final started = !now.isBefore(votingStart);
+    final ended = votingEnd != null && now.isAfter(votingEnd);
+    return started && !ended;
+  }
+
   String _formatMetric(int value) {
     if (value >= 1000000) {
       return '${(value / 1000000).toStringAsFixed(value >= 10000000 ? 0 : 1)}M';
@@ -1220,6 +1231,29 @@ class _ContestFeedCard extends StatelessWidget {
       votingStart: votingStart,
       votingEnd: votingEnd,
     );
+    final canVote = _isVotingOpen(
+      now: now,
+      votingStart: votingStart,
+      votingEnd: votingEnd,
+    );
+    final uploadStarted =
+        submissionStart == null || !now.isBefore(submissionStart);
+    final contestClosed = votingEnd != null && now.isAfter(votingEnd);
+    final ctaEnabled = canJoin || canVote;
+    final ctaTitle = canJoin
+        ? context.tr('Join Contest')
+        : canVote
+        ? context.tr('Open Voting')
+        : !uploadStarted
+        ? context.tr('Coming Soon')
+        : context.tr('Contest Closed');
+    final ctaSubtitle = canJoin
+        ? '${context.tr('Show your talent and compete to win')} \$${item.winnerPrize.toStringAsFixed(0)}!'
+        : canVote
+        ? context.tr('Voting is now open. Review entries and cast your vote.')
+        : contestClosed
+        ? context.tr('This contest is closed and voting has ended.')
+        : context.tr('Contest submission will open soon.');
     final viewCount =
         ((item.data['viewCount'] ?? item.data['views'] ?? 0) as num).toInt();
     final shareCount = ((item.data['shareCount'] ?? 0) as num).toInt();
@@ -1439,7 +1473,7 @@ class _ContestFeedCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 14),
                 GestureDetector(
-                  onTap: canJoin ? () => _openContest(context) : null,
+                  onTap: ctaEnabled ? () => _openContest(context) : null,
                   child: Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(
@@ -1450,7 +1484,7 @@ class _ContestFeedCard extends StatelessWidget {
                       gradient: LinearGradient(
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
-                        colors: canJoin
+                        colors: ctaEnabled
                             ? const [Color(0xFFF52C79), Color(0xFF7C38F5)]
                             : const [Color(0xFF5A5367), Color(0xFF383447)],
                       ),
@@ -1458,7 +1492,7 @@ class _ContestFeedCard extends StatelessWidget {
                       boxShadow: [
                         BoxShadow(
                           color:
-                              (canJoin
+                              (ctaEnabled
                                       ? AppColors.hotPink
                                       : const Color(0xFF5A5367))
                                   .withValues(alpha: 0.28),
@@ -1488,13 +1522,7 @@ class _ContestFeedCard extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                context
-                                    .tr(
-                                      canJoin
-                                          ? 'Join Contest'
-                                          : 'Contest Closed',
-                                    )
-                                    .toUpperCase(),
+                                ctaTitle.toUpperCase(),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
@@ -1506,11 +1534,7 @@ class _ContestFeedCard extends StatelessWidget {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                canJoin
-                                    ? '${context.tr('Show your talent and compete to win')} \$${item.winnerPrize.toStringAsFixed(0)}!'
-                                    : context.tr(
-                                        'This contest is no longer accepting entries.',
-                                      ),
+                                ctaSubtitle,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(

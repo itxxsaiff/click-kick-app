@@ -4,7 +4,6 @@ import '../../l10n/l10n.dart';
 import '../../theme/app_colors.dart';
 import 'contests/admin_contests_screen.dart';
 import 'profile/admin_profile_screen.dart';
-import 'profile/admin_security_screen.dart';
 import '../../services/auth_service.dart';
 import 'admin_participants_screen.dart';
 import 'admin_visitors_screen.dart';
@@ -44,17 +43,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
     final ticketsFuture = firestore.collection('support_threads').get();
     final paymentsFuture = firestore.collection('payments').get();
 
-    final results = await Future.wait([
+    final results = await Future.wait<QuerySnapshot<Map<String, dynamic>>>([
       usersFuture,
       contestsFuture,
       ticketsFuture,
       paymentsFuture,
     ]);
 
-    final users = results[0] as QuerySnapshot<Map<String, dynamic>>;
-    final contests = results[1] as QuerySnapshot<Map<String, dynamic>>;
-    final tickets = results[2] as QuerySnapshot<Map<String, dynamic>>;
-    final payments = results[3] as QuerySnapshot<Map<String, dynamic>>;
+    final users = results[0];
+    final contests = results[1];
+    final tickets = results[2];
+    final payments = results[3];
 
     int employees = 0;
     int participants = 0;
@@ -434,7 +433,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
-                                          widget.displayName,
+                                          widget.displayName
+                                                      .trim()
+                                                      .toLowerCase() ==
+                                                  'admin'
+                                              ? context.tr('Admin')
+                                              : widget.displayName,
                                           style: Theme.of(context)
                                               .textTheme
                                               .bodyLarge
@@ -979,15 +983,18 @@ class _LineOverviewChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const labels = [
-      '2 May',
-      '3 May',
-      '4 May',
-      '5 May',
-      '6 May',
-      '7 May',
-      '8 May',
-    ];
+    final now = DateTime.now();
+    final labels = List<String>.generate(
+      7,
+      (index) => _shortDate(
+        context,
+        DateTime(
+          now.year,
+          now.month,
+          now.day,
+        ).subtract(Duration(days: 6 - index)),
+      ),
+    );
     final safeValues = values.isEmpty ? List<int>.filled(7, 0) : values;
     final maxValue = (safeValues.reduce(
       (a, b) => a > b ? a : b,
@@ -1237,9 +1244,9 @@ class _RecentUsersList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (rows.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
-          'No recent users',
+          context.tr('No recent users'),
           style: TextStyle(
             color: AppColors.textMuted,
             fontSize: 13,
@@ -1301,14 +1308,14 @@ class _RecentUsersList extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       _BadgePill(
-                        label: row.status,
+                        label: context.tr(row.status),
                         color: row.status == 'active'
                             ? AppColors.neonGreen
                             : AppColors.sunset,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        _shortDate(row.createdAt),
+                        _shortDate(context, row.createdAt),
                         style: const TextStyle(
                           color: AppColors.textMuted,
                           fontSize: 11,
@@ -1548,9 +1555,9 @@ String _initialsFromName(String value) {
   return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
 }
 
-String _shortDate(DateTime? value) {
+String _shortDate(BuildContext context, DateTime? value) {
   if (value == null) return '--';
-  const months = [
+  const enMonths = [
     'Jan',
     'Feb',
     'Mar',
@@ -1564,6 +1571,22 @@ String _shortDate(DateTime? value) {
     'Nov',
     'Dec',
   ];
+  const arMonths = [
+    'ينا',
+    'فبر',
+    'مار',
+    'أبر',
+    'ماي',
+    'يون',
+    'يول',
+    'أغس',
+    'سبت',
+    'أكت',
+    'نوف',
+    'ديس',
+  ];
+  final isArabic = Localizations.localeOf(context).languageCode == 'ar';
+  final months = isArabic ? arMonths : enMonths;
   return '${value.day} ${months[value.month - 1]}';
 }
 

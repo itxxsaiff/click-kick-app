@@ -339,6 +339,19 @@ class AuthService {
     await callable.call<Map<String, dynamic>>({'contestId': contestId});
   }
 
+  Future<void> incrementContestVote({
+    required String contestId,
+    required String submissionId,
+  }) async {
+    final callable = FirebaseFunctions.instance.httpsCallable(
+      'incrementContestVote',
+    );
+    await callable.call<Map<String, dynamic>>({
+      'contestId': contestId,
+      'submissionId': submissionId,
+    });
+  }
+
   Future<void> incrementAdminVideoView(String videoId) async {
     final callable = FirebaseFunctions.instance.httpsCallable(
       'incrementAdminVideoView',
@@ -351,6 +364,13 @@ class AuthService {
       'incrementAdminVideoShare',
     );
     await callable.call<Map<String, dynamic>>({'videoId': videoId});
+  }
+
+  Future<void> deleteUserAccountPermanently(String userId) async {
+    final callable = FirebaseFunctions.instance.httpsCallable(
+      'deleteUserAccountPermanently',
+    );
+    await callable.call<Map<String, dynamic>>({'userId': userId});
   }
 
   Future<UserCredential> _signInWithProvider(
@@ -588,7 +608,7 @@ class AuthService {
   Future<void> _assertUserAccess(String uid) async {
     final snap = await _firestore.collection('users').doc(uid).get();
     final data = snap.data() ?? const <String, dynamic>{};
-    final status = (data['accountStatus'] ?? 'active').toString();
+    final status = _effectiveAccountStatus(data);
     if (status == 'disabled' || status == 'removed') {
       await _auth.signOut();
       throw FirebaseAuthException(
@@ -596,5 +616,11 @@ class AuthService {
         message: 'Your access has been disabled by an administrator.',
       );
     }
+  }
+
+  String _effectiveAccountStatus(Map<String, dynamic> data) {
+    final status = (data['status'] ?? '').toString().trim().toLowerCase();
+    if (status.isNotEmpty) return status;
+    return (data['accountStatus'] ?? 'active').toString().trim().toLowerCase();
   }
 }

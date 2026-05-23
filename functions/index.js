@@ -86,6 +86,30 @@ function normalizePhoneE164(phoneCountryCode, phoneNumber) {
 }
 
 /**
+ * Ensures caller is an admin user.
+ * @param {Object} request
+ * @return {Promise<{uid: string, data: Object}>}
+ */
+async function requireAdminUser(request) {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
+
+  const snap = await db.collection("users").doc(uid).get();
+  const data = snap.data() || {};
+  const role = String(data.role || "").trim().toLowerCase();
+  if (!["admin", "superadmin", "super_admin"].includes(role)) {
+    throw new HttpsError(
+        "permission-denied",
+        "Only admins can perform this action.",
+    );
+  }
+
+  return {uid, data};
+}
+
+/**
  * Sends a WhatsApp OTP message through Meta Cloud API.
  * @param {Object} params
  * @return {Promise<void>}
@@ -258,6 +282,96 @@ exports.incrementContestShare = onCall(async (request) => {
   return {ok: true};
 });
 
+exports.incrementContestVote = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Authentication required.");
+  }
+
+  const data = request.data || {};
+  const contestId = String(data.contestId || "").trim();
+  const submissionId = String(data.submissionId || "").trim();
+  const userId = request.auth.uid;
+
+  if (!contestId || !submissionId) {
+    throw new HttpsError(
+        "invalid-argument",
+        "contestId and submissionId are required.",
+    );
+  }
+
+  const contestRef = db.collection("contests").doc(contestId);
+  const voteRef = contestRef.collection("votes").doc(userId);
+  const submissionRef = contestRef.collection("submissions").doc(submissionId);
+
+  await db.runTransaction(async (tx) => {
+    const [contestSnap, voteSnap, submissionSnap] = await Promise.all([
+      tx.get(contestRef),
+      tx.get(voteRef),
+      tx.get(submissionRef),
+    ]);
+
+    if (!contestSnap.exists) {
+      throw new HttpsError("not-found", "Contest not found.");
+    }
+    if (voteSnap.exists) {
+      throw new HttpsError("already-exists", "User already voted.");
+    }
+    if (!submissionSnap.exists) {
+      throw new HttpsError("not-found", "Submission not found.");
+    }
+
+    const submissionData = submissionSnap.data() || {};
+    if (String(submissionData.status || "") !== "approved") {
+      throw new HttpsError(
+          "failed-precondition",
+          "Submission is not approved for voting.",
+      );
+    }
+    if (String(submissionData.userId || "") === userId) {
+      throw new HttpsError(
+          "failed-precondition",
+          "Users cannot vote for their own video.",
+      );
+    }
+
+    const contestData = contestSnap.data() || {};
+    const now = new Date();
+    const votingStart = contestData.votingStart ?
+      contestData.votingStart.toDate() :
+      null;
+    const votingEnd = contestData.votingEnd ?
+      contestData.votingEnd.toDate() :
+      null;
+
+    if (votingStart && now < votingStart) {
+      throw new HttpsError(
+          "failed-precondition",
+          "Voting has not started yet.",
+      );
+    }
+    if (votingEnd && now > votingEnd) {
+      throw new HttpsError(
+          "failed-precondition",
+          "Voting has already ended.",
+      );
+    }
+
+    const serverNow = admin.firestore.FieldValue.serverTimestamp();
+    tx.set(voteRef, {
+      contestId,
+      submissionId,
+      voterId: userId,
+      createdAt: serverNow,
+    });
+    tx.set(submissionRef, {
+      voteCount: admin.firestore.FieldValue.increment(1),
+      updatedAt: serverNow,
+    }, {merge: true});
+  });
+
+  return {ok: true};
+});
+
 exports.incrementAdminVideoView = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Authentication required.");
@@ -321,6 +435,44 @@ exports.incrementAdminVideoShare = onCall(async (request) => {
   }, {merge: true});
 
   return {ok: true};
+});
+
+exports.deleteUserAccountPermanently = onCall(async (request) => {
+  await requireAdminUser(request);
+
+  const data = request.data || {};
+  const targetUid = String(data.userId || "").trim();
+  if (!targetUid) {
+    throw new HttpsError("invalid-argument", "userId is required.");
+  }
+
+  const userRef = db.collection("users").doc(targetUid);
+  const userSnap = await userRef.get();
+  if (!userSnap.exists) {
+    throw new HttpsError("not-found", "User profile not found.");
+  }
+
+  const userData = userSnap.data() || {};
+  const role = String(userData.role || "").trim().toLowerCase();
+  if (["admin", "superadmin", "super_admin"].includes(role)) {
+    throw new HttpsError(
+        "failed-precondition",
+        "Admin accounts cannot be deleted from this action.",
+    );
+  }
+
+  await db.collection("login_otps").doc(targetUid).delete().catch(() => null);
+  await userRef.delete();
+
+  try {
+    await admin.auth().deleteUser(targetUid);
+  } catch (error) {
+    if (!error || error.code !== "auth/user-not-found") {
+      throw error;
+    }
+  }
+
+  return {deleted: true};
 });
 
 /**

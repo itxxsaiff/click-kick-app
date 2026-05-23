@@ -46,7 +46,9 @@ class DeleteAccountDialog extends StatelessWidget {
             ),
             const SizedBox(height: 18),
             Text(
-              context.tr('Are you sure you want to delete your account?'),
+              context.tr(
+                'Are you sure you want to delete your account? This action cannot be undone.',
+              ),
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Colors.white,

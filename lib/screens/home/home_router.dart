@@ -42,7 +42,14 @@ class HomeRouter extends StatelessWidget {
         final data = snapshot.data ?? const <String, dynamic>{};
         final role = (data['role'] as String?) ?? 'user';
         final displayName = (data['displayName'] as String?) ?? 'User';
-        final accountStatus = (data['accountStatus'] as String?) ?? 'active';
+        final accountStatus = (() {
+          final status =
+              (data['status'] as String?)?.trim().toLowerCase() ?? '';
+          if (status.isNotEmpty) return status;
+          return ((data['accountStatus'] as String?) ?? 'active')
+              .trim()
+              .toLowerCase();
+        })();
         final isBlocked =
             accountStatus == 'disabled' ||
             accountStatus == 'removed' ||
@@ -83,12 +90,19 @@ class _BlockedAccessScreen extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.block_rounded, size: 64, color: Colors.redAccent),
+              const Icon(
+                Icons.block_rounded,
+                size: 64,
+                color: Colors.redAccent,
+              ),
               const SizedBox(height: 16),
               Text(
                 context.tr('Your account access has been disabled.'),
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 8),
               Text(

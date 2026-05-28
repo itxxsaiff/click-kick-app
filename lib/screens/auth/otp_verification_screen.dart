@@ -25,6 +25,29 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   bool _isLoading = false;
   int _secondsLeft = 60;
 
+  String _normalizeOtpDigits(String value) {
+    const easternArabic = '٠١٢٣٤٥٦٧٨٩';
+    const extendedArabic = '۰۱۲۳۴۵۶۷۸۹';
+    final buffer = StringBuffer();
+    for (final rune in value.runes) {
+      final char = String.fromCharCode(rune);
+      final easternIndex = easternArabic.indexOf(char);
+      if (easternIndex >= 0) {
+        buffer.write(easternIndex);
+        continue;
+      }
+      final extendedIndex = extendedArabic.indexOf(char);
+      if (extendedIndex >= 0) {
+        buffer.write(extendedIndex);
+        continue;
+      }
+      if (RegExp(r'[0-9]').hasMatch(char)) {
+        buffer.write(char);
+      }
+    }
+    return buffer.toString();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -65,7 +88,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   }
 
   Future<void> _verify() async {
-    final code = _codeController.text.trim();
+    final code = _normalizeOtpDigits(_codeController.text.trim());
     if (code.length != 6) {
       _showMessage(context.tr('Enter the 6 digit code.'));
       return;
@@ -251,7 +274,23 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                                   keyboardType: TextInputType.number,
                                   maxLength: 6,
                                   inputFormatters: [
-                                    FilteringTextInputFormatter.digitsOnly,
+                                    TextInputFormatter.withFunction((
+                                      oldValue,
+                                      newValue,
+                                    ) {
+                                      final normalized = _normalizeOtpDigits(
+                                        newValue.text,
+                                      );
+                                      final truncated = normalized.length > 6
+                                          ? normalized.substring(0, 6)
+                                          : normalized;
+                                      return TextEditingValue(
+                                        text: truncated,
+                                        selection: TextSelection.collapsed(
+                                          offset: truncated.length,
+                                        ),
+                                      );
+                                    }),
                                   ],
                                   style: const TextStyle(
                                     color: Colors.transparent,

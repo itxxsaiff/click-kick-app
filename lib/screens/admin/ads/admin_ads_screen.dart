@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../../../services/contest_report_service.dart';
+import '../../../services/auth_service.dart';
 import '../../../l10n/l10n.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/pdf_preview_screen.dart';
@@ -21,8 +22,9 @@ class _AdminAdsScreenState extends State<AdminAdsScreen> {
   final _searchController = TextEditingController();
   final _contestReportService = ContestReportService();
   bool _savingSettings = false;
-  bool _showLinkedContests = false;
+  String _selectedSection = 'sponsors';
   String _statusFilter = 'all';
+  final _authService = AuthService();
 
   String _applicationCardSubtitle(Map<String, dynamic> data) {
     final brand = (data['brandName'] ?? '').toString().trim();
@@ -112,6 +114,7 @@ class _AdminAdsScreenState extends State<AdminAdsScreen> {
   }) async {
     await FirebaseFirestore.instance.collection('users').doc(sponsorId).set({
       'status': status,
+      'accountStatus': status,
       'updatedAt': DateTime.now().toUtc(),
       if (status == 'disabled') 'accessBlockedAt': DateTime.now().toUtc(),
       if (status == 'active') 'accessBlockedAt': FieldValue.delete(),
@@ -120,6 +123,137 @@ class _AdminAdsScreenState extends State<AdminAdsScreen> {
       status == 'disabled'
           ? 'Sponsor access blocked.'
           : 'Sponsor access restored.',
+    );
+  }
+
+  Future<void> _deleteSponsorPermanently(
+    BuildContext context, {
+    required String sponsorId,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(context.tr('Delete Sponsor')),
+        content: Text(
+          context.tr(
+            'Delete this sponsor permanently? This removes the sponsor from the app and authentication so the same email can register again.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(context.tr('Cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(context.tr('Delete')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _authService.deleteUserAccountPermanently(sponsorId);
+      _show(context.tr('Sponsor deleted permanently.'));
+    } catch (_) {
+      _show(context.tr('Unable to delete this sponsor right now.'));
+    }
+  }
+
+  void _showSponsorDetailsSheet(
+    BuildContext context, {
+    required Map<String, dynamic> sponsorData,
+    required int applicationsCount,
+    required int contestsCount,
+  }) {
+    final companyName = (sponsorData['companyName'] ?? '').toString().trim();
+    final displayName = (sponsorData['displayName'] ?? '').toString().trim();
+    final email = (sponsorData['email'] ?? '').toString().trim();
+    final phone =
+        '${(sponsorData['phoneCountryCode'] ?? '').toString()} ${(sponsorData['phoneNumber'] ?? sponsorData['phoneE164'] ?? '').toString()}'
+            .trim();
+    final country =
+        (sponsorData['country'] ?? sponsorData['targetCountry'] ?? '')
+            .toString()
+            .trim();
+    final status =
+        (sponsorData['status'] ?? sponsorData['accountStatus'] ?? 'active')
+            .toString();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.deepSpace,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    context.tr('Sponsor Details'),
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded, color: Colors.white),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ...[
+                  ['Company Name', companyName],
+                  ['Name', displayName],
+                  ['Email', email],
+                  ['Phone', phone],
+                  ['Country', country],
+                  ['Status', _statusLabel(context, status)],
+                  ['Applications', '$applicationsCount'],
+                  ['Created Contests', '$contestsCount'],
+                ]
+                .where((row) => row[1]!.trim().isNotEmpty)
+                .map(
+                  (row) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          context.tr(row[0]!),
+                          style: const TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          row[1]!,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1237,6 +1371,219 @@ class _AdminAdsScreenState extends State<AdminAdsScreen> {
     );
   }
 
+  Widget _buildSponsorCard(
+    BuildContext context, {
+    required String sponsorId,
+    required Map<String, dynamic> sponsorData,
+    required int applicationsCount,
+    required int contestsCount,
+  }) {
+    final companyName = (sponsorData['companyName'] ?? '').toString().trim();
+    final displayName = (sponsorData['displayName'] ?? '').toString().trim();
+    final email = (sponsorData['email'] ?? '').toString().trim();
+    final phone =
+        '${(sponsorData['phoneCountryCode'] ?? '').toString()} ${(sponsorData['phoneNumber'] ?? sponsorData['phoneE164'] ?? '').toString()}'
+            .trim();
+    final country =
+        (sponsorData['country'] ?? sponsorData['targetCountry'] ?? '')
+            .toString()
+            .trim();
+    final logoUrl = (sponsorData['logoUrl'] ?? sponsorData['avatarUrl'] ?? '')
+        .toString()
+        .trim();
+    final rawStatus =
+        (sponsorData['status'] ?? sponsorData['accountStatus'] ?? 'active')
+            .toString()
+            .toLowerCase();
+    final isBlocked = rawStatus == 'disabled' || rawStatus == 'removed';
+    final title = companyName.isNotEmpty ? companyName : displayName;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF151324),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 74,
+            height: 74,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: logoUrl.isEmpty
+                  ? const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF4B1A7E), Color(0xFF12101C)],
+                    )
+                  : null,
+              color: AppColors.cardSoft,
+            ),
+            child: logoUrl.isNotEmpty
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Image.network(
+                      logoUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const Icon(
+                        Icons.storefront_outlined,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  )
+                : Center(
+                    child: Text(
+                      title.isEmpty
+                          ? 'SP'
+                          : title
+                                .trim()
+                                .split(RegExp(r'\s+'))
+                                .take(2)
+                                .map((e) => e[0].toUpperCase())
+                                .join(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title.isEmpty ? context.tr('Sponsor') : title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _StatusBadge(
+                      label: context.tr(isBlocked ? 'Blocked' : 'Active'),
+                      color: isBlocked
+                          ? const Color(0xFFE84B5B)
+                          : AppColors.neonGreen,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                if (displayName.isNotEmpty)
+                  Text(
+                    displayName,
+                    style: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 6,
+                  children: [
+                    if (email.isNotEmpty)
+                      _SponsorshipMeta(
+                        icon: Icons.email_outlined,
+                        label: email,
+                      ),
+                    if (phone.isNotEmpty)
+                      _SponsorshipMeta(
+                        icon: Icons.phone_outlined,
+                        label: phone,
+                      ),
+                    if (country.isNotEmpty)
+                      _SponsorshipMeta(
+                        icon: Icons.public_outlined,
+                        label: country,
+                      ),
+                    _SponsorshipMeta(
+                      icon: Icons.description_outlined,
+                      label: '$applicationsCount ${context.tr('Applications')}',
+                    ),
+                    _SponsorshipMeta(
+                      icon: Icons.emoji_events_outlined,
+                      label: '$contestsCount ${context.tr('Created Contests')}',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Column(
+            children: [
+              IconButton(
+                tooltip: context.tr('View Details'),
+                onPressed: () => _showSponsorDetailsSheet(
+                  context,
+                  sponsorData: sponsorData,
+                  applicationsCount: applicationsCount,
+                  contestsCount: contestsCount,
+                ),
+                icon: const Icon(
+                  Icons.visibility_outlined,
+                  color: AppColors.hotPink,
+                ),
+              ),
+              PopupMenuButton<String>(
+                padding: EdgeInsets.zero,
+                icon: const Icon(Icons.more_vert, color: AppColors.textMuted),
+                onSelected: (value) async {
+                  switch (value) {
+                    case 'block':
+                      await _toggleSponsorAccess(
+                        sponsorId: sponsorId,
+                        status: 'disabled',
+                      );
+                      break;
+                    case 'unblock':
+                      await _toggleSponsorAccess(
+                        sponsorId: sponsorId,
+                        status: 'active',
+                      );
+                      break;
+                    case 'delete':
+                      await _deleteSponsorPermanently(
+                        context,
+                        sponsorId: sponsorId,
+                      );
+                      break;
+                  }
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: isBlocked ? 'unblock' : 'block',
+                    child: Text(
+                      context.tr(
+                        isBlocked ? 'Unblock Sponsor' : 'Block Sponsor',
+                      ),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: Text(context.tr('Delete Sponsor')),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSponsorshipContent(
     BuildContext context, {
     required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
@@ -1271,6 +1618,21 @@ class _AdminAdsScreenState extends State<AdminAdsScreen> {
               .isNotEmpty,
         )
         .length;
+
+    final sponsorEntries = sponsorById.entries.where((entry) {
+      final query = _searchController.text.trim().toLowerCase();
+      if (query.isEmpty) return true;
+      final sponsor = entry.value;
+      final haystack = [
+        sponsor['companyName'],
+        sponsor['displayName'],
+        sponsor['email'],
+        sponsor['phoneNumber'],
+        sponsor['phoneE164'],
+        sponsor['country'],
+      ].map((e) => (e ?? '').toString().toLowerCase()).join(' ');
+      return haystack.contains(query);
+    }).toList();
 
     final filteredDocs = docs.where((doc) {
       final data = doc.data();
@@ -1373,34 +1735,39 @@ class _AdminAdsScreenState extends State<AdminAdsScreen> {
         Row(
           children: [
             ChoiceChip(
+              label: Text(context.tr('Sponsors')),
+              selected: _selectedSection == 'sponsors',
+              onSelected: (_) => setState(() => _selectedSection = 'sponsors'),
+            ),
+            const SizedBox(width: 10),
+            ChoiceChip(
               label: Text(context.tr('Applications')),
-              selected: !_showLinkedContests,
-              onSelected: (_) => setState(() => _showLinkedContests = false),
+              selected: _selectedSection == 'applications',
+              onSelected: (_) =>
+                  setState(() => _selectedSection = 'applications'),
             ),
             const SizedBox(width: 10),
             ChoiceChip(
               label: Text(context.tr('Created Contests')),
-              selected: _showLinkedContests,
-              onSelected: (_) => setState(() => _showLinkedContests = true),
+              selected: _selectedSection == 'contests',
+              onSelected: (_) => setState(() => _selectedSection = 'contests'),
             ),
           ],
         ),
         const SizedBox(height: 12),
-        if (_showLinkedContests)
-          _buildLinkedContestsList(context, applicationsById)
-        else ...[
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    hintText: context.tr('Search sponsorships'),
-                    prefixIcon: const Icon(Icons.search),
-                  ),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _searchController,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: context.tr('Search sponsorships'),
+                  prefixIcon: const Icon(Icons.search),
                 ),
               ),
+            ),
+            if (_selectedSection == 'applications') ...[
               const SizedBox(width: 10),
               Container(
                 decoration: BoxDecoration(
@@ -1417,26 +1784,89 @@ class _AdminAdsScreenState extends State<AdminAdsScreen> {
                     color: Colors.white,
                   ),
                   onSelected: (value) => setState(() => _statusFilter = value),
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(value: 'all', child: Text('All')),
-                    PopupMenuItem(value: 'pending', child: Text('Pending')),
-                    PopupMenuItem(value: 'approved', child: Text('Approved')),
+                  itemBuilder: (context) => [
+                    PopupMenuItem(value: 'all', child: Text(context.tr('All'))),
+                    PopupMenuItem(
+                      value: 'pending',
+                      child: Text(context.tr('Pending')),
+                    ),
+                    PopupMenuItem(
+                      value: 'approved',
+                      child: Text(context.tr('Approved')),
+                    ),
                     PopupMenuItem(
                       value: 'contest_created',
-                      child: Text('Contest Created'),
+                      child: Text(context.tr('Contest Created')),
                     ),
                     PopupMenuItem(
                       value: 'needs_improvement',
-                      child: Text('Needs Improvement'),
+                      child: Text(context.tr('Needs Improvement')),
                     ),
-                    PopupMenuItem(value: 'rejected', child: Text('Rejected')),
-                    PopupMenuItem(value: 'live', child: Text('Live')),
+                    PopupMenuItem(
+                      value: 'rejected',
+                      child: Text(context.tr('Rejected')),
+                    ),
+                    PopupMenuItem(
+                      value: 'live',
+                      child: Text(context.tr('Live')),
+                    ),
                   ],
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 14),
+          ],
+        ),
+        const SizedBox(height: 14),
+        if (_selectedSection == 'contests') ...[
+          _buildLinkedContestsList(context, applicationsById),
+        ] else if (_selectedSection == 'sponsors') ...[
+          if (sponsorEntries.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: const Color(0xFF151324),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Center(
+                child: Text(
+                  context.tr('No sponsor accounts found.'),
+                  style: const TextStyle(color: AppColors.textMuted),
+                ),
+              ),
+            )
+          else
+            ...sponsorEntries.asMap().entries.map((entry) {
+              final sponsorId = entry.value.key;
+              final sponsorData = entry.value.value;
+              final applicationsCount = docs
+                  .where(
+                    (doc) =>
+                        (doc.data()['sponsorId'] ?? '').toString() == sponsorId,
+                  )
+                  .length;
+              final contestsCount = docs.where((doc) {
+                final data = doc.data();
+                return (data['sponsorId'] ?? '').toString() == sponsorId &&
+                    (data['linkedContestId'] ?? '')
+                        .toString()
+                        .trim()
+                        .isNotEmpty;
+              }).length;
+              return Padding(
+                padding: EdgeInsets.only(
+                  bottom: entry.key == sponsorEntries.length - 1 ? 0 : 10,
+                ),
+                child: _buildSponsorCard(
+                  context,
+                  sponsorId: sponsorId,
+                  sponsorData: sponsorData,
+                  applicationsCount: applicationsCount,
+                  contestsCount: contestsCount,
+                ),
+              );
+            }),
+        ] else ...[
           if (filteredDocs.isEmpty)
             Container(
               padding: const EdgeInsets.all(24),
@@ -1459,9 +1889,16 @@ class _AdminAdsScreenState extends State<AdminAdsScreen> {
               final sponsorData =
                   sponsorById[sponsorId] ?? const <String, dynamic>{};
               final sponsorBlocked =
-                  ((sponsorData['status'] ?? 'active').toString() ==
+                  ((sponsorData['status'] ??
+                              sponsorData['accountStatus'] ??
+                              'active')
+                          .toString() ==
                       'disabled') ||
-                  ((sponsorData['status'] ?? 'active').toString() == 'removed');
+                  ((sponsorData['status'] ??
+                              sponsorData['accountStatus'] ??
+                              'active')
+                          .toString() ==
+                      'removed');
               return Padding(
                 padding: EdgeInsets.only(
                   bottom: entry.key == filteredDocs.length - 1 ? 0 : 10,
@@ -1474,14 +1911,14 @@ class _AdminAdsScreenState extends State<AdminAdsScreen> {
                 ),
               );
             }),
-          const SizedBox(height: 16),
-          Center(
-            child: Text(
-              context.tr('No more sponsorships'),
-              style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
-            ),
-          ),
         ],
+        const SizedBox(height: 16),
+        Center(
+          child: Text(
+            context.tr('No more sponsorships'),
+            style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+          ),
+        ),
       ],
     );
   }
@@ -1545,12 +1982,16 @@ class _AdminAdsScreenState extends State<AdminAdsScreen> {
               return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: FirebaseFirestore.instance
                     .collection('users')
-                    .where('role', isEqualTo: 'sponsor')
                     .snapshots(),
                 builder: (context, usersSnapshot) {
-                  final sponsorDocs =
-                      usersSnapshot.data?.docs ??
-                      <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+                  final sponsorDocs = (usersSnapshot.data?.docs ?? const [])
+                      .where((doc) {
+                        final role = (doc.data()['role'] ?? '')
+                            .toString()
+                            .toLowerCase();
+                        return role == 'sponsor' || role == 'business';
+                      })
+                      .toList();
                   final sponsorById = {
                     for (final doc in sponsorDocs) doc.id: doc.data(),
                   };

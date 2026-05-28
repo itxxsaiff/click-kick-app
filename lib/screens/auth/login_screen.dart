@@ -40,9 +40,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _isLoading = true);
     try {
-      await _authService.signInWithEmail(email: email, password: password);
+      final credential = await _authService.signInWithEmail(
+        email: email,
+        password: password,
+      );
       if (!mounted) return;
-      _showMessage(context.tr('Login successful.'));
+      final user = credential.user;
+      if (user != null) {
+        await _authService.syncCurrentUserDoc();
+      }
+      if (!mounted) return;
       Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
       if (!mounted) return;
@@ -125,6 +132,18 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     if (text.contains('permission-denied')) {
       return context.tr('Firestore permission denied. Check rules.');
+    }
+    if (text.contains('No phone number')) {
+      return context.tr('No phone number found for this account.');
+    }
+    if (text.contains('WhatsApp OTP is not configured')) {
+      return context.tr('WhatsApp OTP is not configured.');
+    }
+    if (text.contains('Unable to send OTP')) {
+      return context.tr('Unable to send OTP. Please try again.');
+    }
+    if (text.contains('Please wait')) {
+      return context.tr('Please wait before requesting another OTP.');
     }
     return context.tr('Login failed. Please try again.');
   }

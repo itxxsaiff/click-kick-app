@@ -992,5 +992,15 @@
   "Welcome,": "مرحبًا،",
   "Winner Prize (included)": "جائزة الفائز (مشمولة)",
   "You are already signed in.": "أنت مسجل الدخول بالفعل.",
-  "You provide the video": "أنت توفّر الفيديو"
+  "You provide the video": "أنت توفّر الفيديو",
+  "Block Sponsor": "حظر الراعي",
+  "Unblock Sponsor": "إلغاء حظر الراعي",
+  "Delete Sponsor": "حذف الراعي",
+  "Sponsor deleted permanently.": "تم حذف الراعي نهائيًا.",
+  "Delete this sponsor permanently? This removes the sponsor from the app and authentication so the same email can register again.": "هل تريد حذف هذا الراعي نهائيًا؟ سيؤدي هذا إلى إزالة الراعي من التطبيق ومن المصادقة، ويمكن استخدام نفس البريد الإلكتروني للتسجيل مرة أخرى.",
+  "No sponsor accounts found.": "لم يتم العثور على حسابات رعاة.",
+  "Sponsor Details": "تفاصيل الراعي",
+  "Unable to delete this sponsor right now.": "تعذر حذف هذا الراعي حاليًا.",
+  "Name": "الاسم",
+  "Phone": "الهاتف"
 }

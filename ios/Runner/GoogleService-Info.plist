@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CLIENT_ID</key>
+	<string>127201745203-4do3thsisodai6le60ipo0sibuia093f.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.127201745203-4do3thsisodai6le60ipo0sibuia093f</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>127201745203-apv0seltkfm81ggll84g3c2km28abri4.apps.googleusercontent.com</string>
 	<key>API_KEY</key>
 	<string>AIzaSyB-MzyphGgRqmjZVDCE-xoK4gi_f180mgw</string>
 	<key>GCM_SENDER_ID</key>
@@ -9,7 +15,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.example.videoContest</string>
+	<string>com.clickkick.app</string>
 	<key>PROJECT_ID</key>
 	<string>video-contest-show-b788b</string>
 	<key>STORAGE_BUCKET</key>
@@ -25,6 +31,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:127201745203:ios:1cef5f9cf162a00367c646</string>
+	<string>1:127201745203:ios:ab134c7f319633e567c646</string>
 </dict>
 </plist>

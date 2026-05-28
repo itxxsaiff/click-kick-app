@@ -2,13 +2,29 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../l10n/l10n.dart';
+import '../../services/auth_service.dart';
 import '../admin/admin_dashboard.dart';
 import '../employee/employee_dashboard.dart';
 import '../public/public_feed_screen.dart';
+import '../auth/otp_verification_screen.dart';
 import 'sponsor_home.dart';
 
 class HomeRouter extends StatelessWidget {
   const HomeRouter({super.key});
+
+  String _maskedPhone(Map<String, dynamic> data) {
+    final phoneE164 = (data['phoneE164'] as String?)?.trim() ?? '';
+    final countryCode = (data['phoneCountryCode'] as String?)?.trim() ?? '';
+    final phoneNumber = (data['phoneNumber'] as String?)?.trim() ?? '';
+    final digits =
+        (phoneE164.isNotEmpty ? phoneE164 : '$countryCode$phoneNumber')
+            .replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return '';
+    final suffix = digits.length > 4
+        ? digits.substring(digits.length - 4)
+        : digits;
+    return '****$suffix';
+  }
 
   Future<Map<String, dynamic>> _loadUserData(String uid) async {
     try {
@@ -61,6 +77,11 @@ class HomeRouter extends StatelessWidget {
                 role == 'user' ||
                 role == 'sponsor')) {
           return const _BlockedAccessScreen();
+        }
+
+        final authService = AuthService();
+        if (authService.requiresOtpVerification(user: user, userData: data)) {
+          return OtpVerificationScreen(maskedPhone: _maskedPhone(data));
         }
 
         if (role == 'superAdmin' || role == 'super_admin' || role == 'admin') {

@@ -70,7 +70,7 @@ class PaymentService {
         build: (context) => [
           PdfBranding.brandedHeader(
             logo: logo,
-            title: 'Sponsorship Invoice',
+            title: 'Click Kick',
             subtitle: invoiceNumber,
           ),
           pw.SizedBox(height: 6),
@@ -87,7 +87,7 @@ class PaymentService {
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     pw.Text(
-                      'Video Contest Show',
+                      'Click Kick',
                       style: pw.TextStyle(
                         color: PdfColors.white,
                         fontSize: 18,
@@ -310,7 +310,7 @@ class PaymentService {
       currency: 'usd',
     );
 
-    final invoiceRef = _storage.ref('invoices/$invoiceNumber.pdf');
+    final invoiceRef = _storage.ref('invoices/$sponsorId/$invoiceNumber.pdf');
     await invoiceRef.putData(
       pdfBytes,
       SettableMetadata(contentType: 'application/pdf'),
@@ -392,8 +392,8 @@ class PaymentService {
         .toString();
     final customerId = (data['customerId'] ?? '').toString();
     final ephemeralKeySecret = (data['ephemeralKeySecret'] ?? '').toString();
-    final merchantDisplayName =
-        (data['merchantDisplayName'] ?? 'Video Contest Show').toString();
+    final merchantDisplayName = (data['merchantDisplayName'] ?? 'Click Kick')
+        .toString();
 
     if (paymentIntentClientSecret.isEmpty ||
         customerId.isEmpty ||
@@ -431,8 +431,7 @@ class PaymentService {
     final paymentIntentClientSecret = data['paymentIntentClientSecret'] ?? '';
     final customerId = data['customerId'] ?? '';
     final ephemeralKeySecret = data['ephemeralKeySecret'] ?? '';
-    final merchantDisplayName =
-        data['merchantDisplayName'] ?? 'Video Contest Show';
+    final merchantDisplayName = data['merchantDisplayName'] ?? 'Click Kick';
 
     await Stripe.instance.initPaymentSheet(
       paymentSheetParameters: SetupPaymentSheetParameters(

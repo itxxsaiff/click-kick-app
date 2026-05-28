@@ -14,10 +14,15 @@ class AuthService {
 
   static AuthProvider? _pendingLinkProvider;
   static String? _pendingLinkEmail;
-  static String? _pendingLinkProviderName;
 
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
+
+  static const Set<String> _otpProtectedRoles = {
+    'user',
+    'participant',
+    'sponsor',
+  };
 
   String _normalizeEmail(String email) => email.trim().toLowerCase();
 
@@ -190,42 +195,15 @@ class AuthService {
     required String email,
     required String password,
   }) async {
-    final isAdmin =
-        email.toLowerCase() == 'admin@gmail.com' && password == 'admin123';
-    try {
-      final credential = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      await _ensureUserDoc(
-        credential.user!,
-        roleIfMissing: isAdmin ? UserRole.superAdmin : UserRole.user,
-      );
-      await _assertUserAccess(credential.user!.uid);
-      await _linkPendingProviderIfNeeded(credential.user!);
-      if (isAdmin) {
-        await _ensureRole(credential.user!.uid, UserRole.superAdmin);
-      }
-      return credential;
-    } on FirebaseAuthException {
-      if (isAdmin) {
-        final credential = await _auth.createUserWithEmailAndPassword(
-          email: email,
-          password: password,
-        );
-        final now = DateTime.now().toUtc();
-        await _firestore.collection('users').doc(credential.user!.uid).set({
-          'uid': credential.user!.uid,
-          'email': email,
-          'displayName': 'Super Admin',
-          'role': enumToName(UserRole.superAdmin),
-          'createdAt': now,
-          'updatedAt': now,
-        });
-        return credential;
-      }
-      rethrow;
-    }
+    final normalizedEmail = _normalizeEmail(email);
+    final credential = await _auth.signInWithEmailAndPassword(
+      email: normalizedEmail,
+      password: password,
+    );
+    await _ensureUserDoc(credential.user!, roleIfMissing: UserRole.user);
+    await _assertUserAccess(credential.user!.uid);
+    await _linkPendingProviderIfNeeded(credential.user!);
+    return credential;
   }
 
   Future<UserCredential> signInWithGoogle() async {
@@ -298,11 +276,6 @@ class AuthService {
         throw FirebaseAuthException(
           code: 'operation-in-progress',
           message: 'Facebook login is already in progress.',
-        );
-      default:
-        throw FirebaseAuthException(
-          code: 'facebook-login-failed',
-          message: 'Facebook login failed. Please try again.',
         );
     }
   }
@@ -419,6 +392,26 @@ class AuthService {
     }
   }
 
+  bool requiresOtpVerification({
+    required User user,
+    required Map<String, dynamic> userData,
+  }) {
+    final role = (userData['role'] ?? 'user').toString().trim().toLowerCase();
+    if (!_otpProtectedRoles.contains(role)) {
+      return false;
+    }
+
+    final hasPasswordProvider = user.providerData.any(
+      (provider) => provider.providerId == 'password',
+    );
+    if (!hasPasswordProvider) {
+      return false;
+    }
+
+    final verifiedAt = _parseUserDateTime(userData['lastOtpVerifiedAt']);
+    return verifiedAt == null;
+  }
+
   Future<void> deleteCurrentAccount() async {
     final user = _auth.currentUser;
     if (user == null) {
@@ -494,13 +487,6 @@ class AuthService {
     }
   }
 
-  Future<void> _ensureRole(String uid, UserRole role) async {
-    await _firestore.collection('users').doc(uid).set({
-      'role': enumToName(role),
-      'updatedAt': DateTime.now().toUtc(),
-    }, SetOptions(merge: true));
-  }
-
   Future<DocumentSnapshot<Map<String, dynamic>>?> _findUserDocByEmail(
     String email,
   ) async {
@@ -547,7 +533,6 @@ class AuthService {
     await _auth.signOut();
     _pendingLinkProvider = provider;
     _pendingLinkEmail = _normalizeEmail(email);
-    _pendingLinkProviderName = providerName;
     throw FirebaseAuthException(
       code: 'social-link-required',
       message:
@@ -579,7 +564,6 @@ class AuthService {
     } finally {
       _pendingLinkProvider = null;
       _pendingLinkEmail = null;
-      _pendingLinkProviderName = null;
     }
   }
 
@@ -622,5 +606,13 @@ class AuthService {
     final status = (data['status'] ?? '').toString().trim().toLowerCase();
     if (status.isNotEmpty) return status;
     return (data['accountStatus'] ?? 'active').toString().trim().toLowerCase();
+  }
+
+  DateTime? _parseUserDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is Timestamp) return value.toDate().toUtc();
+    if (value is DateTime) return value.toUtc();
+    if (value is String) return DateTime.tryParse(value)?.toUtc();
+    return null;
   }
 }

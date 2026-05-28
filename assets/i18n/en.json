@@ -992,5 +992,15 @@
   "Welcome,": "Welcome,",
   "Winner Prize (included)": "Winner Prize (included)",
   "You are already signed in.": "You are already signed in.",
-  "You provide the video": "You provide the video"
+  "You provide the video": "You provide the video",
+  "Block Sponsor": "Block Sponsor",
+  "Unblock Sponsor": "Unblock Sponsor",
+  "Delete Sponsor": "Delete Sponsor",
+  "Sponsor deleted permanently.": "Sponsor deleted permanently.",
+  "Delete this sponsor permanently? This removes the sponsor from the app and authentication so the same email can register again.": "Delete this sponsor permanently? This removes the sponsor from the app and authentication so the same email can register again.",
+  "No sponsor accounts found.": "No sponsor accounts found.",
+  "Sponsor Details": "Sponsor Details",
+  "Unable to delete this sponsor right now.": "Unable to delete this sponsor right now.",
+  "Name": "Name",
+  "Phone": "Phone"
 }

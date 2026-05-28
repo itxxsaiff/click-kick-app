@@ -42,14 +42,14 @@ service firebase.storage {
       allow write: if isStaff();
     }
 
-    match /participant_videos/{allPaths=**} {
+    match /participant_videos/{userId}/{allPaths=**} {
       allow read: if true;
-      allow write: if signedIn();
+      allow write: if signedIn() && (request.auth.uid == userId || isStaff());
     }
 
-    match /videos/{allPaths=**} {
+    match /videos/{userId}/{allPaths=**} {
       allow read: if true;
-      allow write: if signedIn();
+      allow write: if signedIn() && (request.auth.uid == userId || isStaff());
     }
 
     match /profile_photos/{userId}/{allPaths=**} {
@@ -63,18 +63,21 @@ service firebase.storage {
     }
 
     match /sponsorship/{allPaths=**} {
-      allow read: if signedIn();
-      allow write: if signedIn();
+      allow read, write: if isStaff();
     }
 
-    match /sponsorship_applications/{allPaths=**} {
-      allow read: if signedIn();
-      allow write: if signedIn();
+    match /sponsorship_applications/{applicationId}/{allPaths=**} {
+      allow read, write: if isStaff() ||
+        (
+          signedIn() &&
+          firestore.get(
+            /databases/(default)/documents/sponsorship_applications/$(applicationId)
+          ).data.sponsorId == request.auth.uid
+        );
     }
 
-    match /invoices/{allPaths=**} {
-      allow read: if signedIn();
-      allow write: if signedIn();
+    match /invoices/{userId}/{allPaths=**} {
+      allow read, write: if isStaff() || (signedIn() && request.auth.uid == userId);
     }
 
     match /{allPaths=**} {

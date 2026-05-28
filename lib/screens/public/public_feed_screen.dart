@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../l10n/l10n.dart';
@@ -412,6 +413,7 @@ class _HomeFeedTab extends StatefulWidget {
 }
 
 class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
+  static const _watchedAdminVideosPrefsKey = 'watched_admin_videos_v1';
   final _pageController = PageController();
   final Set<String> _failedAdminVideoUrls = <String>{};
   int _activeIndex = 0;
@@ -423,11 +425,13 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
   int _videoRequestId = 0;
   bool _appliedSharedTarget = false;
   String? _lastTrackedAdminVideoId;
+  Map<String, int> _watchedAdminVideos = const <String, int>{};
 
   @override
   void initState() {
     super.initState();
     _feedStopHandlers.add(_clearActiveVideo);
+    _loadWatchedAdminVideos();
   }
 
   @override
@@ -602,14 +606,61 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
   }
 
   Future<void> _trackAdminVideoView(_FeedItem item) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
     if (item.adminVideoId.isEmpty) return;
     if (_lastTrackedAdminVideoId == item.adminVideoId) return;
     _lastTrackedAdminVideoId = item.adminVideoId;
+    await _markAdminVideoWatched(item.adminVideoId);
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
     try {
       await AuthService().incrementAdminVideoView(item.adminVideoId);
     } catch (_) {}
+  }
+
+  Future<void> _loadWatchedAdminVideos() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getStringList(_watchedAdminVideosPrefsKey) ?? <String>[];
+    final watched = <String, int>{};
+    for (final entry in raw) {
+      final parts = entry.split('|');
+      if (parts.length != 2) continue;
+      final millis = int.tryParse(parts[1]);
+      if (parts[0].isEmpty || millis == null) continue;
+      watched[parts[0]] = millis;
+    }
+    if (!mounted) {
+      _watchedAdminVideos = watched;
+      return;
+    }
+    setState(() {
+      _watchedAdminVideos = watched;
+    });
+  }
+
+  Future<void> _markAdminVideoWatched(String adminVideoId) async {
+    if (adminVideoId.isEmpty || _watchedAdminVideos.containsKey(adminVideoId)) {
+      return;
+    }
+    final updated = Map<String, int>.from(_watchedAdminVideos)
+      ..[adminVideoId] = DateTime.now().millisecondsSinceEpoch;
+    final entries = updated.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final trimmedEntries = entries.take(200).toList();
+    final trimmed = <String, int>{
+      for (final entry in trimmedEntries) entry.key: entry.value,
+    };
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _watchedAdminVideosPrefsKey,
+      trimmedEntries.map((e) => '${e.key}|${e.value}').toList(),
+    );
+    if (!mounted) {
+      _watchedAdminVideos = trimmed;
+      return;
+    }
+    setState(() {
+      _watchedAdminVideos = trimmed;
+    });
   }
 
   @override
@@ -752,17 +803,28 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
     List<QueryDocumentSnapshot<Map<String, dynamic>>> newsDocs,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> adminVideoDocs,
   ) {
-    final items = <_FeedItem>[
-      ...newsDocs.map(_FeedItem.fromNews),
-      ...adminVideoDocs
-          .where((doc) {
-            final videoUrl = (doc.data()['videoUrl'] ?? '').toString().trim();
-            return videoUrl.isNotEmpty &&
-                !_failedAdminVideoUrls.contains(videoUrl);
-          })
-          .map(_FeedItem.fromAdminVideo),
-    ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return items;
+    final newsItems = newsDocs.map(_FeedItem.fromNews).toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    final adminVideoItems =
+        adminVideoDocs
+            .where((doc) {
+              final videoUrl = (doc.data()['videoUrl'] ?? '').toString().trim();
+              return videoUrl.isNotEmpty &&
+                  !_failedAdminVideoUrls.contains(videoUrl);
+            })
+            .map(_FeedItem.fromAdminVideo)
+            .toList()
+          ..sort((a, b) {
+            final aWatched = _watchedAdminVideos.containsKey(a.adminVideoId);
+            final bWatched = _watchedAdminVideos.containsKey(b.adminVideoId);
+            if (aWatched != bWatched) {
+              return aWatched ? 1 : -1;
+            }
+            return b.createdAt.compareTo(a.createdAt);
+          });
+
+    return <_FeedItem>[...adminVideoItems, ...newsItems];
   }
 }
 

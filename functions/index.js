@@ -64,7 +64,9 @@ function userPhoneE164(userData) {
  * @return {string}
  */
 function normalizeEmail(email) {
-  return String(email || "").trim().toLowerCase();
+  return String(email || "")
+      .trim()
+      .toLowerCase();
 }
 
 /**
@@ -86,6 +88,41 @@ function normalizePhoneE164(phoneCountryCode, phoneNumber) {
 }
 
 /**
+ * Returns true when a user document should still block a new registration.
+ * Deleted/removed docs and docs whose Auth account no longer exists are treated
+ * as stale and can be safely ignored.
+ * @param {FirebaseFirestore.QueryDocumentSnapshot<
+ *   FirebaseFirestore.DocumentData
+ * >} doc
+ * @return {Promise<boolean>}
+ */
+async function isRegistrationBlockingDoc(doc) {
+  const data = doc.data() || {};
+  const rawStatus = String(data.status || data.accountStatus || "active")
+      .trim()
+      .toLowerCase();
+  if (["deleted", "removed"].includes(rawStatus)) {
+    return false;
+  }
+
+  try {
+    await admin.auth().getUser(doc.id);
+    return true;
+  } catch (error) {
+    if (error && error.code === "auth/user-not-found") {
+      await doc.ref.delete().catch(() => null);
+      await db
+          .collection("login_otps")
+          .doc(doc.id)
+          .delete()
+          .catch(() => null);
+      return false;
+    }
+    throw error;
+  }
+}
+
+/**
  * Ensures caller is an admin user.
  * @param {Object} request
  * @return {Promise<{uid: string, data: Object}>}
@@ -98,7 +135,9 @@ async function requireAdminUser(request) {
 
   const snap = await db.collection("users").doc(uid).get();
   const data = snap.data() || {};
-  const role = String(data.role || "").trim().toLowerCase();
+  const role = String(data.role || "")
+      .trim()
+      .toLowerCase();
   if (!["admin", "superadmin", "super_admin"].includes(role)) {
     throw new HttpsError(
         "permission-denied",
@@ -167,35 +206,40 @@ async function sendWhatsAppOtp({toPhoneE164, code}) {
   if (!response.ok) {
     const errorText = await response.text();
     console.error("Meta WhatsApp OTP failed", response.status, errorText);
-    throw new HttpsError(
-        "internal",
-        "Unable to send OTP. Please try again.",
-    );
+    throw new HttpsError("internal", "Unable to send OTP. Please try again.");
   }
 }
 
 exports.checkRegistrationAvailability = onCall(async (request) => {
   const data = request.data || {};
   const email = normalizeEmail(data.email);
-  const phoneE164 = normalizePhoneE164(
-      data.phoneCountryCode,
-      data.phoneNumber,
-  );
+  const phoneE164 = normalizePhoneE164(data.phoneCountryCode, data.phoneNumber);
 
   if (!email) {
     throw new HttpsError("invalid-argument", "Email is required.");
   }
 
   const [emailLowerSnap, emailExactSnap, phoneSnap] = await Promise.all([
-    db.collection("users").where("emailLower", "==", email).limit(1).get(),
-    db.collection("users").where("email", "==", email).limit(1).get(),
-    db.collection("users").where("phoneE164", "==", phoneE164).limit(1).get(),
+    db.collection("users").where("emailLower", "==", email).get(),
+    db.collection("users").where("email", "==", email).get(),
+    db.collection("users").where("phoneE164", "==", phoneE164).get(),
+  ]);
+
+  const emailDocsMap = new Map();
+  [...emailLowerSnap.docs, ...emailExactSnap.docs].forEach((doc) => {
+    emailDocsMap.set(doc.id, doc);
+  });
+  const emailDocs = [...emailDocsMap.values()];
+  const phoneDocs = phoneSnap.docs;
+
+  const [emailBlockingStates, phoneBlockingStates] = await Promise.all([
+    Promise.all(emailDocs.map((doc) => isRegistrationBlockingDoc(doc))),
+    Promise.all(phoneDocs.map((doc) => isRegistrationBlockingDoc(doc))),
   ]);
 
   return {
-    emailAvailable:
-      emailLowerSnap.empty && emailExactSnap.empty,
-    phoneAvailable: phoneSnap.empty,
+    emailAvailable: !emailBlockingStates.some(Boolean),
+    phoneAvailable: !phoneBlockingStates.some(Boolean),
   };
 });
 
@@ -208,12 +252,21 @@ exports.checkPasswordResetAvailability = onCall(async (request) => {
   }
 
   const [emailLowerSnap, emailExactSnap] = await Promise.all([
-    db.collection("users").where("emailLower", "==", email).limit(1).get(),
-    db.collection("users").where("email", "==", email).limit(1).get(),
+    db.collection("users").where("emailLower", "==", email).get(),
+    db.collection("users").where("email", "==", email).get(),
   ]);
 
+  const emailDocsMap = new Map();
+  [...emailLowerSnap.docs, ...emailExactSnap.docs].forEach((doc) => {
+    emailDocsMap.set(doc.id, doc);
+  });
+  const emailDocs = [...emailDocsMap.values()];
+  const blockingStates = await Promise.all(
+      emailDocs.map((doc) => isRegistrationBlockingDoc(doc)),
+  );
+
   return {
-    emailExists: !(emailLowerSnap.empty && emailExactSnap.empty),
+    emailExists: blockingStates.some(Boolean),
   };
 });
 
@@ -248,10 +301,14 @@ exports.incrementContestView = onCall(async (request) => {
       userId: request.auth.uid,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-    tx.set(contestRef, {
-      viewCount: admin.firestore.FieldValue.increment(1),
-      lastViewedAt: admin.firestore.FieldValue.serverTimestamp(),
-    }, {merge: true});
+    tx.set(
+        contestRef,
+        {
+          viewCount: admin.firestore.FieldValue.increment(1),
+          lastViewedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        {merge: true},
+    );
   });
 
   return {ok: true};
@@ -274,10 +331,13 @@ exports.incrementContestShare = onCall(async (request) => {
     throw new HttpsError("not-found", "Contest not found.");
   }
 
-  await contestRef.set({
-    shareCount: admin.firestore.FieldValue.increment(1),
-    lastSharedAt: admin.firestore.FieldValue.serverTimestamp(),
-  }, {merge: true});
+  await contestRef.set(
+      {
+        shareCount: admin.firestore.FieldValue.increment(1),
+        lastSharedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      {merge: true},
+  );
 
   return {ok: true};
 });
@@ -350,10 +410,7 @@ exports.incrementContestVote = onCall(async (request) => {
       );
     }
     if (votingEnd && now > votingEnd) {
-      throw new HttpsError(
-          "failed-precondition",
-          "Voting has already ended.",
-      );
+      throw new HttpsError("failed-precondition", "Voting has already ended.");
     }
 
     const serverNow = admin.firestore.FieldValue.serverTimestamp();
@@ -363,10 +420,14 @@ exports.incrementContestVote = onCall(async (request) => {
       voterId: userId,
       createdAt: serverNow,
     });
-    tx.set(submissionRef, {
-      voteCount: admin.firestore.FieldValue.increment(1),
-      updatedAt: serverNow,
-    }, {merge: true});
+    tx.set(
+        submissionRef,
+        {
+          voteCount: admin.firestore.FieldValue.increment(1),
+          updatedAt: serverNow,
+        },
+        {merge: true},
+    );
   });
 
   return {ok: true};
@@ -403,10 +464,14 @@ exports.incrementAdminVideoView = onCall(async (request) => {
       userId: request.auth.uid,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-    tx.set(videoRef, {
-      viewCount: admin.firestore.FieldValue.increment(1),
-      lastViewedAt: admin.firestore.FieldValue.serverTimestamp(),
-    }, {merge: true});
+    tx.set(
+        videoRef,
+        {
+          viewCount: admin.firestore.FieldValue.increment(1),
+          lastViewedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        {merge: true},
+    );
   });
 
   return {ok: true};
@@ -429,10 +494,13 @@ exports.incrementAdminVideoShare = onCall(async (request) => {
     throw new HttpsError("not-found", "Video not found.");
   }
 
-  await videoRef.set({
-    shareCount: admin.firestore.FieldValue.increment(1),
-    lastSharedAt: admin.firestore.FieldValue.serverTimestamp(),
-  }, {merge: true});
+  await videoRef.set(
+      {
+        shareCount: admin.firestore.FieldValue.increment(1),
+        lastSharedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      {merge: true},
+  );
 
   return {ok: true};
 });
@@ -453,7 +521,9 @@ exports.deleteUserAccountPermanently = onCall(async (request) => {
   }
 
   const userData = userSnap.data() || {};
-  const role = String(userData.role || "").trim().toLowerCase();
+  const role = String(userData.role || "")
+      .trim()
+      .toLowerCase();
   if (["admin", "superadmin", "super_admin"].includes(role)) {
     throw new HttpsError(
         "failed-precondition",
@@ -461,7 +531,11 @@ exports.deleteUserAccountPermanently = onCall(async (request) => {
     );
   }
 
-  await db.collection("login_otps").doc(targetUid).delete().catch(() => null);
+  await db
+      .collection("login_otps")
+      .doc(targetUid)
+      .delete()
+      .catch(() => null);
   await userRef.delete();
 
   try {
@@ -559,9 +633,13 @@ async function runLuckyDrawForContest(contestDoc) {
   if (!votingEnd || votingEnd.getTime() > Date.now()) return;
 
   const votesSnap = await contestDoc.ref.collection("votes").get();
-  const uniqueVoterIds = [...new Set(votesSnap.docs
-      .map((doc) => (doc.data().voterId || doc.id || "").toString())
-      .filter(Boolean))];
+  const uniqueVoterIds = [
+    ...new Set(
+        votesSnap.docs
+            .map((doc) => (doc.data().voterId || doc.id || "").toString())
+            .filter(Boolean),
+    ),
+  ];
 
   const drawAt = admin.firestore.Timestamp.now();
   const winnerCount = Math.min(DRAW_WINNER_COUNT, uniqueVoterIds.length);
@@ -590,20 +668,24 @@ async function runLuckyDrawForContest(contestDoc) {
     });
   });
 
-  batch.set(contestDoc.ref, {
-    drawCompleted: true,
-    drawCompletedAt: drawAt,
-    drawEligibleVoterCount: uniqueVoterIds.length,
-    drawWinnerCount: winnerCount,
-    drawPrizeAmount: DRAW_PRIZE_AMOUNT,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  }, {merge: true});
+  batch.set(
+      contestDoc.ref,
+      {
+        drawCompleted: true,
+        drawCompletedAt: drawAt,
+        drawEligibleVoterCount: uniqueVoterIds.length,
+        drawWinnerCount: winnerCount,
+        drawPrizeAmount: DRAW_PRIZE_AMOUNT,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      {merge: true},
+  );
 
   await batch.commit();
 }
 
 /**
- * Builds a simple one-page PDF.
+ * Builds a branded one-page invoice PDF.
  * @param {Object} params
  * @return {Buffer}
  */
@@ -617,47 +699,59 @@ function buildInvoicePdf({
   country,
   amount,
 }) {
-  const lines = [
-    {text: "Click Kick - Sponsorship Invoice", x: 50, y: 790, size: 18},
-    {text: `Invoice #: ${invoiceNo}`, x: 50, y: 760, size: 12},
-    {text: `Date: ${ymd(invoiceDate)}`, x: 50, y: 742, size: 12},
-    {text: `Sponsor: ${sponsorName}`, x: 50, y: 706, size: 12},
-    {text: `Email: ${sponsorEmail}`, x: 50, y: 688, size: 12},
-    {text: `Company: ${companyName || "-"}`, x: 50, y: 670, size: 12},
-    {text: `Application: ${applicationName}`, x: 50, y: 634, size: 12},
-    {text: `Region: ${country}`, x: 50, y: 616, size: 12},
-    {
-      text: "Description: Sponsorship Campaign Fee",
-      x: 50,
-      y: 580,
-      size: 12,
-    },
-    {
-      text: `Amount: $${Number(amount || 0).toFixed(2)}`,
-      x: 50,
-      y: 562,
-      size: 12,
-    },
-    {
-      text: `Total Paid: $${Number(amount || 0).toFixed(2)}`,
-      x: 50,
-      y: 526,
-      size: 14,
-    },
-    {
-      text: "Thank you for your sponsorship payment.",
-      x: 50,
-      y: 488,
-      size: 11,
-    },
+  const currencyAmount = `$${Number(amount || 0).toFixed(2)}`;
+  const contentParts = [
+    "0.12 0.07 0.28 rg",
+    "40 720 515 88 re f",
+
+    "0.94 0.91 0.98 rg",
+    "40 615 515 24 re f",
+
+    "0 0 0 RG 0.85 w",
+    "40 560 515 55 re S",
+    "40 505 515 55 re S",
+
+    "0.12 0.07 0.28 rg",
+    "BT /F1 24 Tf 58 776 Td (Click Kick) Tj ET",
+    "0.90 0.35 0.79 rg",
+    "BT /F1 12 Tf 58 755 Td (Sponsorship Invoice) Tj ET",
+
+    "1 1 1 rg",
+    `BT /F1 12 Tf 375 778 Td (${pdfEscape(`Invoice #: ${invoiceNo}`)}) Tj ET`,
+    `BT /F1 12 Tf 375 760 Td (${pdfEscape(`Date: ${ymd(invoiceDate)}`)}) Tj ET`,
+    "BT /F1 12 Tf 375 742 Td (Currency: USD) Tj ET",
+
+    "0 0 0 rg",
+    "BT /F1 14 Tf 58 685 Td (Billed To) Tj ET",
+    `BT /F1 12 Tf 58 665 Td (${pdfEscape(sponsorName || "-")}) Tj ET`,
+    `BT /F1 12 Tf 58 647 Td (${pdfEscape(sponsorEmail || "-")}) Tj ET`,
+    `BT /F1 12 Tf 58 629 Td (${pdfEscape(companyName || "-")}) Tj ET`,
+
+    "BT /F1 14 Tf 318 685 Td (Sponsorship Application) Tj ET",
+    `BT /F1 12 Tf 318 665 Td (${pdfEscape(
+        applicationName || "Sponsorship Application",
+    )}) Tj ET`,
+    `BT /F1 12 Tf 318 647 Td (${pdfEscape(`Region: ${country || "-"}`)}) Tj ET`,
+    `BT /F1 12 Tf 318 629 Td (${pdfEscape(
+        `Invoice Date: ${ymd(invoiceDate)}`,
+    )}) Tj ET`,
+
+    "0 0 0 rg",
+    "BT /F1 12 Tf 58 622 Td (Description) Tj ET",
+    "BT /F1 12 Tf 465 622 Td (Amount) Tj ET",
+
+    `BT /F1 12 Tf 58 585 Td (${pdfEscape("Sponsorship Campaign Fee")}) Tj ET`,
+    `BT /F1 12 Tf 455 585 Td (${pdfEscape(currencyAmount)}) Tj ET`,
+
+    "BT /F1 12 Tf 58 530 Td (Total) Tj ET",
+    "0.48 0.17 0.63 rg",
+    `BT /F1 13 Tf 448 530 Td (${pdfEscape(currencyAmount)}) Tj ET`,
+
+    "0 0 0 rg",
+    "BT /F1 11 Tf 58 475 Td (Thank you for your sponsorship payment.) Tj ET",
   ];
 
-  const content = lines
-      .map((line) =>
-        `BT /F1 ${line.size} Tf ${line.x} ${line.y} Td ` +
-        `(${pdfEscape(line.text)}) Tj ET`,
-      )
-      .join("\n");
+  const content = contentParts.join("\n");
 
   const contentLength = Buffer.byteLength(content, "utf8");
   const objects = [
@@ -706,9 +800,8 @@ async function ensureInvoiceForApplication({applicationId, sponsorId}) {
   const sponsorSnap = effectiveSponsorId ?
     await db.collection("users").doc(effectiveSponsorId).get() :
     null;
-  const sponsor = sponsorSnap && sponsorSnap.exists ?
-    sponsorSnap.data() || {} :
-    {};
+  const sponsor =
+    sponsorSnap && sponsorSnap.exists ? sponsorSnap.data() || {} : {};
   const now = new Date();
   const generatedInvoiceNumber = invoiceNumber();
   const amount = Number(appData.applicationFee || 1000);
@@ -727,7 +820,8 @@ async function ensureInvoiceForApplication({applicationId, sponsorId}) {
   });
 
   const bucket = admin.storage().bucket();
-  const filePath = `invoices/${generatedInvoiceNumber}.pdf`;
+  const invoiceOwnerPath = effectiveSponsorId || "unassigned";
+  const filePath = `invoices/${invoiceOwnerPath}/${generatedInvoiceNumber}.pdf`;
   const token = crypto.randomUUID();
   const file = bucket.file(filePath);
   await file.save(pdfBuffer, {
@@ -744,26 +838,34 @@ async function ensureInvoiceForApplication({applicationId, sponsorId}) {
     `${encodeURIComponent(filePath)}?alt=media&token=${token}`;
   const invoiceTimestamp = admin.firestore.Timestamp.fromDate(now);
 
-  await appRef.set({
-    invoiceNumber: generatedInvoiceNumber,
-    invoiceUrl,
-    invoiceGeneratedAt: invoiceTimestamp,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  }, {merge: true});
+  await appRef.set(
+      {
+        invoiceNumber: generatedInvoiceNumber,
+        invoiceUrl,
+        invoiceGeneratedAt: invoiceTimestamp,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      {merge: true},
+  );
 
-  const paymentDocs = await db.collection("payments")
+  const paymentDocs = await db
+      .collection("payments")
       .where("applicationId", "==", applicationId)
       .where("status", "==", "paid")
       .get();
   const batch = db.batch();
   paymentDocs.docs.forEach((doc) => {
-    batch.set(doc.ref, {
-      sponsorId: effectiveSponsorId,
-      invoiceNumber: generatedInvoiceNumber,
-      invoiceUrl,
-      invoiceGeneratedAt: invoiceTimestamp,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    }, {merge: true});
+    batch.set(
+        doc.ref,
+        {
+          sponsorId: effectiveSponsorId,
+          invoiceNumber: generatedInvoiceNumber,
+          invoiceUrl,
+          invoiceGeneratedAt: invoiceTimestamp,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        {merge: true},
+    );
   });
   if (!paymentDocs.empty) {
     await batch.commit();
@@ -796,7 +898,13 @@ async function getApplicationForSponsor(applicationId, sponsorId) {
  * @param {Object} params
  * @return {Promise<string>}
  */
-async function getOrCreateStripeCustomer({uid, email, name, appRef, appData}) {
+async function getOrCreateStripeCustomer({
+  uid,
+  email,
+  name,
+  appRef,
+  appData,
+}) {
   if (appData.stripeCustomerId) {
     return appData.stripeCustomerId;
   }
@@ -911,7 +1019,7 @@ async function markApplicationPaid({
         paidAt: admin.firestore.FieldValue.serverTimestamp(),
         stripeSessionId: stripeSessionId || appData.stripeSessionId || "",
         stripePaymentIntentId:
-          stripePaymentIntentId || appData.stripePaymentIntentId || "",
+        stripePaymentIntentId || appData.stripePaymentIntentId || "",
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       },
       {merge: true},
@@ -965,11 +1073,12 @@ exports.sendLoginOtp = onCall(
       const lastSentAt = parseDate(previous.lastSentAt);
       if (
         lastSentAt &&
-        Date.now() - lastSentAt.getTime() < LOGIN_OTP_RESEND_SECONDS * 1000
+      Date.now() - lastSentAt.getTime() < LOGIN_OTP_RESEND_SECONDS * 1000
       ) {
         const waitSeconds = Math.ceil(
             (LOGIN_OTP_RESEND_SECONDS * 1000 -
-              (Date.now() - lastSentAt.getTime())) / 1000,
+          (Date.now() - lastSentAt.getTime())) /
+          1000,
         );
         throw new HttpsError(
             "failed-precondition",
@@ -987,16 +1096,19 @@ exports.sendLoginOtp = onCall(
 
       await sendWhatsAppOtp({toPhoneE164: phoneE164, code});
 
-      await otpRef.set({
-        uid,
-        phoneE164,
-        codeHash: otpHash(uid, code),
-        attempts: 0,
-        verifiedAt: null,
-        createdAt: now,
-        lastSentAt: now,
-        expiresAt,
-      }, {merge: true});
+      await otpRef.set(
+          {
+            uid,
+            phoneE164,
+            codeHash: otpHash(uid, code),
+            attempts: 0,
+            verifiedAt: null,
+            createdAt: now,
+            lastSentAt: now,
+            expiresAt,
+          },
+          {merge: true},
+      );
 
       return {
         sent: true,
@@ -1041,22 +1153,31 @@ exports.verifyLoginOtp = onCall(
       }
 
       if (data.codeHash !== otpHash(uid, code)) {
-        await otpRef.set({
-          attempts: admin.firestore.FieldValue.increment(1),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        }, {merge: true});
+        await otpRef.set(
+            {
+              attempts: admin.firestore.FieldValue.increment(1),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            {merge: true},
+        );
         throw new HttpsError("permission-denied", "Invalid OTP.");
       }
 
-      await otpRef.set({
-        verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, {merge: true});
+      await otpRef.set(
+          {
+            verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          {merge: true},
+      );
 
-      await db.collection("users").doc(uid).set({
-        lastOtpVerifiedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, {merge: true});
+      await db.collection("users").doc(uid).set(
+          {
+            lastOtpVerifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          {merge: true},
+      );
 
       return {verified: true};
     },
@@ -1124,7 +1245,7 @@ exports.createSponsorshipPaymentIntent = onCall(
         paymentIntentClientSecret: paymentIntent.client_secret,
         customerId,
         ephemeralKeySecret: ephemeralKey.secret,
-        merchantDisplayName: "Video Contest Show",
+        merchantDisplayName: "Click Kick",
       };
     },
 );
@@ -1165,8 +1286,8 @@ exports.createSponsorshipCheckoutSession = onCall(
               currency: "usd",
               product_data: {
                 name:
-                  "Sponsorship Fee - " +
-                  `${appData.applicationName || "Application"}`,
+                "Sponsorship Fee - " +
+                `${appData.applicationName || "Application"}`,
               },
               unit_amount: amountCents,
             },

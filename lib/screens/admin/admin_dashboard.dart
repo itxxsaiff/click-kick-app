@@ -13,6 +13,7 @@ import 'news/admin_news_screen.dart';
 import 'admin_employees_screen.dart';
 import 'ads/admin_ads_screen.dart';
 import 'admin_video_reports_screen.dart';
+import 'admin_click_kick_star_screen.dart';
 import 'admin_contest_draw_winners_screen.dart';
 import 'admin_support_screen.dart';
 import 'payments/admin_invoices_screen.dart';
@@ -319,6 +320,18 @@ class _AdminDashboardState extends State<AdminDashboard> {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const AdminProfileScreen()),
+          );
+        },
+      ),
+      _AdminModuleItem(
+        title: context.tr('Click Kick Star'),
+        subtitle: context.tr('Official creator rankings'),
+        icon: Icons.star_rounded,
+        accent: AppColors.gold,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AdminClickKickStarScreen()),
           );
         },
       ),

@@ -9,6 +9,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/news_slider.dart';
 import '../shared/legal_center_screen.dart';
+import '../shared/click_kick_star_page.dart';
 import '../user/contest_detail_screen.dart';
 
 class UserHome extends StatefulWidget {
@@ -30,7 +31,7 @@ class _UserHomeState extends State<UserHome> {
       case 1:
         return Icons.dashboard_customize;
       case 2:
-        return Icons.workspace_premium;
+        return Icons.star_rounded;
       default:
         return Icons.person;
     }
@@ -43,7 +44,7 @@ class _UserHomeState extends State<UserHome> {
       case 1:
         return 'Dashboard';
       case 2:
-        return 'Winners';
+        return 'Click Kick Star';
       default:
         return 'Profile';
     }
@@ -99,7 +100,7 @@ class _UserHomeState extends State<UserHome> {
                     children: [
                       _UserContestsTab(),
                       _UserDashboardTab(userId: user?.uid ?? ''),
-                      const _UserWinnersTab(),
+                      const ClickKickStarPage(),
                       _UserProfileTab(displayName: widget.displayName),
                     ],
                   ),
@@ -160,9 +161,9 @@ class _UserHomeState extends State<UserHome> {
                   label: context.tr('Dashboard'),
                 ),
                 BottomNavigationBarItem(
-                  icon: Icon(Icons.workspace_premium_outlined),
-                  activeIcon: Icon(Icons.workspace_premium),
-                  label: context.tr('Winners'),
+                  icon: Icon(Icons.star_outline_rounded),
+                  activeIcon: Icon(Icons.star_rounded),
+                  label: context.tr('Click Kick Star'),
                 ),
                 BottomNavigationBarItem(
                   icon: Icon(Icons.person_outline),

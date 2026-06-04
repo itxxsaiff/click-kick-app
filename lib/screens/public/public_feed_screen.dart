@@ -22,6 +22,7 @@ import '../../widgets/settings_action_tile.dart';
 import '../../widgets/password_change_layout.dart';
 import '../../main.dart';
 import '../shared/legal_center_screen.dart';
+import '../shared/click_kick_star_page.dart';
 import '../shared/support_chat_screen.dart';
 import '../user/contest_detail_screen.dart';
 import '../auth/login_screen.dart';
@@ -135,15 +136,22 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
         if (!isLoggedIn) {
           return _buildShell(
             context: context,
-            labels: const <String>['Home', 'Contests', 'Sign'],
+            labels: const <String>[
+              'Home',
+              'Contests',
+              'Click Kick Star',
+              'Sign',
+            ],
             icons: const <IconData>[
               Icons.home_outlined,
               Icons.local_fire_department_outlined,
+              Icons.star_outline_rounded,
               Icons.person_outline,
             ],
             activeIcons: const <IconData>[
               Icons.home,
               Icons.local_fire_department,
+              Icons.star_rounded,
               Icons.person,
             ],
             pages: <Widget>[
@@ -155,6 +163,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
                 isVisible: _tabIndex == 1,
                 sharedContestId: widget.sharedContestId,
               ),
+              const ClickKickStarPage(),
               const _LoginRequiredCard(),
             ],
           );
@@ -184,36 +193,44 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
                       ? const <String>[
                           'Home',
                           'Contests',
-                          'Prizes',
+                          'Click Kick Star',
                           'Dashboard',
                           'Profile',
                         ]
                       : const <String>[
                           'Home',
                           'Contests',
+                          'Click Kick Star',
                           'Dashboard',
                           'Profile',
                         ])
-                : const <String>['Dashboard', 'Contests', 'Profile'];
+                : const <String>[
+                    'Home',
+                    'Contests',
+                    'Click Kick Star',
+                    'Profile',
+                  ];
 
             final icons = nav.isParticipant
                 ? (nav.hasUploads
                       ? const <IconData>[
                           Icons.home_outlined,
                           Icons.local_fire_department_outlined,
-                          Icons.card_giftcard_outlined,
+                          Icons.star_outline_rounded,
                           Icons.dashboard_outlined,
                           Icons.person_outline,
                         ]
                       : const <IconData>[
                           Icons.home_outlined,
                           Icons.local_fire_department_outlined,
+                          Icons.star_outline_rounded,
                           Icons.dashboard_outlined,
                           Icons.person_outline,
                         ])
                 : const <IconData>[
-                    Icons.dashboard_outlined,
+                    Icons.home_outlined,
                     Icons.local_fire_department_outlined,
+                    Icons.star_outline_rounded,
                     Icons.person_outline,
                   ];
 
@@ -222,19 +239,21 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
                       ? const <IconData>[
                           Icons.home,
                           Icons.local_fire_department,
-                          Icons.card_giftcard,
+                          Icons.star_rounded,
                           Icons.dashboard_customize,
                           Icons.person,
                         ]
                       : const <IconData>[
                           Icons.home,
                           Icons.local_fire_department,
+                          Icons.star_rounded,
                           Icons.dashboard_customize,
                           Icons.person,
                         ])
                 : const <IconData>[
-                    Icons.dashboard_customize,
+                    Icons.home,
                     Icons.local_fire_department,
+                    Icons.star_rounded,
                     Icons.person,
                   ];
 
@@ -249,7 +268,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
                             isVisible: _tabIndex == 1,
                             sharedContestId: widget.sharedContestId,
                           ),
-                          const _WinnersFeedTab(),
+                          const ClickKickStarPage(),
                           const _DashboardGateTab(),
                           const _ProfileGateTab(),
                         ]
@@ -262,6 +281,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
                             isVisible: _tabIndex == 1,
                             sharedContestId: widget.sharedContestId,
                           ),
+                          const ClickKickStarPage(),
                           const _DashboardGateTab(),
                           const _ProfileGateTab(),
                         ])
@@ -274,6 +294,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
                       isVisible: _tabIndex == 1,
                       sharedContestId: widget.sharedContestId,
                     ),
+                    const ClickKickStarPage(),
                     const _ProfileGateTab(),
                   ];
 
@@ -1230,6 +1251,21 @@ class _ContestFeedCard extends StatelessWidget {
     });
   }
 
+  Future<void> _openParticipantVideos(BuildContext context) async {
+    await stopAllFeedPlayback();
+    if (!context.mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ContestParticipantVideosSheet(
+        contestId: item.id,
+        contestTitle: item.title,
+      ),
+    );
+    unlockFeedPlayback();
+  }
+
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is String) return DateTime.tryParse(value);
@@ -1277,6 +1313,26 @@ class _ContestFeedCard extends StatelessWidget {
     return value.toString();
   }
 
+  Widget _buildJoinedMetricButton(BuildContext context) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('contests')
+          .doc(item.id)
+          .collection('submissions')
+          .where('status', isEqualTo: 'approved')
+          .snapshots(),
+      builder: (context, snapshot) {
+        final joinedCount = snapshot.data?.docs.length ?? 0;
+        return _FeedMetricButton(
+          icon: Icons.groups_2_outlined,
+          value: _formatMetric(joinedCount),
+          label: context.tr('Joined'),
+          onTap: () => _openParticipantVideos(context),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
@@ -1319,14 +1375,6 @@ class _ContestFeedCard extends StatelessWidget {
     final viewCount =
         ((item.data['viewCount'] ?? item.data['views'] ?? 0) as num).toInt();
     final shareCount = ((item.data['shareCount'] ?? 0) as num).toInt();
-    final joinedCount =
-        ((item.data['participantCount'] ??
-                    item.data['submissionCount'] ??
-                    item.data['joinedCount'] ??
-                    0)
-                as num)
-            .toInt();
-
     return GestureDetector(
       onTap: onTapVideo,
       behavior: HitTestBehavior.opaque,
@@ -1426,11 +1474,7 @@ class _ContestFeedCard extends StatelessWidget {
                   },
                 ),
                 const SizedBox(height: 14),
-                _FeedMetricButton(
-                  icon: Icons.groups_2_outlined,
-                  value: _formatMetric(joinedCount),
-                  label: context.tr('Joined'),
-                ),
+                _buildJoinedMetricButton(context),
               ],
             ),
           ),
@@ -2293,6 +2337,304 @@ class _FeedInfoBadge extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ContestParticipantVideosSheet extends StatelessWidget {
+  const _ContestParticipantVideosSheet({
+    required this.contestId,
+    required this.contestTitle,
+  });
+
+  final String contestId;
+  final String contestTitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.82,
+      minChildSize: 0.45,
+      maxChildSize: 0.95,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: AppColors.deepSpace,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                width: 56,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            context.tr('Participant Videos'),
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            contestTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.textMuted,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: FirebaseFirestore.instance
+                      .collection('contests')
+                      .doc(contestId)
+                      .collection('submissions')
+                      .where('status', isEqualTo: 'approved')
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    final docs = snapshot.data!.docs.toList()
+                      ..sort((a, b) {
+                        final av = ((a.data()['voteCount'] ?? 0) as num)
+                            .toInt();
+                        final bv = ((b.data()['voteCount'] ?? 0) as num)
+                            .toInt();
+                        return bv.compareTo(av);
+                      });
+                    if (docs.isEmpty) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            context.tr('No participant videos yet.'),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: AppColors.textMuted,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+
+                    return ListView.separated(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                      itemCount: docs.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final doc = docs[index];
+                        final data = doc.data();
+                        final title =
+                            (data['title'] ??
+                                    data['description'] ??
+                                    context.tr('Contest Video'))
+                                .toString();
+                        final userName =
+                            (data['userName'] ??
+                                    data['participantName'] ??
+                                    data['displayName'] ??
+                                    context.tr('Participant'))
+                                .toString();
+                        final videoUrl = (data['videoUrl'] ?? '').toString();
+                        final thumbUrl = (data['thumbnailUrl'] ?? '')
+                            .toString();
+                        final votes = ((data['voteCount'] ?? 0) as num).toInt();
+                        final shares = ((data['shareCount'] ?? 0) as num)
+                            .toInt();
+
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: videoUrl.isEmpty
+                              ? null
+                              : () async {
+                                  await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          _DashboardVideoPlayerScreen(
+                                            videoUrl: videoUrl,
+                                            title: title,
+                                          ),
+                                    ),
+                                  );
+                                },
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: AppColors.card,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 88,
+                                  height: 112,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.cardSoft,
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  clipBehavior: Clip.antiAlias,
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      if (thumbUrl.isNotEmpty)
+                                        Image.network(
+                                          thumbUrl,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) =>
+                                              const SizedBox.shrink(),
+                                        ),
+                                      Container(
+                                        color: thumbUrl.isEmpty
+                                            ? Colors.black.withValues(
+                                                alpha: 0.16,
+                                              )
+                                            : Colors.black.withValues(
+                                                alpha: 0.16,
+                                              ),
+                                      ),
+                                      const Center(
+                                        child: Icon(
+                                          Icons.play_circle_fill_rounded,
+                                          color: Colors.white,
+                                          size: 42,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        title,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        userName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: AppColors.textMuted,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.how_to_vote_rounded,
+                                            color: AppColors.hotPink,
+                                            size: 18,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            '$votes ${context.tr('votes')}',
+                                            style: const TextStyle(
+                                              color: AppColors.textLight,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 14),
+                                          const Icon(
+                                            Icons.share_outlined,
+                                            color: AppColors.hotPink,
+                                            size: 17,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            '$shares',
+                                            style: const TextStyle(
+                                              color: AppColors.textLight,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 6,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.hotPink
+                                                  .withValues(alpha: 0.12),
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
+                                              border: Border.all(
+                                                color: AppColors.hotPink
+                                                    .withValues(alpha: 0.32),
+                                              ),
+                                            ),
+                                            child: Text(
+                                              context.tr('Watch'),
+                                              style: const TextStyle(
+                                                color: AppColors.hotPink,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

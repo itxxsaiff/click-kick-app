@@ -46,6 +46,9 @@ dependencies:
   flutter_facebook_auth: ^7.1.2
   image_picker: ^1.1.2
   image: ^4.5.4
+  dio: ^5.9.0
+  gal: ^2.3.1
+  path_provider: ^2.1.5
   url_launcher: ^6.3.1
   share_plus: ^10.1.4
   video_player: ^2.9.2

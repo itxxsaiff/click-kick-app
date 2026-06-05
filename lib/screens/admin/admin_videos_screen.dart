@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import '../../l10n/l10n.dart';
+import '../../services/video_download_service.dart';
 import '../../theme/app_colors.dart';
 
 class AdminVideosScreen extends StatefulWidget {
@@ -25,6 +26,20 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _downloadVideo(String videoUrl, String fileName) async {
+    final result = await VideoDownloadService.saveVideo(
+      videoUrl: videoUrl,
+      fileName: fileName,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(context.tr(result.messageKey)),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -939,6 +954,18 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                                                   data,
                                                 );
                                                 break;
+                                              case 'download':
+                                                if (videoUrl.isNotEmpty) {
+                                                  await _downloadVideo(
+                                                    videoUrl,
+                                                    (data['contestTitle'] ??
+                                                            data['title'] ??
+                                                            data['videoTitle'] ??
+                                                            'submission_${doc.id}')
+                                                        .toString(),
+                                                  );
+                                                }
+                                                break;
                                               case 'approve':
                                                 await _approve(
                                                   context,
@@ -976,6 +1003,13 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                                                 context.tr('View Details'),
                                               ),
                                             ),
+                                            if (videoUrl.isNotEmpty)
+                                              PopupMenuItem(
+                                                value: 'download',
+                                                child: Text(
+                                                  context.tr('Download'),
+                                                ),
+                                              ),
                                             if (status == 'pending' ||
                                                 status == 'under_review')
                                               PopupMenuItem(

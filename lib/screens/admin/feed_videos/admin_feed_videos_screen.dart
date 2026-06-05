@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../l10n/l10n.dart';
+import '../../../services/video_download_service.dart';
 import '../../../theme/app_colors.dart';
 import 'admin_feed_video_form.dart';
 
@@ -17,7 +18,7 @@ class _AdminFeedVideosScreenState extends State<AdminFeedVideosScreen> {
   final _searchController = TextEditingController();
   String _search = '';
   String _statusFilter = 'all';
-  String _sortBy = 'newest';
+  String _sortBy = 'feed_order';
 
   @override
   void dispose() {
@@ -80,6 +81,133 @@ class _AdminFeedVideosScreenState extends State<AdminFeedVideosScreen> {
     );
   }
 
+  Future<void> _downloadVideo(String videoUrl, String fileName) async {
+    final result = await VideoDownloadService.saveVideo(
+      videoUrl: videoUrl,
+      fileName: fileName,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(context.tr(result.messageKey)),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _setDisplayOrder(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) async {
+    final currentData = doc.data();
+    final currentOrder = (currentData['displayOrder'] as num?)?.toInt();
+    final controller = TextEditingController(
+      text: currentOrder == null ? '' : currentOrder.toString(),
+    );
+    final newOrder = await showDialog<int?>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(context.tr('Set feed position')),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: InputDecoration(
+            labelText: context.tr('Feed Position'),
+            hintText: context.tr('1, 2, 3, 4...'),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, null),
+            child: Text(context.tr('Cancel')),
+          ),
+          if (currentOrder != null)
+            TextButton(
+              onPressed: () => Navigator.pop(context, -1),
+              child: Text(context.tr('Clear')),
+            ),
+          FilledButton(
+            onPressed: () {
+              final parsed = int.tryParse(controller.text.trim());
+              Navigator.pop(context, parsed);
+            },
+            child: Text(context.tr('Save')),
+          ),
+        ],
+      ),
+    );
+    if (newOrder == null || !mounted) return;
+
+    final now = Timestamp.now();
+    if (newOrder == -1) {
+      await doc.reference.update({
+        'displayOrder': FieldValue.delete(),
+        'updatedAt': now,
+      });
+      return;
+    }
+    if (newOrder <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.tr('Enter a valid positive number.')),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final occupiedSnap = await FirebaseFirestore.instance
+        .collection('admin_videos')
+        .where('displayOrder', isEqualTo: newOrder)
+        .limit(1)
+        .get();
+
+    final occupiedDoc = occupiedSnap.docs.isEmpty
+        ? null
+        : occupiedSnap.docs.first;
+    if (occupiedDoc != null && occupiedDoc.id != doc.id) {
+      final occupiedData = occupiedDoc.data();
+      final occupiedName =
+          (occupiedData['caption'] ??
+                  occupiedData['adminName'] ??
+                  context.tr('Untitled clip'))
+              .toString();
+      final replace = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(context.tr('Position already used')),
+          content: Text(
+            '${context.tr('A video is already assigned to this position.')}\n\n$occupiedName\n\n${context.tr('Do you want to replace it?')}',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(context.tr('Cancel')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(context.tr('Replace')),
+            ),
+          ],
+        ),
+      );
+      if (replace != true || !mounted) return;
+      if (currentOrder != null) {
+        await occupiedDoc.reference.update({
+          'displayOrder': currentOrder,
+          'updatedAt': now,
+        });
+      } else {
+        await occupiedDoc.reference.update({
+          'displayOrder': FieldValue.delete(),
+          'updatedAt': now,
+        });
+      }
+    }
+
+    await doc.reference.update({'displayOrder': newOrder, 'updatedAt': now});
+  }
+
   String _normalizedStatus(Map<String, dynamic> data) {
     final raw = data['isVisibleOnFeed'];
     if (raw is bool) {
@@ -95,6 +223,23 @@ class _AdminFeedVideosScreenState extends State<AdminFeedVideosScreen> {
     int compareNum(num a, num b) => b.compareTo(a);
 
     switch (_sortBy) {
+      case 'feed_order':
+        sorted.sort((a, b) {
+          final aOrder = (a.data()['displayOrder'] as num?)?.toInt();
+          final bOrder = (b.data()['displayOrder'] as num?)?.toInt();
+          if (aOrder != null && bOrder != null) {
+            return aOrder.compareTo(bOrder);
+          }
+          if (aOrder != null) return -1;
+          if (bOrder != null) return 1;
+          final aDate = (a.data()['createdAt'] as Timestamp?)?.toDate();
+          final bDate = (b.data()['createdAt'] as Timestamp?)?.toDate();
+          if (aDate == null && bDate == null) return 0;
+          if (aDate == null) return 1;
+          if (bDate == null) return -1;
+          return bDate.compareTo(aDate);
+        });
+        break;
       case 'oldest':
         sorted.sort((a, b) {
           final aDate = (a.data()['createdAt'] as Timestamp?)?.toDate();
@@ -401,6 +546,10 @@ class _AdminFeedVideosScreenState extends State<AdminFeedVideosScreen> {
                                   },
                                   items: [
                                     DropdownMenuItem(
+                                      value: 'feed_order',
+                                      child: Text(context.tr('Feed Order')),
+                                    ),
+                                    DropdownMenuItem(
                                       value: 'newest',
                                       child: Text(context.tr('Newest First')),
                                     ),
@@ -461,6 +610,8 @@ class _AdminFeedVideosScreenState extends State<AdminFeedVideosScreen> {
                               ),
                               onPreview: _openVideoPreview,
                               onDetails: _openVideoDetails,
+                              onDownload: _downloadVideo,
+                              onSetPosition: _setDisplayOrder,
                             ),
                           ],
                           Padding(
@@ -635,6 +786,8 @@ class _ImprovedFeedClipCard extends StatelessWidget {
     required this.statusColor,
     required this.onPreview,
     required this.onDetails,
+    required this.onDownload,
+    required this.onSetPosition,
   });
 
   final QueryDocumentSnapshot<Map<String, dynamic>> doc;
@@ -645,6 +798,9 @@ class _ImprovedFeedClipCard extends StatelessWidget {
   final Color statusColor;
   final Future<void> Function(String) onPreview;
   final Future<void> Function(Map<String, dynamic>) onDetails;
+  final Future<void> Function(String, String) onDownload;
+  final Future<void> Function(QueryDocumentSnapshot<Map<String, dynamic>>)
+  onSetPosition;
 
   @override
   Widget build(BuildContext context) {
@@ -662,6 +818,7 @@ class _ImprovedFeedClipCard extends StatelessWidget {
     final visibility = (data['visibility'] ?? '').toString().trim();
     final category = (data['category'] ?? '').toString().trim();
     final isVisibleOnFeed = (data['isVisibleOnFeed'] as bool?) ?? true;
+    final displayOrder = (data['displayOrder'] as num?)?.toInt();
 
     return InkWell(
       onTap: videoUrl.isEmpty
@@ -746,6 +903,29 @@ class _ImprovedFeedClipCard extends StatelessWidget {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (displayOrder != null)
+                        Container(
+                          margin: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF6F3CFF).withOpacity(0.18),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: const Color(0xFF8C63FF).withOpacity(0.65),
+                            ),
+                          ),
+                          child: Text(
+                            '#$displayOrder',
+                            style: const TextStyle(
+                              color: Color(0xFFA565FF),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
                       Expanded(
                         child: Text(
                           caption,
@@ -861,8 +1041,15 @@ class _ImprovedFeedClipCard extends StatelessWidget {
                   onSelected: (value) async {
                     if (value == 'watch' && videoUrl.isNotEmpty) {
                       await onPreview(videoUrl);
+                    } else if (value == 'download' && videoUrl.isNotEmpty) {
+                      await onDownload(
+                        videoUrl,
+                        caption.isNotEmpty ? caption : adminName,
+                      );
                     } else if (value == 'details') {
                       await onDetails(data);
+                    } else if (value == 'position') {
+                      await onSetPosition(doc);
                     } else if (value == 'toggle_visibility') {
                       await doc.reference.update({
                         'isVisibleOnFeed': !isVisibleOnFeed,
@@ -897,9 +1084,18 @@ class _ImprovedFeedClipCard extends StatelessWidget {
                         value: 'watch',
                         child: Text(context.tr('Watch video')),
                       ),
+                    if (videoUrl.isNotEmpty)
+                      PopupMenuItem(
+                        value: 'download',
+                        child: Text(context.tr('Download')),
+                      ),
                     PopupMenuItem(
                       value: 'details',
                       child: Text(context.tr('Video details')),
+                    ),
+                    PopupMenuItem(
+                      value: 'position',
+                      child: Text(context.tr('Set feed position')),
                     ),
                     PopupMenuItem(
                       value: 'toggle_visibility',

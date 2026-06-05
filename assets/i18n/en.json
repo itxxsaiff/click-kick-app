@@ -359,6 +359,10 @@
   "Review the uploaded contest video, send notes, and approve when it is ready to go live.": "Review the uploaded contest video, send notes, and approve when it is ready to go live.",
   "Save Sponsorship Settings": "Save Sponsorship Settings",
   "Save Video": "Save Video",
+  "Video saved to your gallery.": "Video saved to your gallery.",
+  "Video download failed. Please try again.": "Video download failed. Please try again.",
+  "Gallery permission is required to save videos.": "Gallery permission is required to save videos.",
+  "Download opened in browser.": "Download opened in browser.",
   "Saving...": "Saving...",
   "Script video attached": "Script video attached",
   "Script video selected": "Script video selected",
@@ -1026,5 +1030,15 @@
   "Unapproved": "Unapproved",
   "Unapprove": "Unapprove",
   "Restore": "Restore",
-  "Rank": "Rank"
+  "Rank": "Rank",
+  "Feed Position (Optional)": "Feed Position (Optional)",
+  "Feed Position": "Feed Position",
+  "Feed Order": "Feed Order",
+  "Set feed position": "Set feed position",
+  "Position already used": "Position already used",
+  "A video is already assigned to this position.": "A video is already assigned to this position.",
+  "Do you want to replace it?": "Do you want to replace it?",
+  "Replace": "Replace",
+  "Clear": "Clear",
+  "Enter a valid positive number.": "Enter a valid positive number."
 }

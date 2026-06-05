@@ -359,6 +359,10 @@
   "Review the uploaded contest video, send notes, and approve when it is ready to go live.": "راجع فيديو المسابقة المرفوع، وأرسل الملاحظات، ثم اعتمده عندما يصبح جاهزًا للنشر.",
   "Save Sponsorship Settings": "حفظ إعدادات الرعاية",
   "Save Video": "حفظ الفيديو",
+  "Video saved to your gallery.": "تم حفظ الفيديو في المعرض.",
+  "Video download failed. Please try again.": "فشل تنزيل الفيديو. حاول مرة أخرى.",
+  "Gallery permission is required to save videos.": "مطلوب إذن المعرض لحفظ الفيديوهات.",
+  "Download opened in browser.": "تم فتح التنزيل في المتصفح.",
   "Saving...": "جارٍ الحفظ...",
   "Script video attached": "تم إرفاق فيديو السكربت",
   "Script video selected": "تم اختيار فيديو السكربت",
@@ -1026,5 +1030,15 @@
   "Unapproved": "غير معتمد",
   "Unapprove": "إلغاء الاعتماد",
   "Restore": "استعادة",
-  "Rank": "الترتيب"
+  "Rank": "الترتيب",
+  "Feed Position (Optional)": "ترتيب الظهور في الصفحة الرئيسية (اختياري)",
+  "Feed Position": "ترتيب الظهور",
+  "Feed Order": "ترتيب الظهور",
+  "Set feed position": "تحديد ترتيب الظهور",
+  "Position already used": "هذا الترتيب مستخدم بالفعل",
+  "A video is already assigned to this position.": "يوجد فيديو آخر مخصص لهذا الترتيب.",
+  "Do you want to replace it?": "هل تريد استبداله؟",
+  "Replace": "استبدال",
+  "Clear": "مسح",
+  "Enter a valid positive number.": "أدخل رقمًا موجبًا صحيحًا."
 }

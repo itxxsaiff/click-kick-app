@@ -446,6 +446,7 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
   int _videoRequestId = 0;
   bool _appliedSharedTarget = false;
   String? _lastTrackedAdminVideoId;
+  String? _lastTrackedContestId;
   Map<String, int> _watchedAdminVideos = const <String, int>{};
 
   @override
@@ -505,6 +506,11 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
 
   Future<void> _setActiveVideo(String url, {bool autoplay = true}) async {
     if (url.isEmpty) return;
+    if (url == _currentVideoUrl &&
+        _videoController == null &&
+        _isVideoLoading) {
+      return;
+    }
     final requestId = ++_videoRequestId;
     if (mounted) {
       setState(() => _isVideoLoading = true);
@@ -555,17 +561,20 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
         _videoController = controller;
       }
       if (autoplay) {
-        controller.play();
+        await controller.play();
       } else {
-        controller.pause();
+        await controller.pause();
       }
     } catch (_) {
       await controller.dispose();
       if (mounted) {
         setState(() {
+          _currentVideoUrl = '';
           _isVideoLoading = false;
           _failedAdminVideoUrls.add(url);
         });
+      } else {
+        _currentVideoUrl = '';
       }
       return;
     }
@@ -610,7 +619,16 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
         await _clearActiveVideo();
         return;
       }
-      if (url == _currentVideoUrl) return;
+      if (url == _currentVideoUrl &&
+          _videoController == null &&
+          _isVideoLoading) {
+        return;
+      }
+      if (url == _currentVideoUrl &&
+          _videoController != null &&
+          _videoController!.value.isInitialized) {
+        return;
+      }
       await _setActiveVideo(url, autoplay: shouldAutoplay);
     });
   }
@@ -626,16 +644,29 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
     if (mounted) setState(() {});
   }
 
-  Future<void> _trackAdminVideoView(_FeedItem item) async {
-    if (item.adminVideoId.isEmpty) return;
-    if (_lastTrackedAdminVideoId == item.adminVideoId) return;
-    _lastTrackedAdminVideoId = item.adminVideoId;
-    await _markAdminVideoWatched(item.adminVideoId);
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    try {
-      await AuthService().incrementAdminVideoView(item.adminVideoId);
-    } catch (_) {}
+  Future<void> _trackFeedVideoView(_FeedItem item) async {
+    if (item.isAdminVideo) {
+      if (item.adminVideoId.isEmpty) return;
+      if (_lastTrackedAdminVideoId == item.adminVideoId) return;
+      _lastTrackedAdminVideoId = item.adminVideoId;
+      await _markAdminVideoWatched(item.adminVideoId);
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      try {
+        await AuthService().incrementAdminVideoView(item.adminVideoId);
+      } catch (_) {}
+      return;
+    }
+    if (item.isContest) {
+      if (item.contestId.isEmpty) return;
+      if (_lastTrackedContestId == item.contestId) return;
+      _lastTrackedContestId = item.contestId;
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      try {
+        await AuthService().incrementContestView(item.contestId);
+      } catch (_) {}
+    }
   }
 
   Future<void> _loadWatchedAdminVideos() async {
@@ -707,7 +738,6 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: FirebaseFirestore.instance
               .collection('admin_videos')
-              .orderBy('createdAt', descending: true)
               .snapshots(),
           builder: (context, adminVideosSnapshot) {
             if (adminVideosSnapshot.hasError) {
@@ -722,95 +752,148 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
               return const Center(child: CircularProgressIndicator());
             }
 
-            final newsDocs = newsSnapshot.data!.docs;
-            final adminVideoDocs = adminVideosSnapshot.data!.docs.where((doc) {
-              final data = doc.data();
-              final isVisible = data['isVisibleOnFeed'];
-              if (isVisible is bool) return isVisible;
-              return true;
-            }).toList();
-            final feedItems = _buildFeedItems(newsDocs, adminVideoDocs);
+            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance
+                  .collection('contests')
+                  .orderBy('createdAt', descending: true)
+                  .snapshots(),
+              builder: (context, contestsSnapshot) {
+                if (contestsSnapshot.hasError) {
+                  return Center(
+                    child: Text(
+                      context.tr('Unable to load contests.'),
+                      style: const TextStyle(color: AppColors.textMuted),
+                    ),
+                  );
+                }
+                if (!contestsSnapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-            if (feedItems.isEmpty) {
-              return Center(
-                child: Text(
-                  context.tr('No updates available right now.'),
-                  style: const TextStyle(color: AppColors.textMuted),
-                ),
-              );
-            }
-
-            if (!_appliedSharedTarget &&
-                widget.sharedAdminVideoId != null &&
-                widget.sharedAdminVideoId!.isNotEmpty) {
-              final targetIndex = feedItems.indexWhere(
-                (item) => item.adminVideoId == widget.sharedAdminVideoId,
-              );
-              if (targetIndex >= 0) {
-                _appliedSharedTarget = true;
-                _activeIndex = targetIndex;
-                WidgetsBinding.instance.addPostFrameCallback((_) async {
-                  if (!mounted || !_pageController.hasClients) return;
-                  _pageController.jumpToPage(targetIndex);
-                  if (widget.isVisible) {
-                    await _setActiveVideo(
-                      feedItems[targetIndex].videoUrl,
-                      autoplay: true,
-                    );
+                final newsDocs = newsSnapshot.data!.docs;
+                final adminVideoDocs = adminVideosSnapshot.data!.docs.where((
+                  doc,
+                ) {
+                  final data = doc.data();
+                  final isVisible = data['isVisibleOnFeed'];
+                  if (isVisible is bool) return isVisible;
+                  return true;
+                }).toList();
+                final contestDocs = contestsSnapshot.data!.docs.where((doc) {
+                  final data = doc.data();
+                  final contestType = (data['contestType'] ?? 'video_contest')
+                      .toString();
+                  final status = (data['status'] ?? '').toString();
+                  final videoUrl = (data['contestVideoUrl'] ?? '').toString();
+                  if (videoUrl.isEmpty) return false;
+                  if (contestType == 'sponsor_contest') {
+                    return status == 'live';
                   }
-                });
-              }
-            }
+                  return true;
+                }).toList();
+                final feedItems = _buildFeedItems(
+                  newsDocs,
+                  adminVideoDocs,
+                  contestDocs,
+                );
 
-            final safeIndex = _activeIndex.clamp(0, feedItems.length - 1);
-            final activeItem = feedItems[safeIndex];
-            if (widget.isVisible) {
-              _scheduleActiveVideoSync(activeItem, autoplay: true);
-              if (activeItem.isAdminVideo) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  _trackAdminVideoView(activeItem);
-                });
-              }
-            }
+                if (feedItems.isEmpty) {
+                  return Center(
+                    child: Text(
+                      context.tr('No updates available right now.'),
+                      style: const TextStyle(color: AppColors.textMuted),
+                    ),
+                  );
+                }
 
-            return PageView.builder(
-              scrollDirection: Axis.vertical,
-              controller: _pageController,
-              itemCount: feedItems.length,
-              onPageChanged: (i) async {
-                setState(() => _activeIndex = i);
-                if (!widget.isVisible || _feedPlaybackLocked) return;
-                final item = feedItems[i];
-                if (item.hasVideo && item.videoUrl.isNotEmpty) {
-                  await _setActiveVideo(item.videoUrl, autoplay: true);
-                } else {
-                  await _clearActiveVideo();
+                if (!_appliedSharedTarget &&
+                    widget.sharedAdminVideoId != null &&
+                    widget.sharedAdminVideoId!.isNotEmpty) {
+                  final targetIndex = feedItems.indexWhere(
+                    (item) => item.adminVideoId == widget.sharedAdminVideoId,
+                  );
+                  if (targetIndex >= 0) {
+                    _appliedSharedTarget = true;
+                    _activeIndex = targetIndex;
+                    WidgetsBinding.instance.addPostFrameCallback((_) async {
+                      if (!mounted || !_pageController.hasClients) return;
+                      _pageController.jumpToPage(targetIndex);
+                      if (widget.isVisible) {
+                        await _setActiveVideo(
+                          feedItems[targetIndex].videoUrl,
+                          autoplay: true,
+                        );
+                      }
+                    });
+                  }
                 }
-              },
-              itemBuilder: (context, index) {
-                final item = feedItems[index];
-                if (item.isNews) {
-                  return _NewsFeedCard(item: item);
+
+                final safeIndex = _activeIndex.clamp(0, feedItems.length - 1);
+                final activeItem = feedItems[safeIndex];
+                if (widget.isVisible) {
+                  _scheduleActiveVideoSync(activeItem, autoplay: true);
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _trackFeedVideoView(activeItem);
+                  });
                 }
-                final isActive = index == safeIndex;
-                final isShowingActiveVideo =
-                    isActive &&
-                    _videoController != null &&
-                    _videoController!.value.isInitialized &&
-                    _currentVideoUrl == item.videoUrl;
-                final shouldShowLoading =
-                    isActive &&
-                    item.hasVideo &&
-                    (_isVideoLoading || !isShowingActiveVideo);
-                final isPlaying =
-                    isShowingActiveVideo && _videoController!.value.isPlaying;
-                return _AdminVideoFeedCard(
-                  item: item,
-                  isShowingActiveVideo: isShowingActiveVideo,
-                  isPlaying: isPlaying,
-                  isLoading: shouldShowLoading,
-                  controller: isShowingActiveVideo ? _videoController : null,
-                  onTapVideo: isShowingActiveVideo ? _togglePlayback : null,
+
+                return PageView.builder(
+                  scrollDirection: Axis.vertical,
+                  controller: _pageController,
+                  itemCount: feedItems.length,
+                  onPageChanged: (i) async {
+                    setState(() => _activeIndex = i);
+                    if (!widget.isVisible || _feedPlaybackLocked) return;
+                    final item = feedItems[i];
+                    if (item.hasVideo && item.videoUrl.isNotEmpty) {
+                      await _setActiveVideo(item.videoUrl, autoplay: true);
+                    } else {
+                      await _clearActiveVideo();
+                    }
+                  },
+                  itemBuilder: (context, index) {
+                    final item = feedItems[index];
+                    if (item.isNews) {
+                      return _NewsFeedCard(item: item);
+                    }
+                    final isActive = index == safeIndex;
+                    final isShowingActiveVideo =
+                        isActive &&
+                        _videoController != null &&
+                        _videoController!.value.isInitialized &&
+                        _currentVideoUrl == item.videoUrl;
+                    final shouldShowLoading =
+                        isActive &&
+                        item.hasVideo &&
+                        (_isVideoLoading || !isShowingActiveVideo);
+                    final isPlaying =
+                        isShowingActiveVideo &&
+                        _videoController!.value.isPlaying;
+                    if (item.isContest) {
+                      return _ContestFeedCard(
+                        item: item.toContestFeedItem(),
+                        controller: isShowingActiveVideo
+                            ? _videoController
+                            : null,
+                        isShowingActiveVideo: isShowingActiveVideo,
+                        isPlaying: isPlaying,
+                        isLoading: shouldShowLoading,
+                        onTapVideo: isShowingActiveVideo
+                            ? _togglePlayback
+                            : null,
+                      );
+                    }
+                    return _AdminVideoFeedCard(
+                      item: item,
+                      isShowingActiveVideo: isShowingActiveVideo,
+                      isPlaying: isPlaying,
+                      isLoading: shouldShowLoading,
+                      controller: isShowingActiveVideo
+                          ? _videoController
+                          : null,
+                      onTapVideo: isShowingActiveVideo ? _togglePlayback : null,
+                    );
+                  },
                 );
               },
             );
@@ -823,29 +906,45 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
   List<_FeedItem> _buildFeedItems(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> newsDocs,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> adminVideoDocs,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> contestDocs,
   ) {
     final newsItems = newsDocs.map(_FeedItem.fromNews).toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-    final adminVideoItems =
-        adminVideoDocs
-            .where((doc) {
-              final videoUrl = (doc.data()['videoUrl'] ?? '').toString().trim();
-              return videoUrl.isNotEmpty &&
-                  !_failedAdminVideoUrls.contains(videoUrl);
-            })
-            .map(_FeedItem.fromAdminVideo)
-            .toList()
-          ..sort((a, b) {
-            final aWatched = _watchedAdminVideos.containsKey(a.adminVideoId);
-            final bWatched = _watchedAdminVideos.containsKey(b.adminVideoId);
-            if (aWatched != bWatched) {
-              return aWatched ? 1 : -1;
-            }
-            return b.createdAt.compareTo(a.createdAt);
-          });
+    final adminVideoItems = adminVideoDocs
+        .where((doc) {
+          final videoUrl = (doc.data()['videoUrl'] ?? '').toString().trim();
+          return videoUrl.isNotEmpty &&
+              !_failedAdminVideoUrls.contains(videoUrl);
+        })
+        .map(_FeedItem.fromAdminVideo)
+        .toList();
 
-    return <_FeedItem>[...adminVideoItems, ...newsItems];
+    final contestItems = contestDocs
+        .map(_FeedItem.fromContest)
+        .where((item) => !_failedAdminVideoUrls.contains(item.videoUrl))
+        .toList();
+
+    final videoItems = <_FeedItem>[...adminVideoItems, ...contestItems]
+      ..sort((a, b) {
+        final aOrder = a.displayOrder;
+        final bOrder = b.displayOrder;
+        if (aOrder != null && bOrder != null) {
+          return aOrder.compareTo(bOrder);
+        }
+        if (aOrder != null) return -1;
+        if (bOrder != null) return 1;
+        if (a.isAdminVideo && b.isAdminVideo) {
+          final aWatched = _watchedAdminVideos.containsKey(a.adminVideoId);
+          final bWatched = _watchedAdminVideos.containsKey(b.adminVideoId);
+          if (aWatched != bWatched) {
+            return aWatched ? 1 : -1;
+          }
+        }
+        return b.createdAt.compareTo(a.createdAt);
+      });
+
+    return <_FeedItem>[...videoItems, ...newsItems];
   }
 }
 
@@ -927,6 +1026,11 @@ class _PublicContestsTabState extends State<_PublicContestsTab>
 
   Future<void> _setActiveVideo(String url) async {
     if (url.isEmpty) return;
+    if (url == _currentVideoUrl &&
+        _videoController == null &&
+        _isVideoLoading) {
+      return;
+    }
     final requestId = ++_videoRequestId;
     if (mounted) {
       setState(() => _isVideoLoading = true);
@@ -972,10 +1076,17 @@ class _PublicContestsTabState extends State<_PublicContestsTab>
       } else {
         _videoController = controller;
       }
-      controller.play();
+      await controller.play();
     } catch (_) {
       await controller.dispose();
-      if (mounted) setState(() => _isVideoLoading = false);
+      if (mounted) {
+        setState(() {
+          _currentVideoUrl = '';
+          _isVideoLoading = false;
+        });
+      } else {
+        _currentVideoUrl = '';
+      }
       return;
     }
     if (!mounted) return;
@@ -1013,7 +1124,16 @@ class _PublicContestsTabState extends State<_PublicContestsTab>
         await _clearActiveVideo();
         return;
       }
-      if (url == _currentVideoUrl) return;
+      if (url == _currentVideoUrl &&
+          _videoController == null &&
+          _isVideoLoading) {
+        return;
+      }
+      if (url == _currentVideoUrl &&
+          _videoController != null &&
+          _videoController!.value.isInitialized) {
+        return;
+      }
       await _setActiveVideo(url);
     });
   }
@@ -1419,6 +1539,7 @@ class _ContestFeedCard extends StatelessWidget {
               ),
             ),
           ),
+          const Positioned(right: 16, top: 18, child: _FeedLogoBadge()),
           if (isShowingActiveVideo)
             IgnorePointer(
               child: AnimatedOpacity(
@@ -1681,6 +1802,11 @@ class _FeedItem {
     this.videoUrl = '',
     this.adminName = '',
     this.adminVideoId = '',
+    this.contestId = '',
+    this.logoUrl = '',
+    this.winnerPrize = 0,
+    this.contestData = const <String, dynamic>{},
+    this.displayOrder,
     this.viewCount = 0,
     this.shareCount = 0,
   });
@@ -1693,12 +1819,18 @@ class _FeedItem {
   final String videoUrl;
   final String adminName;
   final String adminVideoId;
+  final String contestId;
+  final String logoUrl;
+  final double winnerPrize;
+  final Map<String, dynamic> contestData;
+  final int? displayOrder;
   final int viewCount;
   final int shareCount;
 
   bool get isNews => type == 'news';
   bool get isAdminVideo => type == 'admin_video';
-  bool get hasVideo => isAdminVideo;
+  bool get isContest => type == 'contest';
+  bool get hasVideo => isAdminVideo || isContest;
 
   factory _FeedItem.fromNews(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();
@@ -1723,8 +1855,42 @@ class _FeedItem {
       videoUrl: (data['videoUrl'] ?? '').toString(),
       adminName: (data['adminName'] ?? 'Admin').toString(),
       adminVideoId: doc.id,
+      displayOrder: (data['displayOrder'] as num?)?.toInt(),
       viewCount: ((data['views'] ?? data['viewCount'] ?? 0) as num).toInt(),
       shareCount: ((data['shareCount'] ?? 0) as num).toInt(),
+    );
+  }
+
+  factory _FeedItem.fromContest(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data();
+    return _FeedItem(
+      type: 'contest',
+      title: (data['title'] ?? '').toString(),
+      description: (data['description'] ?? '').toString(),
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime(2000),
+      videoUrl: (data['contestVideoUrl'] ?? '').toString(),
+      contestId: doc.id,
+      logoUrl: (data['logoUrl'] ?? '').toString(),
+      winnerPrize: ((data['winnerPrize'] ?? 100) as num).toDouble(),
+      contestData: Map<String, dynamic>.from(data),
+      viewCount: ((data['viewCount'] ?? data['views'] ?? 0) as num).toInt(),
+      shareCount: ((data['shareCount'] ?? 0) as num).toInt(),
+    );
+  }
+
+  _ContestFeedItem toContestFeedItem() {
+    return _ContestFeedItem(
+      id: contestId,
+      title: title,
+      description: description,
+      videoUrl: videoUrl,
+      logoUrl: logoUrl,
+      contestType: (contestData['contestType'] ?? 'video_contest').toString(),
+      sponsorId: (contestData['sponsorId'] ?? '').toString(),
+      winnerPrize: winnerPrize,
+      data: contestData,
     );
   }
 }
@@ -1846,6 +2012,7 @@ class _AdminVideoFeedCard extends StatelessWidget {
               ),
             ),
           ),
+          const Positioned(right: 16, top: 18, child: _FeedLogoBadge()),
           if (isShowingActiveVideo)
             IgnorePointer(
               child: AnimatedOpacity(
@@ -2076,6 +2243,32 @@ class _FeedMetricButton extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       onTap: onTap,
       child: content,
+    );
+  }
+}
+
+class _FeedLogoBadge extends StatelessWidget {
+  const _FeedLogoBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 54,
+      height: 54,
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.hotPink.withValues(alpha: 0.16),
+            blurRadius: 16,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
     );
   }
 }
@@ -2477,11 +2670,55 @@ class _ContestParticipantVideosSheet extends StatelessWidget {
                                   await Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) =>
-                                          _DashboardVideoPlayerScreen(
-                                            videoUrl: videoUrl,
-                                            title: title,
-                                          ),
+                                      builder: (_) => _ContestParticipantReelsScreen(
+                                        contestTitle: contestTitle,
+                                        initialIndex: index,
+                                        videos: docs
+                                            .map(
+                                              (
+                                                entry,
+                                              ) => _ContestParticipantVideo(
+                                                id: entry.id,
+                                                title:
+                                                    (entry.data()['title'] ??
+                                                            entry
+                                                                .data()['description'] ??
+                                                            context.tr(
+                                                              'Contest Video',
+                                                            ))
+                                                        .toString(),
+                                                participantName:
+                                                    (entry.data()['userName'] ??
+                                                            entry
+                                                                .data()['participantName'] ??
+                                                            entry
+                                                                .data()['displayName'] ??
+                                                            context.tr(
+                                                              'Participant',
+                                                            ))
+                                                        .toString(),
+                                                videoUrl:
+                                                    (entry.data()['videoUrl'] ??
+                                                            '')
+                                                        .toString(),
+                                                votes:
+                                                    ((entry.data()['voteCount'] ??
+                                                                0)
+                                                            as num)
+                                                        .toInt(),
+                                                shares:
+                                                    ((entry.data()['shareCount'] ??
+                                                                0)
+                                                            as num)
+                                                        .toInt(),
+                                              ),
+                                            )
+                                            .where(
+                                              (entry) =>
+                                                  entry.videoUrl.isNotEmpty,
+                                            )
+                                            .toList(),
+                                      ),
                                     ),
                                   );
                                 },
@@ -3615,6 +3852,297 @@ class _DashboardVideoPlayerScreenState
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ContestParticipantVideo {
+  const _ContestParticipantVideo({
+    required this.id,
+    required this.title,
+    required this.participantName,
+    required this.videoUrl,
+    required this.votes,
+    required this.shares,
+  });
+
+  final String id;
+  final String title;
+  final String participantName;
+  final String videoUrl;
+  final int votes;
+  final int shares;
+}
+
+class _ContestParticipantReelsScreen extends StatefulWidget {
+  const _ContestParticipantReelsScreen({
+    required this.contestTitle,
+    required this.videos,
+    this.initialIndex = 0,
+  });
+
+  final String contestTitle;
+  final List<_ContestParticipantVideo> videos;
+  final int initialIndex;
+
+  @override
+  State<_ContestParticipantReelsScreen> createState() =>
+      _ContestParticipantReelsScreenState();
+}
+
+class _ContestParticipantReelsScreenState
+    extends State<_ContestParticipantReelsScreen> {
+  late final PageController _pageController;
+  VideoPlayerController? _controller;
+  int _currentIndex = 0;
+  bool _showControls = true;
+
+  _ContestParticipantVideo get _currentVideo => widget.videos[_currentIndex];
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex.clamp(0, widget.videos.length - 1);
+    _pageController = PageController(initialPage: _currentIndex);
+    _loadVideo(widget.videos[_currentIndex].videoUrl);
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadVideo(String videoUrl) async {
+    final old = _controller;
+    final next = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
+    setState(() {
+      _controller = null;
+    });
+    await old?.dispose();
+    await next.initialize();
+    await next.setLooping(true);
+    await next.play();
+    if (!mounted) {
+      await next.dispose();
+      return;
+    }
+    setState(() {
+      _controller = next;
+      _showControls = true;
+    });
+  }
+
+  Future<void> _onPageChanged(int index) async {
+    if (index == _currentIndex) return;
+    setState(() => _currentIndex = index);
+    await _loadVideo(widget.videos[index].videoUrl);
+  }
+
+  Future<void> _togglePlayback() async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    if (controller.value.isPlaying) {
+      await controller.pause();
+    } else {
+      await controller.play();
+    }
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    final current = _currentVideo;
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageController,
+            scrollDirection: Axis.vertical,
+            itemCount: widget.videos.length,
+            onPageChanged: (index) => _onPageChanged(index),
+            itemBuilder: (context, index) {
+              final video = widget.videos[index];
+              final isActive = index == _currentIndex;
+              final activeController = isActive ? controller : null;
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (isActive &&
+                      activeController != null &&
+                      activeController.value.isInitialized)
+                    FittedBox(
+                      fit: BoxFit.cover,
+                      child: SizedBox(
+                        width: activeController.value.size.width,
+                        height: activeController.value.size.height,
+                        child: VideoPlayer(activeController),
+                      ),
+                    )
+                  else
+                    Container(color: AppColors.card),
+                  Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.transparent, Color(0xD0100A1E)],
+                        stops: [0.42, 1],
+                      ),
+                    ),
+                  ),
+                  if (isActive)
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () =>
+                          setState(() => _showControls = !_showControls),
+                    ),
+                  const Positioned(right: 16, top: 22, child: _FeedLogoBadge()),
+                  Positioned(
+                    top: MediaQuery.of(context).padding.top + 10,
+                    left: 12,
+                    right: 12,
+                    child: Row(
+                      children: [
+                        IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(
+                            Icons.arrow_back_rounded,
+                            color: Colors.white,
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            children: [
+                              Text(
+                                widget.contestTitle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${_currentIndex + 1} / ${widget.videos.length}',
+                                style: const TextStyle(
+                                  color: AppColors.textMuted,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 48),
+                      ],
+                    ),
+                  ),
+                  Positioned(
+                    right: 14,
+                    bottom: 118,
+                    child: _FeedActionRail(
+                      children: [
+                        _FeedMetricButton(
+                          icon: Icons.how_to_vote_rounded,
+                          value: current.votes.toString(),
+                          label: context.tr('Votes'),
+                        ),
+                        _FeedMetricButton(
+                          icon: Icons.share_outlined,
+                          value: current.shares.toString(),
+                          label: context.tr('Shares'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Positioned(
+                    left: 18,
+                    right: 82,
+                    bottom: 28,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          video.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 28,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          video.participantName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.textLight,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (isActive)
+                    IgnorePointer(
+                      child: AnimatedOpacity(
+                        opacity:
+                            _showControls &&
+                                (activeController == null ||
+                                    !activeController.value.isPlaying)
+                            ? 1
+                            : 0,
+                        duration: const Duration(milliseconds: 180),
+                        child: Center(
+                          child: Container(
+                            width: 82,
+                            height: 82,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.32),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.22),
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.play_arrow_rounded,
+                              color: AppColors.hotPink,
+                              size: 48,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+          if (controller == null)
+            const Center(
+              child: CircularProgressIndicator(
+                color: AppColors.hotPink,
+                strokeWidth: 4.6,
+              ),
+            ),
+          if (controller != null)
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onDoubleTap: _togglePlayback,
+              ),
+            ),
         ],
       ),
     );

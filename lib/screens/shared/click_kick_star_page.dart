@@ -320,18 +320,21 @@ class _SearchAndFilters extends StatelessWidget {
               );
             }
 
-            return Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(child: countryDropdown),
-                    const SizedBox(width: 10),
-                    Expanded(child: levelDropdown),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                votesDropdown,
-              ],
+            final itemWidth = constraints.maxWidth < 420
+                ? 180.0
+                : ((constraints.maxWidth - 20) / 3).clamp(170.0, 240.0);
+
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  SizedBox(width: itemWidth, child: countryDropdown),
+                  const SizedBox(width: 10),
+                  SizedBox(width: itemWidth, child: levelDropdown),
+                  const SizedBox(width: 10),
+                  SizedBox(width: itemWidth, child: votesDropdown),
+                ],
+              ),
             );
           },
         ),
@@ -355,6 +358,7 @@ class _FilterChipDropdown<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
+      height: 56,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         color: AppColors.card,
@@ -365,6 +369,8 @@ class _FilterChipDropdown<T> extends StatelessWidget {
         child: DropdownButton<T>(
           value: value,
           isExpanded: true,
+          alignment: AlignmentDirectional.centerStart,
+          icon: const Icon(Icons.keyboard_arrow_down_rounded),
           borderRadius: BorderRadius.circular(16),
           dropdownColor: AppColors.card,
           items: items,

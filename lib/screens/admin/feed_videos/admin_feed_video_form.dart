@@ -23,6 +23,7 @@ class AdminFeedVideoForm extends StatefulWidget {
 class _AdminFeedVideoFormState extends State<AdminFeedVideoForm> {
   final _formKey = GlobalKey<FormState>();
   final _caption = TextEditingController();
+  final _displayOrder = TextEditingController();
   Uint8List? _videoBytes;
   String _videoName = '';
   bool _saving = false;
@@ -31,6 +32,7 @@ class _AdminFeedVideoFormState extends State<AdminFeedVideoForm> {
   @override
   void dispose() {
     _caption.dispose();
+    _displayOrder.dispose();
     super.dispose();
   }
 
@@ -91,6 +93,47 @@ class _AdminFeedVideoFormState extends State<AdminFeedVideoForm> {
       return;
     }
 
+    final requestedOrder = int.tryParse(_displayOrder.text.trim());
+    QueryDocumentSnapshot<Map<String, dynamic>>? occupiedOrderDoc;
+    if (requestedOrder != null && requestedOrder > 0) {
+      final occupiedSnap = await FirebaseFirestore.instance
+          .collection('admin_videos')
+          .where('displayOrder', isEqualTo: requestedOrder)
+          .limit(1)
+          .get();
+      if (occupiedSnap.docs.isNotEmpty) {
+        final occupied = occupiedSnap.docs.first;
+        final occupiedData = occupied.data();
+        final occupiedName =
+            (occupiedData['caption'] ??
+                    occupiedData['adminName'] ??
+                    context.tr('Untitled clip'))
+                .toString();
+        if (!mounted) return;
+        final replace = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: Text(context.tr('Position already used')),
+            content: Text(
+              '${context.tr('A video is already assigned to this position.')}\n\n$occupiedName\n\n${context.tr('Do you want to replace it?')}',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(context.tr('Cancel')),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text(context.tr('Replace')),
+              ),
+            ],
+          ),
+        );
+        if (replace != true) return;
+        occupiedOrderDoc = occupied;
+      }
+    }
+
     setState(() => _saving = true);
     try {
       final userSnap = await FirebaseFirestore.instance
@@ -112,9 +155,18 @@ class _AdminFeedVideoFormState extends State<AdminFeedVideoForm> {
         'adminId': user.uid,
         'adminName': adminName,
         'isVisibleOnFeed': true,
+        if (requestedOrder != null && requestedOrder > 0)
+          'displayOrder': requestedOrder,
         'createdAt': now,
         'updatedAt': now,
       });
+
+      if (occupiedOrderDoc != null) {
+        await occupiedOrderDoc.reference.update({
+          'displayOrder': FieldValue.delete(),
+          'updatedAt': now,
+        });
+      }
 
       if (!mounted) return;
       Navigator.pop(context, true);
@@ -250,6 +302,24 @@ class _AdminFeedVideoFormState extends State<AdminFeedVideoForm> {
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
                         return context.tr('Caption is required.');
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  TextFormField(
+                    controller: _displayOrder,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: context.tr('Feed Position (Optional)'),
+                      hintText: context.tr('1, 2, 3, 4...'),
+                    ),
+                    validator: (value) {
+                      final text = value?.trim() ?? '';
+                      if (text.isEmpty) return null;
+                      final number = int.tryParse(text);
+                      if (number == null || number <= 0) {
+                        return context.tr('Enter a valid positive number.');
                       }
                       return null;
                     },

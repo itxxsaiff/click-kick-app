@@ -10,6 +10,7 @@ import 'package:video_player/video_player.dart';
 import '../../l10n/l10n.dart';
 import '../../services/contest_report_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/video_download_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/delete_account_dialog.dart';
 import '../../widgets/pdf_preview_screen.dart';
@@ -826,6 +827,20 @@ class _SponsorContestDetailPageState extends State<_SponsorContestDetailPage> {
     );
   }
 
+  Future<void> _downloadVideo(String videoUrl, String fileName) async {
+    final result = await VideoDownloadService.saveVideo(
+      videoUrl: videoUrl,
+      fileName: fileName,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(context.tr(result.messageKey)),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final contestDocStream = FirebaseFirestore.instance
@@ -1062,6 +1077,18 @@ class _SponsorContestDetailPageState extends State<_SponsorContestDetailPage> {
                                           Icons.play_circle_outline,
                                         ),
                                         label: Text(context.tr('Watch')),
+                                      ),
+                                      OutlinedButton.icon(
+                                        onPressed: videoUrl.isEmpty
+                                            ? null
+                                            : () => _downloadVideo(
+                                                videoUrl,
+                                                '${widget.contestId}_${doc.id}',
+                                              ),
+                                        icon: const Icon(
+                                          Icons.download_rounded,
+                                        ),
+                                        label: Text(context.tr('Download')),
                                       ),
                                       OutlinedButton.icon(
                                         onPressed: () => _showCommentDialog(

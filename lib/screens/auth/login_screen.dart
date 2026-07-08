@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../../l10n/l10n.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/gradient_button.dart';
 
-enum _SocialProvider { google }
+enum _SocialProvider { google, apple }
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -22,6 +23,11 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _autoValidate = false;
   bool _obscurePassword = true;
   bool _rememberMe = true;
+
+  bool get _supportsAppleSignIn =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.macOS);
 
   @override
   void dispose() {
@@ -76,13 +82,14 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       if (provider == _SocialProvider.google) {
         await _authService.signInWithGoogle();
-      } else {
-        await _authService.signInWithFacebook();
+      } else if (provider == _SocialProvider.apple) {
+        await _authService.signInWithApple();
       }
       if (!mounted) return;
       _showMessage(context.tr('Login successful.'));
       Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
+      debugPrint('Social login error: $e');
       _showMessage(_friendlySocialError(e));
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -96,8 +103,30 @@ class _LoginScreenState extends State<LoginScreen> {
         'This email already exists. Login with your password once to link this social account.',
       );
     }
+    if (text.contains('account-exists-with-different-credential') ||
+        text.contains('email-already-in-use') ||
+        text.contains('credential-already-in-use')) {
+      return context.tr(
+        'This email already exists. Login with your password once to link this social account.',
+      );
+    }
     if (text.contains('operation-not-allowed')) {
       return context.tr('This social provider is not enabled in Firebase yet.');
+    }
+    if (text.contains('account-disabled-by-admin')) {
+      return context.tr(
+        'Your account access has been disabled. Please contact the administrator.',
+      );
+    }
+    if (text.contains('invalid-credential') ||
+        text.contains('invalid-oauth-response') ||
+        text.contains('invalid-apple-credential') ||
+        text.contains('apple-login-failed')) {
+      return context.tr('Apple login could not be completed. Please try again.');
+    }
+    if (text.contains('sign_in_canceled') ||
+        text.contains('AuthorizationErrorCode.canceled')) {
+      return context.tr('Login cancelled.');
     }
     if (text.contains('popup-closed-by-user')) {
       return context.tr('Login cancelled.');
@@ -334,27 +363,57 @@ class _LoginScreenState extends State<LoginScreen> {
                       ],
                     ),
                     SizedBox(height: isCompact ? 10 : 12),
-                    Row(
+                    Column(
                       children: [
-                        Expanded(
-                          child: OutlinedButton(
+                        _SocialLoginButton(
+                          label: context.tr('Login with Google'),
+                          onPressed: _isLoading
+                              ? null
+                              : () =>
+                                    _handleSocialLogin(_SocialProvider.google),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                width: 34,
+                                height: 34,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.08),
+                                  shape: BoxShape.circle,
+                                ),
+                                alignment: Alignment.center,
+                                child: const Text(
+                                  'G',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Flexible(
+                                child: Text(
+                                  context.tr('Login with Google'),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (_supportsAppleSignIn) ...[
+                          const SizedBox(height: 12),
+                          _SocialLoginButton(
+                            label: context.tr('Continue with Apple'),
                             onPressed: _isLoading
                                 ? null
-                                : () => _handleSocialLogin(
-                                    _SocialProvider.google,
-                                  ),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.white,
-                              side: const BorderSide(color: AppColors.border),
-                              backgroundColor: AppColors.card,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(18),
-                              ),
-                            ),
+                                : () =>
+                                      _handleSocialLogin(_SocialProvider.apple),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -362,23 +421,24 @@ class _LoginScreenState extends State<LoginScreen> {
                                   width: 34,
                                   height: 34,
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.08),
+                                    color: Colors.white.withValues(alpha: 0.08),
                                     shape: BoxShape.circle,
                                   ),
                                   alignment: Alignment.center,
                                   child: const Text(
-                                    'G',
+                                    '',
                                     style: TextStyle(
                                       color: Colors.white,
-                                      fontSize: 22,
+                                      fontSize: 20,
                                       fontWeight: FontWeight.w700,
+                                      height: 1,
                                     ),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
                                 Flexible(
                                   child: Text(
-                                    context.tr('Login with Google'),
+                                    context.tr('Continue with Apple'),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
@@ -390,7 +450,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               ],
                             ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                     SizedBox(height: isCompact ? 10 : 12),
@@ -490,68 +550,38 @@ class _GlowOrb extends StatelessWidget {
   }
 }
 
-class _LogoBadge extends StatelessWidget {
-  const _LogoBadge({required this.compact});
+class _SocialLoginButton extends StatelessWidget {
+  const _SocialLoginButton({
+    required this.label,
+    required this.onPressed,
+    required this.child,
+  });
 
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _LogoImage(compact: compact),
-        SizedBox(height: compact ? 6 : 12),
-        const Text(
-          'Video Contest',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-            color: AppColors.textLight,
-          ),
-        ),
-        SizedBox(height: compact ? 2 : 4),
-        Text(
-          context.tr('Showtime Arena'),
-          style: const TextStyle(color: AppColors.textMuted),
-        ),
-      ],
-    );
-  }
-}
-
-class _LogoImage extends StatelessWidget {
-  const _LogoImage({required this.compact});
-
-  final bool compact;
+  final String label;
+  final VoidCallback? onPressed;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final glowWidth = compact ? 160.0 : 220.0;
-    final glowHeight = compact ? 78.0 : 120.0;
-    final logoWidth = compact ? 122.0 : 184.0;
-    final logoHeight = compact ? 84.0 : 116.0;
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        Container(
-          width: glowWidth,
-          height: glowHeight,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            gradient: RadialGradient(
-              colors: [
-                AppColors.hotPink.withValues(alpha: 0.35),
-                AppColors.hotPink.withValues(alpha: 0.0),
-              ],
+    return Semantics(
+      button: true,
+      label: label,
+      child: SizedBox(
+        width: double.infinity,
+        child: OutlinedButton(
+          onPressed: onPressed,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white,
+            side: const BorderSide(color: AppColors.border),
+            backgroundColor: AppColors.card,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
             ),
           ),
+          child: child,
         ),
-        SizedBox(
-          width: logoWidth,
-          height: logoHeight,
-          child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
-        ),
-      ],
+      ),
     );
   }
 }

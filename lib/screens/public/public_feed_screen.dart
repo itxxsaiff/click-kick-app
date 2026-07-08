@@ -48,6 +48,18 @@ void unlockFeedPlayback() {
   _feedPlaybackLocked = false;
 }
 
+Rect _shareOriginForContext(BuildContext context) {
+  final renderObject = context.findRenderObject();
+  if (renderObject is! RenderBox) {
+    return const Rect.fromLTWH(0, 0, 1, 1);
+  }
+  final offset = renderObject.localToGlobal(Offset.zero);
+  final size = renderObject.size;
+  final width = size.width <= 0 ? 1.0 : size.width;
+  final height = size.height <= 0 ? 1.0 : size.height;
+  return Rect.fromLTWH(offset.dx, offset.dy, width, height);
+}
+
 String _contestShareLink(String contestId, {String? submissionId}) {
   final params = <String, String>{'contestId': contestId};
   if (submissionId != null && submissionId.isNotEmpty) {
@@ -1591,7 +1603,11 @@ class _ContestFeedCard extends StatelessWidget {
                     try {
                       await AuthService().incrementContestShare(item.id);
                     } catch (_) {}
-                    await Share.share(text, subject: item.title);
+                    await Share.share(
+                      text,
+                      subject: item.title,
+                      sharePositionOrigin: _shareOriginForContext(context),
+                    );
                   },
                 ),
                 const SizedBox(height: 14),
@@ -2065,7 +2081,11 @@ class _AdminVideoFeedCard extends StatelessWidget {
                         item.adminVideoId,
                       );
                     } catch (_) {}
-                    await Share.share(text, subject: item.adminName);
+                    await Share.share(
+                      text,
+                      subject: item.adminName,
+                      sharePositionOrigin: _shareOriginForContext(context),
+                    );
                   },
                 ),
                 const SizedBox(height: 14),
@@ -2978,7 +2998,11 @@ class _NewsFeedCardState extends State<_NewsFeedCard> {
                           return;
                         }
                         final text = '${item.title}\n${item.description}';
-                        await Share.share(text, subject: item.title);
+                        await Share.share(
+                          text,
+                          subject: item.title,
+                          sharePositionOrigin: _shareOriginForContext(context),
+                        );
                       },
                     ),
                   ],
@@ -4423,7 +4447,9 @@ class _PublicUserProfileTab extends StatelessWidget {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
-                        context.tr('Account deleted successfully.'),
+                        context.tr(
+                          'Your account has been permanently deleted.',
+                        ),
                       ),
                     ),
                   );

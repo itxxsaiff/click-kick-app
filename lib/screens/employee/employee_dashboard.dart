@@ -498,7 +498,9 @@ class _EmployeeProfileTab extends StatelessWidget {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
-                        context.tr('Account deleted successfully.'),
+                        context.tr(
+                          'Your account has been permanently deleted.',
+                        ),
                       ),
                     ),
                   );

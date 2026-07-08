@@ -14,13 +14,13 @@ import 'screens/auth/auth_action_screen.dart';
 import 'screens/auth/register_screen.dart';
 import 'screens/home/home_router.dart';
 import 'screens/public/public_feed_screen.dart';
-import 'screens/user/contest_detail_screen.dart';
 
 final RouteObserver<ModalRoute<void>> appRouteObserver =
     RouteObserver<ModalRoute<void>>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   final localeController = AppLocaleController();
   await localeController.load();
   await AppStrings.load();
@@ -65,30 +65,9 @@ class VideoContestApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return LanguageScope(
       controller: localeController,
-      child: FutureBuilder(
-        future: Firebase.initializeApp(
-          options: DefaultFirebaseOptions.currentPlatform,
-        ),
-        builder: (context, snapshot) {
+      child: Builder(
+        builder: (context) {
           final isArabic = localeController.language == AppLanguage.arabic;
-          if (snapshot.hasError) {
-            return MaterialApp(
-              debugShowCheckedModeBanner: false,
-              theme: AppTheme.darkTheme(useArabicFont: isArabic),
-              home: Scaffold(
-                body: Center(child: Text(context.tr('Firebase init failed.'))),
-              ),
-            );
-          }
-          if (snapshot.connectionState != ConnectionState.done) {
-            return MaterialApp(
-              debugShowCheckedModeBanner: false,
-              theme: AppTheme.darkTheme(useArabicFont: isArabic),
-              home: const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              ),
-            );
-          }
           return MaterialApp(
             debugShowCheckedModeBanner: false,
             title: context.tr('Video Contest'),

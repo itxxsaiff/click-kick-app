@@ -1,9 +1,14 @@
+import 'dart:convert';
+import 'dart:math';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../firebase_options.dart';
 import '../models/enums.dart';
 
@@ -13,6 +18,7 @@ class AuthService {
       _firestore = firestore ?? FirebaseFirestore.instance;
 
   static AuthProvider? _pendingLinkProvider;
+  static AuthCredential? _pendingLinkCredential;
   static String? _pendingLinkEmail;
 
   final FirebaseAuth _auth;
@@ -216,12 +222,83 @@ class AuthService {
   }
 
   Future<UserCredential> signInWithApple() async {
-    final provider = AppleAuthProvider();
-    return _signInWithProvider(
-      provider,
-      roleIfMissing: UserRole.user,
-      providerName: 'Apple',
+    if (kIsWeb) {
+      final provider = AppleAuthProvider();
+      return _signInWithProvider(
+        provider,
+        roleIfMissing: UserRole.user,
+        providerName: 'Apple',
+      );
+    }
+
+    final rawNonce = _generateNonce();
+    final hashedNonce = _sha256ofString(rawNonce);
+    final appleCredential = await SignInWithApple.getAppleIDCredential(
+      scopes: const [
+        AppleIDAuthorizationScopes.email,
+        AppleIDAuthorizationScopes.fullName,
+      ],
+      nonce: hashedNonce,
     );
+
+    final idToken = appleCredential.identityToken;
+    if (idToken == null || idToken.isEmpty) {
+      throw FirebaseAuthException(
+        code: 'apple-login-failed',
+        message: 'Apple login failed. Please try again.',
+      );
+    }
+
+    final oauthCredential = OAuthProvider(
+      'apple.com',
+    ).credential(
+      idToken: idToken,
+      rawNonce: rawNonce,
+      accessToken: appleCredential.authorizationCode,
+    );
+
+    UserCredential credential;
+    try {
+      credential = await _auth.signInWithCredential(oauthCredential);
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'account-exists-with-different-credential' ||
+          e.code == 'email-already-in-use' ||
+          e.code == 'credential-already-in-use') {
+        final email = _normalizeEmail(appleCredential.email ?? e.email ?? '');
+        _pendingLinkProvider = AppleAuthProvider();
+        _pendingLinkCredential = oauthCredential;
+        _pendingLinkEmail = email.isEmpty ? null : email;
+        throw FirebaseAuthException(
+          code: 'social-link-required',
+          message:
+              'This email already exists. Login with your password once to link Apple.',
+        );
+      }
+      rethrow;
+    }
+    final user = credential.user;
+    if (user == null) {
+      throw FirebaseAuthException(code: 'user-not-found');
+    }
+
+    final resolvedDisplayName = _appleDisplayName(appleCredential);
+    if ((user.displayName?.trim().isEmpty ?? true) &&
+        resolvedDisplayName != null) {
+      await user.updateDisplayName(resolvedDisplayName);
+      await user.reload();
+    }
+
+    final refreshedUser = _auth.currentUser ?? user;
+    await _assertNoSocialAccountConflict(
+      refreshedUser,
+      AppleAuthProvider(),
+      'Apple',
+      pendingCredential: oauthCredential,
+    );
+    await _ensureUserDoc(refreshedUser, roleIfMissing: UserRole.user);
+    await _syncUserProviderMetadata(refreshedUser, provider: 'apple');
+    await _assertUserAccess(refreshedUser.uid);
+    return credential;
   }
 
   Future<UserCredential> signInWithFacebook() async {
@@ -362,6 +439,10 @@ class AuthService {
 
     await _assertNoSocialAccountConflict(user, provider, providerName);
     await _ensureUserDoc(user, roleIfMissing: roleIfMissing);
+    await _syncUserProviderMetadata(
+      user,
+      provider: provider.providerId.replaceAll('.com', ''),
+    );
     await _assertUserAccess(user.uid);
     return credential;
   }
@@ -418,21 +499,16 @@ class AuthService {
       throw FirebaseAuthException(code: 'not-authenticated');
     }
 
-    final now = DateTime.now().toUtc();
-    await _firestore.collection('users').doc(user.uid).set({
-      'accountStatus': 'deleted',
-      'deletedAt': now,
-      'updatedAt': now,
-      'deletedBy': user.uid,
-    }, SetOptions(merge: true));
-
     try {
-      await user.delete();
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'requires-recent-login') {
+      final callable = FirebaseFunctions.instance.httpsCallable(
+        'deleteCurrentUserAccount',
+      );
+      await callable.call<Map<String, dynamic>>();
+    } on FirebaseFunctionsException catch (e) {
+      if (e.code == 'failed-precondition') {
         throw FirebaseAuthException(
-          code: 'requires-recent-login',
-          message: 'Please login again before deleting your account.',
+          code: 'operation-not-allowed',
+          message: e.message ?? 'Account deletion is not allowed.',
         );
       }
       rethrow;
@@ -515,8 +591,9 @@ class AuthService {
   Future<void> _assertNoSocialAccountConflict(
     User user,
     AuthProvider provider,
-    String providerName,
-  ) async {
+    String providerName, {
+    AuthCredential? pendingCredential,
+  }) async {
     final email = user.email;
     if (email == null || email.trim().isEmpty) return;
 
@@ -532,6 +609,7 @@ class AuthService {
     }
     await _auth.signOut();
     _pendingLinkProvider = provider;
+    _pendingLinkCredential = pendingCredential;
     _pendingLinkEmail = _normalizeEmail(email);
     throw FirebaseAuthException(
       code: 'social-link-required',
@@ -542,19 +620,22 @@ class AuthService {
 
   Future<void> _linkPendingProviderIfNeeded(User user) async {
     final provider = _pendingLinkProvider;
+    final credential = _pendingLinkCredential;
     final pendingEmail = _pendingLinkEmail;
-    if (provider == null || pendingEmail == null) return;
+    if (provider == null && credential == null) return;
 
     final currentEmail = _normalizeEmail(user.email ?? '');
-    if (currentEmail != pendingEmail) {
+    if (pendingEmail != null && currentEmail != pendingEmail) {
       return;
     }
 
     try {
-      if (kIsWeb) {
-        await user.linkWithPopup(provider);
+      if (credential != null) {
+        await user.linkWithCredential(credential);
+      } else if (kIsWeb) {
+        await user.linkWithPopup(provider!);
       } else {
-        await user.linkWithProvider(provider);
+        await user.linkWithProvider(provider!);
       }
     } on FirebaseAuthException catch (e) {
       if (e.code != 'provider-already-linked' &&
@@ -563,6 +644,7 @@ class AuthService {
       }
     } finally {
       _pendingLinkProvider = null;
+      _pendingLinkCredential = null;
       _pendingLinkEmail = null;
     }
   }
@@ -614,5 +696,45 @@ class AuthService {
     if (value is DateTime) return value.toUtc();
     if (value is String) return DateTime.tryParse(value)?.toUtc();
     return null;
+  }
+
+  Future<void> _syncUserProviderMetadata(
+    User user, {
+    required String provider,
+  }) async {
+    final now = DateTime.now().toUtc();
+    await _firestore.collection('users').doc(user.uid).set({
+      'uid': user.uid,
+      'email': (user.email ?? '').trim().toLowerCase(),
+      'emailLower': (user.email ?? '').trim().toLowerCase(),
+      'displayName': (user.displayName ?? '').trim(),
+      'provider': provider,
+      'lastLogin': now,
+      'updatedAt': now,
+    }, SetOptions(merge: true));
+  }
+
+  String? _appleDisplayName(AuthorizationCredentialAppleID credential) {
+    final parts = <String>[
+      credential.givenName?.trim() ?? '',
+      credential.familyName?.trim() ?? '',
+    ].where((value) => value.isNotEmpty).toList();
+    if (parts.isEmpty) return null;
+    return parts.join(' ');
+  }
+
+  String _generateNonce([int length = 32]) {
+    const charset =
+        '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._';
+    final random = Random.secure();
+    return List<String>.generate(
+      length,
+      (_) => charset[random.nextInt(charset.length)],
+    ).join();
+  }
+
+  String _sha256ofString(String input) {
+    final bytes = utf8.encode(input);
+    return sha256.convert(bytes).toString();
   }
 }

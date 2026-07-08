@@ -149,6 +149,41 @@ async function requireAdminUser(request) {
 }
 
 /**
+ * Deletes or cleans up private account data for a user.
+ * @param {string} targetUid
+ * @return {Promise<void>}
+ */
+async function cleanupUserPrivateData(targetUid) {
+  await db
+      .collection("login_otps")
+      .doc(targetUid)
+      .delete()
+      .catch(() => null);
+
+  await db
+      .collection("click_kick_star")
+      .doc(targetUid)
+      .delete()
+      .catch(() => null);
+
+  await db
+      .collection("users")
+      .doc(targetUid)
+      .delete()
+      .catch(() => null);
+
+  const bucket = admin.storage().bucket();
+  const prefixes = [
+    `profile_photos/${targetUid}/`,
+    `support_attachments/${targetUid}/`,
+    `invoices/${targetUid}/`,
+  ];
+  for (const prefix of prefixes) {
+    await bucket.deleteFiles({prefix}).catch(() => null);
+  }
+}
+
+/**
  * Sends a WhatsApp OTP message through Meta Cloud API.
  * @param {Object} params
  * @return {Promise<void>}
@@ -531,12 +566,39 @@ exports.deleteUserAccountPermanently = onCall(async (request) => {
     );
   }
 
-  await db
-      .collection("login_otps")
-      .doc(targetUid)
-      .delete()
-      .catch(() => null);
-  await userRef.delete();
+  await cleanupUserPrivateData(targetUid);
+
+  try {
+    await admin.auth().deleteUser(targetUid);
+  } catch (error) {
+    if (!error || error.code !== "auth/user-not-found") {
+      throw error;
+    }
+  }
+
+  return {deleted: true};
+});
+
+exports.deleteCurrentUserAccount = onCall(async (request) => {
+  const targetUid = request.auth && request.auth.uid;
+  if (!targetUid) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
+
+  const userRef = db.collection("users").doc(targetUid);
+  const userSnap = await userRef.get();
+  const userData = userSnap.data() || {};
+  const role = String(userData.role || "")
+      .trim()
+      .toLowerCase();
+  if (["admin", "superadmin", "super_admin"].includes(role)) {
+    throw new HttpsError(
+        "failed-precondition",
+        "Admin accounts cannot be deleted from this action.",
+    );
+  }
+
+  await cleanupUserPrivateData(targetUid);
 
   try {
     await admin.auth().deleteUser(targetUid);

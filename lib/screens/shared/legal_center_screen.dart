@@ -10,7 +10,17 @@ class LegalCenterScreen extends StatelessWidget {
     final sections = [
       (
         title: context.tr('Terms of Service'),
-        body: context.tr('Terms & Conditions Content'),
+        body: [
+          context.tr('Terms & Conditions Content'),
+          context.tr('Apple Contest Disclaimer'),
+        ].join('\n\n'),
+      ),
+      (
+        title: context.tr('Contest Rules'),
+        body: [
+          context.tr('Contest Rules Content'),
+          context.tr('Apple Contest Disclaimer'),
+        ].join('\n\n'),
       ),
       (
         title: context.tr('Privacy Policy'),
@@ -74,9 +84,7 @@ class LegalCenterScreen extends StatelessWidget {
       context.tr('Be respectful, kind, and positive.'),
       context.tr('No harassment, hate speech, or bullying.'),
       context.tr('Do not post nudity, violence, or illegal content.'),
-      context.tr(
-        'Respect copyright and intellectual property.',
-      ),
+      context.tr('Respect copyright and intellectual property.'),
       context.tr(
         'Report inappropriate content to help keep our community safe.',
       ),
@@ -85,10 +93,7 @@ class LegalCenterScreen extends StatelessWidget {
 }
 
 class _LegalSectionTile extends StatelessWidget {
-  const _LegalSectionTile({
-    required this.title,
-    required this.body,
-  });
+  const _LegalSectionTile({required this.title, required this.body});
 
   final String title;
   final String body;
@@ -123,7 +128,10 @@ class _LegalSectionTile extends StatelessWidget {
                     ),
                     IconButton(
                       onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close_rounded, color: Colors.white),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                      ),
                     ),
                   ],
                 ),

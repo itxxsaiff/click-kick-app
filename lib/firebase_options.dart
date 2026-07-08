@@ -23,10 +23,7 @@ class DefaultFirebaseOptions {
       case TargetPlatform.android:
         return android;
       case TargetPlatform.iOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for ios - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return ios;
       case TargetPlatform.macOS:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for macos - '
@@ -57,6 +54,19 @@ class DefaultFirebaseOptions {
     storageBucket: 'video-contest-show-b788b.firebasestorage.app',
   );
 
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'AIzaSyB-MzyphGgRqmjZVDCE-xoK4gi_f180mgw',
+    appId: '1:127201745203:ios:ab134c7f319633e567c646',
+    messagingSenderId: '127201745203',
+    projectId: 'video-contest-show-b788b',
+    storageBucket: 'video-contest-show-b788b.firebasestorage.app',
+    iosBundleId: 'com.clickkick.app',
+    iosClientId:
+        '127201745203-4do3thsisodai6le60ipo0sibuia093f.apps.googleusercontent.com',
+    androidClientId:
+        '127201745203-apv0seltkfm81ggll84g3c2km28abri4.apps.googleusercontent.com',
+  );
+
   static const FirebaseOptions web = FirebaseOptions(
     apiKey: 'AIzaSyCYAKMcpO4oJOoGNAy3dbIWc-yBBmhNkAM',
     appId: '1:127201745203:web:258c67552501f18e67c646',
@@ -66,5 +76,4 @@ class DefaultFirebaseOptions {
     storageBucket: 'video-contest-show-b788b.firebasestorage.app',
     measurementId: 'G-5FHBPZNNVV',
   );
-
 }

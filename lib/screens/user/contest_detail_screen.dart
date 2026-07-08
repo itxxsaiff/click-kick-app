@@ -13,6 +13,18 @@ import 'video_upload_screen.dart';
 
 const _shareBaseUrl = 'https://video-contest-show-b788b.firebaseapp.com';
 
+Rect _shareOriginForContext(BuildContext context) {
+  final renderObject = context.findRenderObject();
+  if (renderObject is! RenderBox) {
+    return const Rect.fromLTWH(0, 0, 1, 1);
+  }
+  final offset = renderObject.localToGlobal(Offset.zero);
+  final size = renderObject.size;
+  final width = size.width <= 0 ? 1.0 : size.width;
+  final height = size.height <= 0 ? 1.0 : size.height;
+  return Rect.fromLTWH(offset.dx, offset.dy, width, height);
+}
+
 class ContestDetailScreen extends StatelessWidget {
   const ContestDetailScreen({
     super.key,
@@ -976,7 +988,13 @@ class _VotingGrid extends StatelessWidget {
                                 ),
                               });
                             } catch (_) {}
-                            await Share.share(text, subject: contestTitle);
+                            await Share.share(
+                              text,
+                              subject: contestTitle,
+                              sharePositionOrigin: _shareOriginForContext(
+                                context,
+                              ),
+                            );
                           },
                           icon: const Icon(
                             Icons.share_rounded,

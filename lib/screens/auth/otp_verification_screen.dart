@@ -52,9 +52,15 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   void initState() {
     super.initState();
     _startTimer();
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _focusNode.requestFocus(),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _requestOtpFocus();
+      unawaited(
+        Future<void>.delayed(
+          const Duration(milliseconds: 300),
+          _requestOtpFocus,
+        ),
+      );
+    });
   }
 
   @override
@@ -77,6 +83,11 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         setState(() => _secondsLeft -= 1);
       }
     });
+  }
+
+  void _requestOtpFocus() {
+    if (!mounted) return;
+    _focusNode.requestFocus();
   }
 
   Future<bool> _leaveOtp() async {
@@ -241,78 +252,75 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                           ),
                         ),
                         const SizedBox(height: 26),
-                        GestureDetector(
-                          onTap: () => _focusNode.requestFocus(),
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              AnimatedBuilder(
-                                animation: _codeController,
-                                builder: (context, _) => Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: List.generate(6, (index) {
-                                    final text = _codeController.text;
-                                    final digit = index < text.length
-                                        ? text[index]
-                                        : '';
-                                    final active =
-                                        index == text.length && text.length < 6;
-                                    return _OtpBox(
-                                      digit: digit,
-                                      active: active,
+                        Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            AnimatedBuilder(
+                              animation: _codeController,
+                              builder: (context, _) => Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: List.generate(6, (index) {
+                                  final text = _codeController.text;
+                                  final digit = index < text.length
+                                      ? text[index]
+                                      : '';
+                                  final active =
+                                      index == text.length && text.length < 6;
+                                  return _OtpBox(digit: digit, active: active);
+                                }),
+                              ),
+                            ),
+                            Positioned.fill(
+                              child: TextField(
+                                controller: _codeController,
+                                focusNode: _focusNode,
+                                autofocus: true,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(),
+                                textInputAction: TextInputAction.done,
+                                maxLength: 6,
+                                enableInteractiveSelection: true,
+                                inputFormatters: [
+                                  TextInputFormatter.withFunction((
+                                    oldValue,
+                                    newValue,
+                                  ) {
+                                    final normalized = _normalizeOtpDigits(
+                                      newValue.text,
+                                    );
+                                    final truncated = normalized.length > 6
+                                        ? normalized.substring(0, 6)
+                                        : normalized;
+                                    return TextEditingValue(
+                                      text: truncated,
+                                      selection: TextSelection.collapsed(
+                                        offset: truncated.length,
+                                      ),
                                     );
                                   }),
+                                ],
+                                style: const TextStyle(
+                                  color: Colors.transparent,
+                                  fontSize: 1,
                                 ),
-                              ),
-                              SizedBox(
-                                width: 1,
-                                height: 1,
-                                child: TextField(
-                                  controller: _codeController,
-                                  focusNode: _focusNode,
-                                  keyboardType: TextInputType.number,
-                                  maxLength: 6,
-                                  inputFormatters: [
-                                    TextInputFormatter.withFunction((
-                                      oldValue,
-                                      newValue,
-                                    ) {
-                                      final normalized = _normalizeOtpDigits(
-                                        newValue.text,
-                                      );
-                                      final truncated = normalized.length > 6
-                                          ? normalized.substring(0, 6)
-                                          : normalized;
-                                      return TextEditingValue(
-                                        text: truncated,
-                                        selection: TextSelection.collapsed(
-                                          offset: truncated.length,
-                                        ),
-                                      );
-                                    }),
-                                  ],
-                                  style: const TextStyle(
-                                    color: Colors.transparent,
-                                    fontSize: 1,
-                                  ),
-                                  cursorColor: Colors.transparent,
-                                  decoration: const InputDecoration(
-                                    counterText: '',
-                                    border: InputBorder.none,
-                                    focusedBorder: InputBorder.none,
-                                    enabledBorder: InputBorder.none,
-                                  ),
-                                  onChanged: (value) {
-                                    setState(() {});
-                                    if (value.length == 6 && !_isLoading) {
-                                      _verify();
-                                    }
-                                  },
+                                cursorColor: Colors.transparent,
+                                decoration: const InputDecoration(
+                                  counterText: '',
+                                  border: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
                                 ),
+                                onTap: _requestOtpFocus,
+                                onChanged: (value) {
+                                  setState(() {});
+                                  if (value.length == 6 && !_isLoading) {
+                                    _verify();
+                                  }
+                                },
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 26),
                         GradientButton(

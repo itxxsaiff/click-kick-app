@@ -14,11 +14,27 @@
       },
       "oauth_client": [
         {
+          "client_id": "127201745203-773jjjcvk55s1i1gk7sa6fo4t6gdrol7.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.videocontestshow.app",
+            "certificate_hash": "7bf35a11b747014a635847e4e27d97313e3ae0e1"
+          }
+        },
+        {
           "client_id": "127201745203-apv0seltkfm81ggll84g3c2km28abri4.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.videocontestshow.app",
             "certificate_hash": "16a26514b972492890a78d62b96a7103bbda862a"
+          }
+        },
+        {
+          "client_id": "127201745203-p8sms8s313chlks461do1pp0ho1hlajf.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.videocontestshow.app",
+            "certificate_hash": "5f697ea155a4530dacfa9c4992c655435ce12ec8"
           }
         },
         {
@@ -37,6 +53,13 @@
             {
               "client_id": "127201745203-khruilil3if315sg7vjkoajcfi28hpna.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "127201745203-4do3thsisodai6le60ipo0sibuia093f.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.clickkick.app"
+              }
             }
           ]
         }

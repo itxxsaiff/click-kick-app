@@ -81,6 +81,26 @@ service cloud.firestore {
       }
     }
 
+    // Collection-group reads. A fixed-path rule does not authorize
+    // collectionGroup('submissions') queries, so this rule authorizes them at
+    // any depth: anyone may read approved/winner videos (Search feature), an
+    // owner may read their own videos of any status (My Videos dashboard), and
+    // staff may read all.
+    match /{path=**}/submissions/{submissionId} {
+      allow read: if resource.data.status == 'approved'
+        || resource.data.status == 'winner'
+        || isOwner(resource.data.userId)
+        || isStaff();
+    }
+
+    // Admin-configured app settings (e.g. sponsorship application fee + prize).
+    // Everyone can read the current values; only staff can change them. This is
+    // why sponsors were seeing the default $1,100 instead of the admin values.
+    match /app_settings/{docId} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+
     match /news/{newsId} {
       allow read: if true;
       allow create, update, delete: if isStaff();
@@ -89,6 +109,13 @@ service cloud.firestore {
     match /admin_videos/{videoId} {
       allow read: if true;
       allow create, update, delete: if isStaff();
+    }
+
+    // Public "Click Kick Star" leaderboard: anyone can read; only staff can
+    // write moderation state (approved / hidden / removed).
+    match /click_kick_star/{docId} {
+      allow read: if true;
+      allow write: if isStaff();
     }
 
     match /video_reports/{reportId} {

@@ -9,6 +9,8 @@ import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/gradient_button.dart';
 import '../../widgets/report_video_dialog.dart';
+import '../../widgets/block_participant_dialog.dart';
+import '../../widgets/blocked_users_builder.dart';
 import 'video_upload_screen.dart';
 
 const _shareBaseUrl = 'https://video-contest-show-b788b.firebaseapp.com';
@@ -42,6 +44,7 @@ class ContestDetailScreen extends StatelessWidget {
     final title = (data['title'] ?? '') as String;
     final desc = (data['description'] ?? '') as String;
     final logoUrl = (data['logoUrl'] ?? '') as String;
+    final contestNumber = (data['contestNumber'] ?? '').toString();
     final winnerPrize = ((data['winnerPrize'] ?? 100) as num).toDouble();
     final challengeQuestion = (data['challengeQuestion'] ?? '').toString();
     final contestVideoUrl = (data['contestVideoUrl'] ?? '').toString();
@@ -71,6 +74,7 @@ class ContestDetailScreen extends StatelessWidget {
                     title: title,
                     description: desc,
                     logoUrl: logoUrl,
+                    contestNumber: contestNumber,
                     maxVideos: maxVideos,
                     focusSubmissionId: focusSubmissionId,
                   )
@@ -80,6 +84,7 @@ class ContestDetailScreen extends StatelessWidget {
                     title: title,
                     description: desc,
                     logoUrl: logoUrl,
+                    contestNumber: contestNumber,
                   )
                 : SingleChildScrollView(
                     padding: const EdgeInsets.all(20),
@@ -106,6 +111,7 @@ class ContestDetailScreen extends StatelessWidget {
                           title: title,
                           description: desc,
                           logoUrl: logoUrl,
+                          contestNumber: contestNumber,
                         ),
                         const SizedBox(height: 12),
                         if (contestVideoUrl.isNotEmpty) ...[
@@ -241,12 +247,14 @@ class _WinnersPage extends StatelessWidget {
     required this.title,
     required this.description,
     required this.logoUrl,
+    this.contestNumber = '',
   });
 
   final String contestId;
   final String title;
   final String description;
   final String logoUrl;
+  final String contestNumber;
 
   @override
   Widget build(BuildContext context) {
@@ -257,14 +265,22 @@ class _WinnersPage extends StatelessWidget {
         .where('status', isEqualTo: 'approved')
         .snapshots();
 
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: approvedStream,
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final docs = snapshot.data!.docs.toList();
-        if (docs.isEmpty) {
+    return BlockedUsersBuilder(
+      builder: (context, blockedUserIds) =>
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: approvedStream,
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final docs = snapshot.data!.docs
+              .where(
+                (d) => !blockedUserIds.contains(
+                  (d.data()['userId'] ?? '').toString(),
+                ),
+              )
+              .toList();
+          if (docs.isEmpty) {
           return ListView(
             padding: const EdgeInsets.all(20),
             children: [
@@ -286,6 +302,7 @@ class _WinnersPage extends StatelessWidget {
                 title: title,
                 description: description,
                 logoUrl: logoUrl,
+                contestNumber: contestNumber,
               ),
               const SizedBox(height: 14),
               Container(
@@ -341,6 +358,7 @@ class _WinnersPage extends StatelessWidget {
                     title: title,
                     description: description,
                     logoUrl: logoUrl,
+                    contestNumber: contestNumber,
                   ),
                   const SizedBox(height: 12),
                   _LuckyDrawWinnersSection(contestId: contestId),
@@ -360,7 +378,8 @@ class _WinnersPage extends StatelessWidget {
             );
           },
         );
-      },
+        },
+      ),
     );
   }
 }
@@ -739,6 +758,7 @@ class _VotingPage extends StatelessWidget {
     required this.description,
     required this.logoUrl,
     required this.maxVideos,
+    this.contestNumber = '',
     this.focusSubmissionId,
   });
 
@@ -747,6 +767,7 @@ class _VotingPage extends StatelessWidget {
   final String description;
   final String logoUrl;
   final int maxVideos;
+  final String contestNumber;
   final String? focusSubmissionId;
 
   @override
@@ -760,18 +781,27 @@ class _VotingPage extends StatelessWidget {
 
     final uid = FirebaseAuth.instance.currentUser?.uid;
 
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: approvedStream,
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final docs = snapshot.data!.docs.toList()
-          ..sort((a, b) {
-            final av = ((a.data()['voteCount'] ?? 0) as num).toInt();
-            final bv = ((b.data()['voteCount'] ?? 0) as num).toInt();
-            return bv.compareTo(av);
-          });
+    return BlockedUsersBuilder(
+      builder: (context, blockedUserIds) =>
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: approvedStream,
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final docs =
+              snapshot.data!.docs
+                  .where(
+                    (d) => !blockedUserIds.contains(
+                      (d.data()['userId'] ?? '').toString(),
+                    ),
+                  )
+                  .toList()
+                ..sort((a, b) {
+                  final av = ((a.data()['voteCount'] ?? 0) as num).toInt();
+                  final bv = ((b.data()['voteCount'] ?? 0) as num).toInt();
+                  return bv.compareTo(av);
+                });
 
         final readyForVoting = maxVideos > 0 && docs.length >= maxVideos;
 
@@ -792,7 +822,12 @@ class _VotingPage extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-            _HeroCard(title: title, description: description, logoUrl: logoUrl),
+            _HeroCard(
+              title: title,
+              description: description,
+              logoUrl: logoUrl,
+              contestNumber: contestNumber,
+            ),
             const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.all(14),
@@ -849,7 +884,8 @@ class _VotingPage extends StatelessWidget {
               ),
           ],
         );
-      },
+        },
+      ),
     );
   }
 }
@@ -1023,6 +1059,27 @@ class _VotingGrid extends StatelessWidget {
                             size: 20,
                           ),
                         ),
+                        if (!isOwnVideo)
+                          IconButton(
+                            tooltip: context.tr('Block Participant'),
+                            onPressed: () => showBlockParticipantDialog(
+                              context: context,
+                              blockedUserId: ownerUserId,
+                              contestId: contestId,
+                              submissionId: doc.id,
+                              contestTitle: contestTitle,
+                              participantName:
+                                  (data['userName'] ??
+                                          data['participantName'] ??
+                                          '')
+                                      .toString(),
+                            ),
+                            icon: const Icon(
+                              Icons.block,
+                              color: AppColors.hotPink,
+                              size: 20,
+                            ),
+                          ),
                       ],
                     ),
                     const Spacer(),
@@ -1278,15 +1335,42 @@ class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
                       child: Text(context.tr('Unable to load video.')),
                     );
                   }
+                  final videoAspect = _controller.value.aspectRatio > 0
+                      ? _controller.value.aspectRatio
+                      : 9 / 16;
+                  final maxHeight =
+                      MediaQuery.sizeOf(context).height * 0.6;
+                  var displayWidth = playerWidth;
+                  var displayHeight = displayWidth / videoAspect;
+                  if (displayHeight > maxHeight) {
+                    displayHeight = maxHeight;
+                    displayWidth = displayHeight * videoAspect;
+                  }
                   return Column(
                     children: [
-                      SizedBox(
-                        width: playerWidth,
-                        child: AspectRatio(
-                          aspectRatio: 16 / 9,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: VideoPlayer(_controller),
+                      Container(
+                        width: displayWidth,
+                        height: displayHeight,
+                        color: Colors.black,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: GestureDetector(
+                            onTap: () {
+                              if (_controller.value.isPlaying) {
+                                _controller.pause();
+                              } else {
+                                _controller.play();
+                              }
+                              setState(() {});
+                            },
+                            child: FittedBox(
+                              fit: BoxFit.contain,
+                              child: SizedBox(
+                                width: _controller.value.size.width,
+                                height: _controller.value.size.height,
+                                child: VideoPlayer(_controller),
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -1404,11 +1488,13 @@ class _HeroCard extends StatelessWidget {
     required this.title,
     required this.description,
     required this.logoUrl,
+    this.contestNumber = '',
   });
 
   final String title;
   final String description;
   final String logoUrl;
+  final String contestNumber;
 
   @override
   Widget build(BuildContext context) {
@@ -1451,6 +1537,27 @@ class _HeroCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (contestNumber.isNotEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.hotPink.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '${context.tr('Competition')} #$contestNumber',
+                      style: const TextStyle(
+                        color: AppColors.hotPink,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                ],
                 Text(
                   title,
                   style: Theme.of(

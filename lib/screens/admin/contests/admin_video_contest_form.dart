@@ -6,6 +6,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../utils/entry_code.dart';
 
 import '../../../l10n/l10n.dart';
 import '../../../theme/app_colors.dart';
@@ -590,6 +591,7 @@ class _AdminVideoContestFormState extends State<AdminVideoContestForm> {
       final videoUrl = await _uploadVideo(doc.id);
       await doc.set({
         ...data,
+        'contestNumber': generateEntryCode(),
         'createdAt': now,
         'contestVideoUrl': videoUrl,
         if (logoUrl.isNotEmpty) 'logoUrl': logoUrl,

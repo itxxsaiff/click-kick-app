@@ -15,14 +15,19 @@ import 'package:video_player/video_player.dart';
 
 import '../../l10n/l10n.dart';
 import '../../services/auth_service.dart';
+import '../../services/block_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/delete_account_dialog.dart';
 import '../../widgets/report_video_dialog.dart';
+import '../../widgets/block_participant_dialog.dart';
+import '../../widgets/blocked_users_builder.dart';
 import '../../widgets/settings_action_tile.dart';
 import '../../widgets/password_change_layout.dart';
 import '../../main.dart';
 import '../shared/legal_center_screen.dart';
+import '../shared/blocked_users_screen.dart';
 import '../shared/click_kick_star_page.dart';
+import 'search_videos_screen.dart';
 import '../shared/support_chat_screen.dart';
 import '../user/contest_detail_screen.dart';
 import '../auth/login_screen.dart';
@@ -151,18 +156,21 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
             labels: const <String>[
               'Home',
               'Contests',
+              'Search',
               'Click Kick Star',
               'Sign',
             ],
             icons: const <IconData>[
               Icons.home_outlined,
               Icons.local_fire_department_outlined,
+              Icons.search_outlined,
               Icons.star_outline_rounded,
               Icons.person_outline,
             ],
             activeIcons: const <IconData>[
               Icons.home,
               Icons.local_fire_department,
+              Icons.search,
               Icons.star_rounded,
               Icons.person,
             ],
@@ -175,6 +183,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
                 isVisible: _tabIndex == 1,
                 sharedContestId: widget.sharedContestId,
               ),
+              const SearchVideosScreen(embedded: true),
               const ClickKickStarPage(),
               const _LoginRequiredCard(),
             ],
@@ -205,6 +214,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
                       ? const <String>[
                           'Home',
                           'Contests',
+                          'Search',
                           'Click Kick Star',
                           'Dashboard',
                           'Profile',
@@ -212,6 +222,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
                       : const <String>[
                           'Home',
                           'Contests',
+                          'Search',
                           'Click Kick Star',
                           'Dashboard',
                           'Profile',
@@ -219,6 +230,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
                 : const <String>[
                     'Home',
                     'Contests',
+                    'Search',
                     'Click Kick Star',
                     'Profile',
                   ];
@@ -228,6 +240,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
                       ? const <IconData>[
                           Icons.home_outlined,
                           Icons.local_fire_department_outlined,
+                          Icons.search_outlined,
                           Icons.star_outline_rounded,
                           Icons.dashboard_outlined,
                           Icons.person_outline,
@@ -235,6 +248,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
                       : const <IconData>[
                           Icons.home_outlined,
                           Icons.local_fire_department_outlined,
+                          Icons.search_outlined,
                           Icons.star_outline_rounded,
                           Icons.dashboard_outlined,
                           Icons.person_outline,
@@ -242,6 +256,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
                 : const <IconData>[
                     Icons.home_outlined,
                     Icons.local_fire_department_outlined,
+                    Icons.search_outlined,
                     Icons.star_outline_rounded,
                     Icons.person_outline,
                   ];
@@ -251,6 +266,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
                       ? const <IconData>[
                           Icons.home,
                           Icons.local_fire_department,
+                          Icons.search,
                           Icons.star_rounded,
                           Icons.dashboard_customize,
                           Icons.person,
@@ -258,6 +274,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
                       : const <IconData>[
                           Icons.home,
                           Icons.local_fire_department,
+                          Icons.search,
                           Icons.star_rounded,
                           Icons.dashboard_customize,
                           Icons.person,
@@ -265,6 +282,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
                 : const <IconData>[
                     Icons.home,
                     Icons.local_fire_department,
+                    Icons.search,
                     Icons.star_rounded,
                     Icons.person,
                   ];
@@ -280,6 +298,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
                             isVisible: _tabIndex == 1,
                             sharedContestId: widget.sharedContestId,
                           ),
+                          const SearchVideosScreen(embedded: true),
                           const ClickKickStarPage(),
                           const _DashboardGateTab(),
                           const _ProfileGateTab(),
@@ -293,6 +312,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
                             isVisible: _tabIndex == 1,
                             sharedContestId: widget.sharedContestId,
                           ),
+                          const SearchVideosScreen(embedded: true),
                           const ClickKickStarPage(),
                           const _DashboardGateTab(),
                           const _ProfileGateTab(),
@@ -306,6 +326,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
                       isVisible: _tabIndex == 1,
                       sharedContestId: widget.sharedContestId,
                     ),
+                    const SearchVideosScreen(embedded: true),
                     const ClickKickStarPage(),
                     const _ProfileGateTab(),
                   ];
@@ -460,12 +481,18 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
   String? _lastTrackedAdminVideoId;
   String? _lastTrackedContestId;
   Map<String, int> _watchedAdminVideos = const <String, int>{};
+  Set<String> _blockedUserIds = <String>{};
+  StreamSubscription<Set<String>>? _blockedSub;
 
   @override
   void initState() {
     super.initState();
     _feedStopHandlers.add(_clearActiveVideo);
     _loadWatchedAdminVideos();
+    _blockedSub = BlockService().blockedUserIdsStream().listen((ids) {
+      if (!mounted) return;
+      setState(() => _blockedUserIds = ids);
+    });
   }
 
   @override
@@ -490,6 +517,7 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
   void dispose() {
     appRouteObserver.unsubscribe(this);
     _feedStopHandlers.remove(_clearActiveVideo);
+    _blockedSub?.cancel();
     _videoController?.dispose();
     _pageController.dispose();
     super.dispose();
@@ -803,11 +831,21 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
                   }
                   return true;
                 }).toList();
-                final feedItems = _buildFeedItems(
-                  newsDocs,
-                  adminVideoDocs,
-                  contestDocs,
-                );
+                return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: FirebaseFirestore.instance
+                      .collectionGroup('submissions')
+                      .where('status', isEqualTo: 'approved')
+                      .snapshots(),
+                  builder: (context, submissionsSnapshot) {
+                    final submissionDocs =
+                        submissionsSnapshot.data?.docs ??
+                        const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+                    final feedItems = _buildFeedItems(
+                      newsDocs,
+                      adminVideoDocs,
+                      contestDocs,
+                      submissionDocs,
+                    );
 
                 if (feedItems.isEmpty) {
                   return Center(
@@ -895,6 +933,20 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
                             : null,
                       );
                     }
+                    if (item.isParticipantVideo) {
+                      return _ParticipantFeedCard(
+                        item: item,
+                        isShowingActiveVideo: isShowingActiveVideo,
+                        isPlaying: isPlaying,
+                        isLoading: shouldShowLoading,
+                        controller: isShowingActiveVideo
+                            ? _videoController
+                            : null,
+                        onTapVideo: isShowingActiveVideo
+                            ? _togglePlayback
+                            : null,
+                      );
+                    }
                     return _AdminVideoFeedCard(
                       item: item,
                       isShowingActiveVideo: isShowingActiveVideo,
@@ -905,6 +957,8 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
                           : null,
                       onTapVideo: isShowingActiveVideo ? _togglePlayback : null,
                     );
+                  },
+                );
                   },
                 );
               },
@@ -919,44 +973,98 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
     List<QueryDocumentSnapshot<Map<String, dynamic>>> newsDocs,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> adminVideoDocs,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> contestDocs,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> submissionDocs,
   ) {
     final newsItems = newsDocs.map(_FeedItem.fromNews).toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-    final adminVideoItems = adminVideoDocs
-        .where((doc) {
-          final videoUrl = (doc.data()['videoUrl'] ?? '').toString().trim();
-          return videoUrl.isNotEmpty &&
-              !_failedAdminVideoUrls.contains(videoUrl);
-        })
-        .map(_FeedItem.fromAdminVideo)
-        .toList();
+    final adminVideoItems =
+        adminVideoDocs
+            .where((doc) {
+              final videoUrl = (doc.data()['videoUrl'] ?? '')
+                  .toString()
+                  .trim();
+              return videoUrl.isNotEmpty &&
+                  !_failedAdminVideoUrls.contains(videoUrl);
+            })
+            .map(_FeedItem.fromAdminVideo)
+            .toList()
+          ..sort((a, b) {
+            final aOrder = a.displayOrder;
+            final bOrder = b.displayOrder;
+            if (aOrder != null && bOrder != null) {
+              return aOrder.compareTo(bOrder);
+            }
+            if (aOrder != null) return -1;
+            if (bOrder != null) return 1;
+            final aWatched = _watchedAdminVideos.containsKey(a.adminVideoId);
+            final bWatched = _watchedAdminVideos.containsKey(b.adminVideoId);
+            if (aWatched != bWatched) return aWatched ? 1 : -1;
+            return b.createdAt.compareTo(a.createdAt);
+          });
 
+    // Group approved participant videos by contest, hiding blocked participants.
+    final participantsByContest = <String, List<_FeedItem>>{};
+    for (final doc in submissionDocs) {
+      final data = doc.data();
+      final videoUrl = (data['videoUrl'] ?? '').toString().trim();
+      final userId = (data['userId'] ?? '').toString();
+      final contestId = (data['contestId'] ?? '').toString();
+      if (videoUrl.isEmpty || contestId.isEmpty) continue;
+      if (_blockedUserIds.contains(userId)) continue;
+      if (_failedAdminVideoUrls.contains(videoUrl)) continue;
+      (participantsByContest[contestId] ??= <_FeedItem>[]).add(
+        _FeedItem.fromParticipant(doc),
+      );
+    }
+    // Each contest's participant videos are ordered by upload time (earliest
+    // first), as requested by the client.
+    for (final list in participantsByContest.values) {
+      list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    }
+
+    // Contests ordered by start date, still-joinable ones first.
     final contestItems = contestDocs
         .map(_FeedItem.fromContest)
         .where((item) => !_failedAdminVideoUrls.contains(item.videoUrl))
         .toList();
+    final now = DateTime.now();
+    DateTime? readDate(dynamic value) {
+      if (value is Timestamp) return value.toDate();
+      if (value is String) return DateTime.tryParse(value);
+      return null;
+    }
 
-    final videoItems = <_FeedItem>[...adminVideoItems, ...contestItems]
-      ..sort((a, b) {
-        final aOrder = a.displayOrder;
-        final bOrder = b.displayOrder;
-        if (aOrder != null && bOrder != null) {
-          return aOrder.compareTo(bOrder);
-        }
-        if (aOrder != null) return -1;
-        if (bOrder != null) return 1;
-        if (a.isAdminVideo && b.isAdminVideo) {
-          final aWatched = _watchedAdminVideos.containsKey(a.adminVideoId);
-          final bWatched = _watchedAdminVideos.containsKey(b.adminVideoId);
-          if (aWatched != bWatched) {
-            return aWatched ? 1 : -1;
-          }
-        }
-        return b.createdAt.compareTo(a.createdAt);
-      });
+    contestItems.sort((a, b) {
+      final aStart = readDate(a.contestData['submissionStart']);
+      final bStart = readDate(b.contestData['submissionStart']);
+      final aEnd =
+          readDate(a.contestData['votingEnd']) ??
+          readDate(a.contestData['submissionEnd']);
+      final bEnd =
+          readDate(b.contestData['votingEnd']) ??
+          readDate(b.contestData['submissionEnd']);
+      final aEnded = aEnd != null && aEnd.isBefore(now);
+      final bEnded = bEnd != null && bEnd.isBefore(now);
+      if (aEnded != bEnded) return aEnded ? 1 : -1;
+      if (aStart == null && bStart == null) return 0;
+      if (aStart == null) return 1;
+      if (bStart == null) return -1;
+      return aStart.compareTo(bStart);
+    });
 
-    return <_FeedItem>[...videoItems, ...newsItems];
+    // Build the grouped feed: each competition, then its participant videos
+    // directly below it, then the next competition, and so on.
+    final grouped = <_FeedItem>[];
+    for (final contest in contestItems) {
+      grouped.add(contest);
+      final participants = participantsByContest[contest.contestId];
+      if (participants != null) grouped.addAll(participants);
+    }
+
+    // Competitions + their participant videos first, then any promotional admin
+    // videos, then news.
+    return <_FeedItem>[...grouped, ...adminVideoItems, ...newsItems];
   }
 }
 
@@ -1207,6 +1315,34 @@ class _PublicContestsTabState extends State<_PublicContestsTab>
         }
 
         final items = docs.map(_ContestFeedItem.fromDoc).toList();
+
+        // Order competitions by their start date so the one that starts first
+        // appears first. Still-joinable competitions (not ended) are shown
+        // before ended ones so users can actually find and join active ones.
+        final nowSort = DateTime.now();
+        DateTime? readContestDate(dynamic value) {
+          if (value is Timestamp) return value.toDate();
+          if (value is String) return DateTime.tryParse(value);
+          return null;
+        }
+
+        items.sort((a, b) {
+          final aStart = readContestDate(a.data['submissionStart']);
+          final bStart = readContestDate(b.data['submissionStart']);
+          final aEnd =
+              readContestDate(a.data['votingEnd']) ??
+              readContestDate(a.data['submissionEnd']);
+          final bEnd =
+              readContestDate(b.data['votingEnd']) ??
+              readContestDate(b.data['submissionEnd']);
+          final aEnded = aEnd != null && aEnd.isBefore(nowSort);
+          final bEnded = bEnd != null && bEnd.isBefore(nowSort);
+          if (aEnded != bEnded) return aEnded ? 1 : -1;
+          if (aStart == null && bStart == null) return 0;
+          if (aStart == null) return 1;
+          if (bStart == null) return -1;
+          return aStart.compareTo(bStart);
+        });
 
         if (!_appliedSharedTarget &&
             widget.sharedContestId != null &&
@@ -1688,6 +1824,19 @@ class _ContestFeedCard extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          if ((item.data['contestNumber'] ?? '')
+                              .toString()
+                              .isNotEmpty) ...[
+                            Text(
+                              '${context.tr('Competition')} #${item.data['contestNumber']}',
+                              style: const TextStyle(
+                                color: AppColors.hotPink,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                          ],
                           Text(
                             item.title,
                             maxLines: 1,
@@ -1825,6 +1974,9 @@ class _FeedItem {
     this.displayOrder,
     this.viewCount = 0,
     this.shareCount = 0,
+    this.submissionId = '',
+    this.participantUserId = '',
+    this.voteCount = 0,
   });
 
   final String type;
@@ -1842,11 +1994,35 @@ class _FeedItem {
   final int? displayOrder;
   final int viewCount;
   final int shareCount;
+  final String submissionId;
+  final String participantUserId;
+  final int voteCount;
 
   bool get isNews => type == 'news';
   bool get isAdminVideo => type == 'admin_video';
   bool get isContest => type == 'contest';
-  bool get hasVideo => isAdminVideo || isContest;
+  bool get isParticipantVideo => type == 'participant_video';
+  bool get hasVideo => isAdminVideo || isContest || isParticipantVideo;
+
+  factory _FeedItem.fromParticipant(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data();
+    return _FeedItem(
+      type: 'participant_video',
+      title:
+          (data['participantName'] ?? data['userName'] ?? 'Participant')
+              .toString(),
+      description: (data['contestTitle'] ?? '').toString(),
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime(2000),
+      videoUrl: (data['videoUrl'] ?? '').toString(),
+      contestId: (data['contestId'] ?? '').toString(),
+      submissionId: doc.id,
+      participantUserId: (data['userId'] ?? '').toString(),
+      voteCount: ((data['voteCount'] ?? 0) as num).toInt(),
+      shareCount: ((data['shareCount'] ?? 0) as num).toInt(),
+    );
+  }
 
   factory _FeedItem.fromNews(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();
@@ -2117,6 +2293,277 @@ class _AdminVideoFeedCard extends StatelessWidget {
                     color: AppColors.textLight,
                     fontSize: 14,
                     height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ParticipantFeedCard extends StatelessWidget {
+  const _ParticipantFeedCard({
+    required this.item,
+    required this.isShowingActiveVideo,
+    required this.isPlaying,
+    required this.isLoading,
+    required this.controller,
+    this.onTapVideo,
+  });
+
+  final _FeedItem item;
+  final bool isShowingActiveVideo;
+  final bool isPlaying;
+  final bool isLoading;
+  final VideoPlayerController? controller;
+  final VoidCallback? onTapVideo;
+
+  Future<void> _requireAuth(BuildContext context) async {
+    await stopAllFeedPlayback();
+    var navigated = false;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(context.tr('Sign Up / Login first')),
+        content: Text(context.tr('Please sign up or login first to continue.')),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              navigated = true;
+              await stopAllFeedPlayback();
+              Navigator.pushNamed(context, '/register');
+            },
+            child: Text(context.tr('Sign Up')),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              navigated = true;
+              await stopAllFeedPlayback();
+              Navigator.pushNamed(context, '/login');
+            },
+            child: Text(context.tr('Login')),
+          ),
+        ],
+      ),
+    );
+    if (!navigated) unlockFeedPlayback();
+  }
+
+  Future<void> _vote(BuildContext context) async {
+    if (FirebaseAuth.instance.currentUser == null) {
+      await _requireAuth(context);
+      return;
+    }
+    final successMsg = context.tr('Vote submitted. Thank you!');
+    final alreadyMsg = context.tr('You already voted in this contest.');
+    final closedMsg = context.tr('Voting is not open for this contest.');
+    final failMsg = context.tr('Could not vote. Please try again.');
+    try {
+      await AuthService().incrementContestVote(
+        contestId: item.contestId,
+        submissionId: item.submissionId,
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(successMsg),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      final text = e.toString();
+      String message;
+      if (text.contains('already')) {
+        message = alreadyMsg;
+      } else if (text.contains('voting') ||
+          text.contains('closed') ||
+          text.contains('window')) {
+        message = closedMsg;
+      } else {
+        message = failMsg;
+      }
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    String formatMetric(int value) {
+      if (value >= 1000000) {
+        return '${(value / 1000000).toStringAsFixed(value >= 10000000 ? 0 : 1)}M';
+      }
+      if (value >= 1000) {
+        return '${(value / 1000).toStringAsFixed(value >= 10000 ? 0 : 1)}K';
+      }
+      return value.toString();
+    }
+
+    return GestureDetector(
+      onTap: onTapVideo,
+      behavior: HitTestBehavior.opaque,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (isShowingActiveVideo && controller != null)
+            FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: controller!.value.size.width,
+                height: controller!.value.size.height,
+                child: VideoPlayer(controller!),
+              ),
+            )
+          else if (isLoading || isShowingActiveVideo)
+            Container(
+              color: AppColors.card,
+              child: const Center(
+                child: CircularProgressIndicator(
+                  color: AppColors.hotPink,
+                  strokeWidth: 4.6,
+                ),
+              ),
+            )
+          else
+            Container(color: AppColors.card),
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.transparent, Color(0xD0100A1E)],
+                stops: [0.42, 1],
+              ),
+            ),
+          ),
+          const Positioned(right: 16, top: 18, child: _FeedLogoBadge()),
+          if (isShowingActiveVideo)
+            IgnorePointer(
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                opacity: (isPlaying || isLoading) ? 0 : 1,
+                child: Center(
+                  child: Container(
+                    width: 82,
+                    height: 82,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.32),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.22),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.play_arrow_rounded,
+                      color: AppColors.hotPink,
+                      size: 48,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          Positioned(
+            right: 14,
+            top: 210,
+            child: _FeedActionRail(
+              children: [
+                _FeedMetricButton(
+                  icon: Icons.how_to_vote_rounded,
+                  value: formatMetric(item.voteCount),
+                  label: context.tr('Vote'),
+                  onTap: () => _vote(context),
+                ),
+                _FeedMetricButton(
+                  icon: Icons.share_outlined,
+                  value: formatMetric(item.shareCount),
+                  label: context.tr('Shares'),
+                  onTap: () async {
+                    final link =
+                        '$_shareBaseUrl/contest-share?contestId=${item.contestId}&submissionId=${item.submissionId}';
+                    final text =
+                        '${context.tr('Vote for my video')} — ${item.title}\n$link';
+                    await Share.share(
+                      text,
+                      sharePositionOrigin: _shareOriginForContext(context),
+                    );
+                  },
+                ),
+                _FeedActionButton(
+                  icon: Icons.flag_outlined,
+                  label: context.tr('Report'),
+                  onTap: () => showReportVideoDialog(
+                    context: context,
+                    videoType: 'participant_video',
+                    contestId: item.contestId,
+                    submissionId: item.submissionId,
+                    targetUserId: item.participantUserId,
+                    contestTitle: item.description,
+                    participantName: item.title,
+                  ),
+                ),
+                _FeedActionButton(
+                  icon: Icons.block,
+                  label: context.tr('Block'),
+                  onTap: () => showBlockParticipantDialog(
+                    context: context,
+                    blockedUserId: item.participantUserId,
+                    contestId: item.contestId,
+                    submissionId: item.submissionId,
+                    contestTitle: item.description,
+                    participantName: item.title,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            left: 18,
+            right: 82,
+            bottom: 20,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (item.description.isNotEmpty)
+                  Text(
+                    '🏆 ${item.description}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.hotPink,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                const SizedBox(height: 4),
+                Text(
+                  item.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${formatMetric(item.voteCount)} ${context.tr('votes')}',
+                  style: const TextStyle(
+                    color: AppColors.textLight,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
@@ -2621,7 +3068,9 @@ class _ContestParticipantVideosSheet extends StatelessWidget {
                 ),
               ),
               Expanded(
-                child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                child: BlockedUsersBuilder(
+                  builder: (context, blockedUserIds) =>
+                      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                   stream: FirebaseFirestore.instance
                       .collection('contests')
                       .doc(contestId)
@@ -2632,7 +3081,13 @@ class _ContestParticipantVideosSheet extends StatelessWidget {
                     if (!snapshot.hasData) {
                       return const Center(child: CircularProgressIndicator());
                     }
-                    final docs = snapshot.data!.docs.toList()
+                    final docs = snapshot.data!.docs
+                        .where(
+                          (d) => !blockedUserIds.contains(
+                            (d.data()['userId'] ?? '').toString(),
+                          ),
+                        )
+                        .toList()
                       ..sort((a, b) {
                         final av = ((a.data()['voteCount'] ?? 0) as num)
                             .toInt();
@@ -2699,6 +3154,11 @@ class _ContestParticipantVideosSheet extends StatelessWidget {
                                                 entry,
                                               ) => _ContestParticipantVideo(
                                                 id: entry.id,
+                                                userId:
+                                                    (entry.data()['userId'] ??
+                                                            '')
+                                                        .toString(),
+                                                contestId: contestId,
                                                 title:
                                                     (entry.data()['title'] ??
                                                             entry
@@ -2887,6 +3347,7 @@ class _ContestParticipantVideosSheet extends StatelessWidget {
                     );
                   },
                 ),
+              ),
               ),
             ],
           ),
@@ -3885,19 +4346,23 @@ class _DashboardVideoPlayerScreenState
 class _ContestParticipantVideo {
   const _ContestParticipantVideo({
     required this.id,
+    required this.userId,
     required this.title,
     required this.participantName,
     required this.videoUrl,
     required this.votes,
     required this.shares,
+    this.contestId,
   });
 
   final String id;
+  final String userId;
   final String title;
   final String participantName;
   final String videoUrl;
   final int votes;
   final int shares;
+  final String? contestId;
 }
 
 class _ContestParticipantReelsScreen extends StatefulWidget {
@@ -4084,6 +4549,38 @@ class _ContestParticipantReelsScreenState
                           icon: Icons.share_outlined,
                           value: current.shares.toString(),
                           label: context.tr('Shares'),
+                        ),
+                        _FeedActionButton(
+                          icon: Icons.flag_outlined,
+                          label: context.tr('Report'),
+                          compact: true,
+                          onTap: () => showReportVideoDialog(
+                            context: context,
+                            videoType: 'participant_video',
+                            contestId: video.contestId,
+                            submissionId: video.id,
+                            targetUserId: video.userId,
+                            contestTitle: widget.contestTitle,
+                            participantName: video.participantName,
+                          ),
+                        ),
+                        _FeedActionButton(
+                          icon: Icons.block,
+                          label: context.tr('Block'),
+                          compact: true,
+                          onTap: () async {
+                            final blocked = await showBlockParticipantDialog(
+                              context: context,
+                              blockedUserId: video.userId,
+                              contestId: video.contestId,
+                              submissionId: video.id,
+                              contestTitle: widget.contestTitle,
+                              participantName: video.participantName,
+                            );
+                            if (blocked && context.mounted) {
+                              Navigator.of(context).pop();
+                            }
+                          },
                         ),
                       ],
                     ),
@@ -4337,6 +4834,7 @@ class _PublicUserProfileTab extends StatelessWidget {
             (data['displayName'] ?? user.displayName ?? context.tr('User'))
                 .toString();
         final email = (data['email'] ?? user.email ?? '').toString();
+        final photoUrl = (data['photoUrl'] ?? user.photoURL ?? '').toString();
 
         return ListView(
           padding: const EdgeInsets.all(16),
@@ -4353,15 +4851,26 @@ class _PublicUserProfileTab extends StatelessWidget {
                   Container(
                     width: 54,
                     height: 54,
+                    clipBehavior: Clip.antiAlias,
                     decoration: BoxDecoration(
                       color: AppColors.cardSoft,
                       borderRadius: BorderRadius.circular(18),
                     ),
-                    child: const Icon(
-                      Icons.person,
-                      color: AppColors.hotPink,
-                      size: 28,
-                    ),
+                    child: photoUrl.isNotEmpty
+                        ? Image.network(
+                            photoUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => const Icon(
+                              Icons.person,
+                              color: AppColors.hotPink,
+                              size: 28,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.person,
+                            color: AppColors.hotPink,
+                            size: 28,
+                          ),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -4430,6 +4939,17 @@ class _PublicUserProfileTab extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const LegalCenterScreen()),
+                );
+              },
+            ),
+            SettingsActionTile(
+              icon: Icons.block,
+              title: context.tr('Blocked Users'),
+              subtitle: context.tr('Manage participants you have blocked.'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const BlockedUsersScreen()),
                 );
               },
             ),
@@ -5231,7 +5751,8 @@ class _LoginRequiredCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-    return Align(
+    return SingleChildScrollView(
+      child: Align(
       alignment: Alignment.topCenter,
       child: Container(
         margin: const EdgeInsets.fromLTRB(20, 8, 20, 20),
@@ -5431,6 +5952,7 @@ class _LoginRequiredCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }

@@ -54,6 +54,33 @@ class ContestListScreen extends StatelessWidget {
                         }
                         return true;
                       }).toList();
+
+                      final nowSort = DateTime.now();
+                      DateTime? readContestDate(dynamic value) {
+                        if (value is Timestamp) return value.toDate();
+                        if (value is String) return DateTime.tryParse(value);
+                        return null;
+                      }
+                      docs.sort((a, b) {
+                        final ad = a.data();
+                        final bd = b.data();
+                        final aStart = readContestDate(ad['submissionStart']);
+                        final bStart = readContestDate(bd['submissionStart']);
+                        final aEnd =
+                            readContestDate(ad['votingEnd']) ??
+                            readContestDate(ad['submissionEnd']);
+                        final bEnd =
+                            readContestDate(bd['votingEnd']) ??
+                            readContestDate(bd['submissionEnd']);
+                        final aEnded = aEnd != null && aEnd.isBefore(nowSort);
+                        final bEnded = bEnd != null && bEnd.isBefore(nowSort);
+                        if (aEnded != bEnded) return aEnded ? 1 : -1;
+                        if (aStart == null && bStart == null) return 0;
+                        if (aStart == null) return 1;
+                        if (bStart == null) return -1;
+                        return aStart.compareTo(bStart);
+                      });
+
                       if (docs.isEmpty) {
                         return Center(
                           child: Text(context.tr('No contests available.')),

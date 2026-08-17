@@ -1817,15 +1817,42 @@ class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
                       child: Text(context.tr('Unable to load video.')),
                     );
                   }
+                  final videoAspect = _controller.value.aspectRatio > 0
+                      ? _controller.value.aspectRatio
+                      : 9 / 16;
+                  final maxHeight =
+                      MediaQuery.sizeOf(context).height * 0.6;
+                  var displayWidth = playerWidth;
+                  var displayHeight = displayWidth / videoAspect;
+                  if (displayHeight > maxHeight) {
+                    displayHeight = maxHeight;
+                    displayWidth = displayHeight * videoAspect;
+                  }
                   return Column(
                     children: [
-                      SizedBox(
-                        width: playerWidth,
-                        child: AspectRatio(
-                          aspectRatio: 16 / 9,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: VideoPlayer(_controller),
+                      Container(
+                        width: displayWidth,
+                        height: displayHeight,
+                        color: Colors.black,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: GestureDetector(
+                            onTap: () {
+                              if (_controller.value.isPlaying) {
+                                _controller.pause();
+                              } else {
+                                _controller.play();
+                              }
+                              setState(() {});
+                            },
+                            child: FittedBox(
+                              fit: BoxFit.contain,
+                              child: SizedBox(
+                                width: _controller.value.size.width,
+                                height: _controller.value.size.height,
+                                child: VideoPlayer(_controller),
+                              ),
+                            ),
                           ),
                         ),
                       ),

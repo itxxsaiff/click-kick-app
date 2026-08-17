@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import '../../l10n/l10n.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/gradient_button.dart';
+import '../../widgets/google_logo.dart';
+import '../shared/legal_center_screen.dart';
 
 enum _SocialProvider { google, apple }
 
@@ -177,6 +180,50 @@ class _LoginScreenState extends State<LoginScreen> {
     return context.tr('Login failed. Please try again.');
   }
 
+  void _openLegalCenter() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const LegalCenterScreen()),
+    );
+  }
+
+  TextSpan _legalLinkSpan(String key) {
+    return TextSpan(
+      text: context.tr(key),
+      style: const TextStyle(
+        color: AppColors.hotPink,
+        decoration: TextDecoration.underline,
+        fontWeight: FontWeight.w700,
+      ),
+      recognizer: TapGestureRecognizer()..onTap = _openLegalCenter,
+    );
+  }
+
+  Widget _buildLegalDisclosure(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Text.rich(
+        TextSpan(
+          style: const TextStyle(
+            color: AppColors.textMuted,
+            fontSize: 12.5,
+            height: 1.4,
+          ),
+          children: [
+            TextSpan(text: context.tr('By continuing, you agree to our ')),
+            _legalLinkSpan('Terms of Use'),
+            TextSpan(text: context.tr(', ')),
+            _legalLinkSpan('Privacy Policy'),
+            TextSpan(text: context.tr(' and ')),
+            _legalLinkSpan('Community Guidelines'),
+            const TextSpan(text: '.'),
+          ],
+        ),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -331,7 +378,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                     : '/forgot-password?email=${Uri.encodeComponent(email)}';
                                 Navigator.pushNamed(context, target);
                               },
-                              child: Text(context.tr('Forgot password?')),
+                              child: Text(
+                                context.tr('Forgot password?'),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -377,19 +430,12 @@ class _LoginScreenState extends State<LoginScreen> {
                               Container(
                                 width: 34,
                                 height: 34,
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.08),
+                                decoration: const BoxDecoration(
+                                  color: Colors.white,
                                   shape: BoxShape.circle,
                                 ),
                                 alignment: Alignment.center,
-                                child: const Text(
-                                  'G',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
+                                child: const GoogleLogo(size: 20),
                               ),
                               const SizedBox(width: 12),
                               Flexible(
@@ -454,6 +500,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ],
                     ),
                     SizedBox(height: isCompact ? 10 : 12),
+                    _buildLegalDisclosure(context),
                     SizedBox(height: isCompact ? 8 : 14),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,

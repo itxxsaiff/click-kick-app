@@ -28,7 +28,6 @@ const _kLegalPrivacy = 'Legal & Privacy';
 const _kAlreadyHaveAccount = 'Already have an account?';
 const _kLogin = 'Login';
 const _kTermsPrefix = 'I have read and agree to the ';
-const _kTerms = 'terms';
 final _arabicScriptRegExp = RegExp(
   r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]',
 );
@@ -129,7 +128,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String _phoneCountryIso = 'US';
   final _authService = AuthService();
   late final bool _isSponsor;
-  bool _acceptedTerms = true;
+  bool _acceptedTerms = false;
   bool _isLoading = false;
   bool _autoValidate = false;
   bool _obscurePassword = true;
@@ -248,28 +247,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  Future<void> _showAgreementModal() async {
-    final title = _isSponsor
-        ? context.tr('Sponsor Agreement')
-        : context.tr('User Agreement');
-    final body = _isSponsor
-        ? context.tr('Sponsor Agreement Content')
-        : context.tr('User Agreement Content');
+  void _openLegalCenter() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const LegalCenterScreen()),
+    );
+  }
 
-    await showDialog<void>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(title),
-        content: SingleChildScrollView(
-          child: Text(body, style: const TextStyle(height: 1.45)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(context.tr('Close')),
-          ),
-        ],
+  TextSpan _legalLinkSpan(String key) {
+    return TextSpan(
+      text: context.tr(key),
+      style: const TextStyle(
+        color: AppColors.hotPink,
+        decoration: TextDecoration.underline,
+        fontWeight: FontWeight.w700,
       ),
+      recognizer: TapGestureRecognizer()..onTap = _openLegalCenter,
     );
   }
 
@@ -636,17 +629,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                         TextSpan(
                                           text: context.tr(_kTermsPrefix),
                                         ),
-                                        TextSpan(
-                                          text: context.tr(_kTerms),
-                                          style: const TextStyle(
-                                            color: AppColors.hotPink,
-                                            decoration:
-                                                TextDecoration.underline,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                          recognizer: TapGestureRecognizer()
-                                            ..onTap = _showAgreementModal,
-                                        ),
+                                        _legalLinkSpan('Terms of Use'),
+                                        TextSpan(text: context.tr(', ')),
+                                        _legalLinkSpan('Privacy Policy'),
+                                        TextSpan(text: context.tr(', and ')),
+                                        _legalLinkSpan('Community Guidelines'),
                                         const TextSpan(text: '.'),
                                       ],
                                     ),

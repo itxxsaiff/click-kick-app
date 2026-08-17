@@ -87,7 +87,13 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
   void _requestOtpFocus() {
     if (!mounted) return;
-    _focusNode.requestFocus();
+    if (!_focusNode.hasFocus) {
+      FocusScope.of(context).requestFocus(_focusNode);
+    }
+    // Even when the field already has focus, explicitly ask the OS to show the
+    // soft keyboard — requesting focus again is a no-op and will NOT re-open it
+    // (this is why tapping the OTP boxes did nothing on some devices).
+    SystemChannels.textInput.invokeMethod<void>('TextInput.show');
   }
 
   Future<bool> _leaveOtp() async {
@@ -252,7 +258,10 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                           ),
                         ),
                         const SizedBox(height: 26),
-                        Stack(
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _requestOtpFocus,
+                          child: Stack(
                           alignment: Alignment.center,
                           children: [
                             AnimatedBuilder(
@@ -321,6 +330,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                               ),
                             ),
                           ],
+                          ),
                         ),
                         const SizedBox(height: 26),
                         GradientButton(

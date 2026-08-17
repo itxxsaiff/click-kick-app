@@ -196,6 +196,45 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
     return value.toStringAsFixed(value % 1 == 0 ? 0 : 1);
   }
 
+  Future<void> _deleteContestAndVideos(
+    DocumentReference<Map<String, dynamic>> ref,
+  ) async {
+    try {
+      // Remove participant videos (submissions) and votes so nothing is left
+      // orphaned, then delete the contest itself.
+      for (final sub in const ['submissions', 'votes']) {
+        while (true) {
+          final snap = await ref.collection(sub).limit(300).get();
+          if (snap.docs.isEmpty) break;
+          final batch = FirebaseFirestore.instance.batch();
+          for (final d in snap.docs) {
+            batch.delete(d.reference);
+          }
+          await batch.commit();
+          if (snap.docs.length < 300) break;
+        }
+      }
+      await ref.delete();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.tr('Contest deleted.')),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.tr('Could not delete contest. Please try again.'),
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   Future<void> _openContestReport({
     required String contestId,
     required Map<String, dynamic> data,
@@ -755,6 +794,8 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
                     ...filtered.map((doc) {
                       final data = doc.data();
                       final title = (data['title'] ?? '').toString();
+                      final contestNumber = (data['contestNumber'] ?? '')
+                          .toString();
                       final desc = (data['description'] ?? '').toString();
                       final logoUrl = (data['logoUrl'] ?? '').toString();
                       final country = (data['region'] ?? '').toString().trim();
@@ -867,6 +908,15 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
+                                      if (contestNumber.isNotEmpty)
+                                        Text(
+                                          '${context.tr('Competition')} #$contestNumber',
+                                          style: const TextStyle(
+                                            color: AppColors.hotPink,
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 12,
+                                          ),
+                                        ),
                                       Row(
                                         children: [
                                           Expanded(
@@ -950,7 +1000,7 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
                                           ),
                                           content: Text(
                                             context.tr(
-                                              'This cannot be undone.',
+                                              'This deletes the contest and all its videos and votes. This cannot be undone.',
                                             ),
                                           ),
                                           actions: [
@@ -968,7 +1018,9 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
                                         ),
                                       );
                                       if (ok == true) {
-                                        await doc.reference.delete();
+                                        await _deleteContestAndVideos(
+                                          doc.reference,
+                                        );
                                       }
                                     }
                                   },

@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../utils/entry_code.dart';
 
 import '../../../l10n/l10n.dart';
 import '../../../theme/app_colors.dart';
@@ -315,6 +316,7 @@ class _AdminContestFormState extends State<AdminContestForm> {
       }
       await doc.set({
         ...data,
+        'contestNumber': generateEntryCode(),
         'createdAt': now,
         if (url.isNotEmpty) 'logoUrl': url,
         if (videoUrl.isNotEmpty) 'contestVideoUrl': videoUrl,

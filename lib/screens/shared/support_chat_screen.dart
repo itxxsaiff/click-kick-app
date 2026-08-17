@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../l10n/l10n.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/support_attachment_view.dart';
 
 class SupportChatScreen extends StatefulWidget {
   const SupportChatScreen({
@@ -595,32 +596,77 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
             top: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      minLines: 1,
-                      maxLines: 4,
-                      decoration: InputDecoration(
-                        labelText: context.tr('Type your message'),
+                  if (_imageAttachment != null || _videoAttachment != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        children: [
+                          if (_imageAttachment != null)
+                            _adminAttachmentChip(
+                              icon: Icons.image,
+                              label: _imageAttachment!.name,
+                              onRemove: () =>
+                                  setState(() => _imageAttachment = null),
+                            ),
+                          if (_videoAttachment != null)
+                            _adminAttachmentChip(
+                              icon: Icons.videocam,
+                              label: _videoAttachment!.name,
+                              onRemove: () =>
+                                  setState(() => _videoAttachment = null),
+                            ),
+                        ],
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  FilledButton(
-                    onPressed: _sending ? null : _send,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.hotPink,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 16,
+                  Row(
+                    children: [
+                      IconButton(
+                        tooltip: context.tr('Image'),
+                        onPressed: _sending ? null : _pickImage,
+                        icon: const Icon(
+                          Icons.image_outlined,
+                          color: AppColors.hotPink,
+                        ),
                       ),
-                    ),
-                    child: Text(
-                      _sending ? context.tr('Sending...') : context.tr('Send'),
-                    ),
+                      IconButton(
+                        tooltip: context.tr('Video'),
+                        onPressed: _sending ? null : _pickVideo,
+                        icon: const Icon(
+                          Icons.videocam_outlined,
+                          color: AppColors.hotPink,
+                        ),
+                      ),
+                      Expanded(
+                        child: TextField(
+                          controller: _messageController,
+                          minLines: 1,
+                          maxLines: 4,
+                          decoration: InputDecoration(
+                            labelText: context.tr('Type your message'),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      FilledButton(
+                        onPressed: _sending ? null : _send,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.hotPink,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 16,
+                          ),
+                        ),
+                        child: Text(
+                          _sending
+                              ? context.tr('Sending...')
+                              : context.tr('Send'),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -743,40 +789,42 @@ class _SupportChatScreenState extends State<SupportChatScreen> {
   }
 
   Widget _buildAttachmentPreview(Map<String, dynamic> attachment) {
-    final type = (attachment['type'] ?? '').toString();
-    final name = (attachment['name'] ?? '').toString();
-    final url = (attachment['url'] ?? '').toString();
+    return SupportAttachmentView(attachment: attachment);
+  }
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: const Color(0xFF0E1A25),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF334354)),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              type == 'video' ? Icons.videocam_outlined : Icons.image_outlined,
-              color: AppColors.hotPink,
+  Widget _adminAttachmentChip({
+    required IconData icon,
+    required String label,
+    required VoidCallback onRemove,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0E1A25),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFF334354)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: AppColors.hotPink),
+          const SizedBox(width: 6),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 120),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white, fontSize: 12),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                name.isNotEmpty ? name : url,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: onRemove,
+            child: const Icon(Icons.close, size: 16, color: Colors.white70),
+          ),
+        ],
       ),
     );
   }

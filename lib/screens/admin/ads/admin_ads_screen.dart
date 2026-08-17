@@ -524,6 +524,8 @@ class _AdminAdsScreenState extends State<AdminAdsScreen> {
                           );
                         } else if (value == 'report') {
                           await _openContestReport(contestId: doc.id);
+                        } else if (value == 'delete') {
+                          await _confirmAndDeleteContest(doc.reference);
                         }
                       },
                       itemBuilder: (context) => [
@@ -538,6 +540,10 @@ class _AdminAdsScreenState extends State<AdminAdsScreen> {
                         PopupMenuItem(
                           value: 'report',
                           child: Text(context.tr('Contest Report')),
+                        ),
+                        PopupMenuItem(
+                          value: 'delete',
+                          child: Text(context.tr('Delete Contest')),
                         ),
                       ],
                     ),
@@ -951,6 +957,53 @@ class _AdminAdsScreenState extends State<AdminAdsScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _confirmAndDeleteContest(
+    DocumentReference<Map<String, dynamic>> ref,
+  ) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(context.tr('Delete contest?')),
+        content: Text(
+          context.tr(
+            'This deletes the contest and all its videos and votes. This cannot be undone.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(context.tr('Cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(context.tr('Delete')),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      for (final sub in const ['submissions', 'votes']) {
+        while (true) {
+          final snap = await ref.collection(sub).limit(300).get();
+          if (snap.docs.isEmpty) break;
+          final batch = FirebaseFirestore.instance.batch();
+          for (final d in snap.docs) {
+            batch.delete(d.reference);
+          }
+          await batch.commit();
+          if (snap.docs.length < 300) break;
+        }
+      }
+      await ref.delete();
+      if (mounted) _show(context.tr('Contest deleted.'));
+    } catch (_) {
+      if (mounted) {
+        _show(context.tr('Could not delete contest. Please try again.'));
+      }
+    }
   }
 
   Future<void> _openContestReport({required String contestId}) async {

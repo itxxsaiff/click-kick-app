@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:country_picker/country_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
@@ -30,10 +32,143 @@ class _VideoUploadScreenState extends State<VideoUploadScreen> {
   XFile? _videoFile;
   Uint8List? _videoBytes;
   bool _acceptedTerms = false;
+  bool _agreedToRequirements = false;
   bool _saving = false;
   double? _uploadProgress;
+  String _countryName = '';
+  String _countryCode = '';
+
+  String _generateVideoCode() {
+    // Unique-enough 6-digit entry number shown on the video and used for search
+    // / ads (e.g. "Vote for #247183").
+    return (100000 + Random().nextInt(900000)).toString();
+  }
+
+  void _pickNationality() {
+    showCountryPicker(
+      context: context,
+      showPhoneCode: false,
+      countryListTheme: CountryListThemeData(
+        backgroundColor: AppColors.card,
+        textStyle: const TextStyle(color: AppColors.textLight),
+        inputDecoration: InputDecoration(
+          labelText: context.tr('Search country'),
+          prefixIcon: const Icon(Icons.search),
+        ),
+      ),
+      onSelect: (country) {
+        if (!mounted) return;
+        setState(() {
+          _countryName = country.name;
+          _countryCode = country.countryCode;
+        });
+      },
+    );
+  }
+
+  static const List<String> _videoRequirements = <String>[
+    'The video must be free from any watermark, logo, or username from other platforms such as TikTok, Instagram, Snapchat, or any other social media platform.',
+    'The video must have clear video and audio quality and must not be blurry or of poor quality.',
+    'The video should be in vertical 9:16 format, suitable for Click Kick’s video feed. Recommended resolution: 1080 × 1920.',
+    'The video must comply with the maximum duration and file size allowed for the competition.',
+    'The video must be relevant to the specific competition topic you are participating in.',
+    'You confirm that the people appearing in the video agree to the video being published and submitted to the competition.',
+  ];
+
+  Future<bool?> _showVideoRequirementsDialog() {
+    var agreed = false;
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setLocal) => AlertDialog(
+          title: Text(dialogContext.tr('Video Requirements')),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  dialogContext.tr(
+                    'Please read the video requirements before uploading:',
+                  ),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 12),
+                for (final req in _videoRequirements)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(top: 3, right: 8),
+                          child: Icon(
+                            Icons.check_circle,
+                            size: 16,
+                            color: AppColors.hotPink,
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            dialogContext.tr(req),
+                            style: const TextStyle(height: 1.4),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                const Divider(height: 20),
+                InkWell(
+                  onTap: () => setLocal(() => agreed = !agreed),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Checkbox(
+                        value: agreed,
+                        onChanged: (v) => setLocal(() => agreed = v ?? false),
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Text(
+                            dialogContext.tr(
+                              'I agree to the video requirements and confirm that my video is ready for submission.',
+                            ),
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(dialogContext.tr('Cancel')),
+            ),
+            FilledButton(
+              onPressed: agreed
+                  ? () => Navigator.pop(dialogContext, true)
+                  : null,
+              child: Text(dialogContext.tr('Agree & Continue to Upload')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Future<void> _pickVideo() async {
+    if (!_agreedToRequirements) {
+      final agreed = await _showVideoRequirementsDialog();
+      if (agreed != true) return;
+      if (!mounted) return;
+      setState(() => _agreedToRequirements = true);
+    }
     final file = await _picker.pickVideo(source: ImageSource.gallery);
     if (file == null) return;
     Uint8List? bytes;
@@ -58,6 +193,10 @@ class _VideoUploadScreenState extends State<VideoUploadScreen> {
     }
     if (!_acceptedTerms) {
       _show(context.tr('Please accept contest terms.'));
+      return;
+    }
+    if (_countryName.isEmpty) {
+      _show(context.tr('Please select your nationality.'));
       return;
     }
 
@@ -148,13 +287,20 @@ class _VideoUploadScreenState extends State<VideoUploadScreen> {
       final url = await storageRef.getDownloadURL();
       final now = Timestamp.fromDate(DateTime.now());
 
+      final videoCode = _generateVideoCode();
+
       await doc.set({
         'contestId': widget.contestId,
         'userId': user.uid,
         'userName': participantName,
         'participantName': participantName,
+        'participantNameLower': participantName.toLowerCase(),
+        'videoCode': videoCode,
+        'country': _countryName,
+        'countryCode': _countryCode,
         'contestAdminId': contestAdminId,
         'contestAdminName': contestAdminName,
+        'contestTitle': widget.contestTitle,
         'videoUrl': url,
         'thumbnailUrl': '',
         'durationSeconds': 0,
@@ -167,6 +313,12 @@ class _VideoUploadScreenState extends State<VideoUploadScreen> {
         'viewCount': 0,
         'termsAcceptedAt': now,
       });
+
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'country': _countryName,
+        'countryCode': _countryCode,
+        'updatedAt': now,
+      }, SetOptions(merge: true));
 
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'role': 'participant',
@@ -286,6 +438,37 @@ class _VideoUploadScreenState extends State<VideoUploadScreen> {
                               Text(context.tr('Tap to select a 30–45s video')),
                             ],
                           ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: _saving ? null : _pickNationality,
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: context.tr('Your nationality'),
+                      prefixIcon: const Icon(
+                        Icons.public,
+                        color: AppColors.textMuted,
+                      ),
+                      suffixIcon: const Icon(Icons.arrow_drop_down),
+                      filled: true,
+                      fillColor: AppColors.card,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: Text(
+                      _countryName.isEmpty
+                          ? context.tr('Select your country')
+                          : _countryName,
+                      style: TextStyle(
+                        color: _countryName.isEmpty
+                            ? AppColors.textMuted
+                            : AppColors.textLight,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 18),

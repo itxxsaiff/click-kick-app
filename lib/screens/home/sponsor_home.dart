@@ -2509,18 +2509,22 @@ class _SponsorCreateCampaignScreenState
   }
 
   Future<void> _loadSponsorshipFee() async {
-    final doc = await FirebaseFirestore.instance
-        .collection('app_settings')
-        .doc('sponsorship')
-        .get();
-    final data = doc.data() ?? {};
-    final fee = ((data['applicationFee'] ?? 1000) as num).toDouble();
-    final winner = ((data['winnerPrize'] ?? 100) as num).toDouble();
-    if (!mounted) return;
-    setState(() {
-      _applicationFee = fee;
-      _winnerPrize = winner;
-    });
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('app_settings')
+          .doc('sponsorship')
+          .get();
+      final data = doc.data() ?? {};
+      final fee = ((data['applicationFee'] ?? 1000) as num).toDouble();
+      final winner = ((data['winnerPrize'] ?? 100) as num).toDouble();
+      if (!mounted) return;
+      setState(() {
+        _applicationFee = fee;
+        _winnerPrize = winner;
+      });
+    } catch (_) {
+      // Keep existing values if settings can't be read.
+    }
   }
 
   @override

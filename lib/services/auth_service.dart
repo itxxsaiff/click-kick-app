@@ -8,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../firebase_options.dart';
 import '../models/enums.dart';
@@ -30,7 +31,15 @@ class AuthService {
     'sponsor',
   };
 
-  String _normalizeEmail(String email) => email.trim().toLowerCase();
+  String _normalizeEmail(String email) => email
+      // Strip whitespace plus invisible / bidirectional control characters that
+      // some keyboards (especially Arabic) insert - these make a valid-looking
+      // email be rejected by Firebase as "invalid-email".
+      .replaceAll(
+        RegExp(r'[\s\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF\u00A0]'),
+        '',
+      )
+      .toLowerCase();
 
   static ActionCodeSettings emailActionCodeSettings() {
     final authDomain =
@@ -212,13 +221,75 @@ class AuthService {
     return credential;
   }
 
+  static const String _googleServerClientId =
+      '127201745203-khruilil3if315sg7vjkoajcfi28hpna.apps.googleusercontent.com';
+  static bool _googleSignInInitialized = false;
+
+  Future<void> _ensureGoogleSignInInitialized() async {
+    if (_googleSignInInitialized) return;
+    await GoogleSignIn.instance.initialize(
+      serverClientId: _googleServerClientId,
+    );
+    _googleSignInInitialized = true;
+  }
+
   Future<UserCredential> signInWithGoogle() async {
+    // Android uses the native Google account picker (google_sign_in). This is
+    // the reliable flow required for the Google Play build; the generic
+    // Firebase provider flow (web IDP) is unreliable for Google on Android.
+    // Web and iOS keep the existing Firebase provider flow.
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return _signInWithGoogleNative();
+    }
     final provider = GoogleAuthProvider();
     return _signInWithProvider(
       provider,
       roleIfMissing: UserRole.user,
       providerName: 'Google',
     );
+  }
+
+  Future<UserCredential> _signInWithGoogleNative() async {
+    await _ensureGoogleSignInInitialized();
+
+    final GoogleSignInAccount account;
+    try {
+      account = await GoogleSignIn.instance.authenticate(
+        scopeHint: const ['email'],
+      );
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) {
+        throw FirebaseAuthException(
+          code: 'sign_in_canceled',
+          message: 'Login cancelled.',
+        );
+      }
+      throw FirebaseAuthException(
+        code: 'google-login-failed',
+        message: e.description ?? 'Google login failed. Please try again.',
+      );
+    }
+
+    final idToken = account.authentication.idToken;
+    if (idToken == null || idToken.isEmpty) {
+      throw FirebaseAuthException(
+        code: 'google-login-failed',
+        message: 'Google login failed. Please try again.',
+      );
+    }
+
+    final oauthCredential = GoogleAuthProvider.credential(idToken: idToken);
+    final userCredential = await _auth.signInWithCredential(oauthCredential);
+    final user = userCredential.user;
+    if (user == null) {
+      throw FirebaseAuthException(code: 'user-not-found');
+    }
+
+    await _assertNoSocialAccountConflict(user, GoogleAuthProvider(), 'Google');
+    await _ensureUserDoc(user, roleIfMissing: UserRole.user);
+    await _syncUserProviderMetadata(user, provider: 'google');
+    await _assertUserAccess(user.uid);
+    return userCredential;
   }
 
   Future<UserCredential> signInWithApple() async {

@@ -67,12 +67,34 @@ service firebase.storage {
     }
 
     match /sponsorship_applications/{applicationId}/{allPaths=**} {
-      allow read, write: if isStaff() ||
+      // Allow reading (incl. getDownloadURL right after upload during creation,
+      // when the Firestore doc does not exist yet) for staff or the owner.
+      allow read: if isStaff() ||
         (
           signedIn() &&
-          firestore.get(
-            /databases/(default)/documents/sponsorship_applications/$(applicationId)
-          ).data.sponsorId == request.auth.uid
+          (
+            !firestore.exists(
+              /databases/(default)/documents/sponsorship_applications/$(applicationId)
+            ) ||
+            firestore.get(
+              /databases/(default)/documents/sponsorship_applications/$(applicationId)
+            ).data.sponsorId == request.auth.uid
+          )
+        );
+      // Allow the sponsor to upload images while creating the application (the
+      // Firestore doc does not exist yet at upload time), or later when they own
+      // it.
+      allow write: if isStaff() ||
+        (
+          signedIn() &&
+          (
+            !firestore.exists(
+              /databases/(default)/documents/sponsorship_applications/$(applicationId)
+            ) ||
+            firestore.get(
+              /databases/(default)/documents/sponsorship_applications/$(applicationId)
+            ).data.sponsorId == request.auth.uid
+          )
         );
     }
 

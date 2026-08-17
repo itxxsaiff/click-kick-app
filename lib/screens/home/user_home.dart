@@ -9,6 +9,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/news_slider.dart';
 import '../shared/legal_center_screen.dart';
+import '../shared/blocked_users_screen.dart';
 import '../shared/click_kick_star_page.dart';
 import '../user/contest_detail_screen.dart';
 
@@ -208,6 +209,36 @@ class _UserContestsTabState extends State<_UserContestsTab> {
           }
           return true;
         }).toList();
+
+        // Show competitions in order of their start date (earliest first), with
+        // still-joinable (not ended) ones before ended ones.
+        final nowSort = DateTime.now();
+        DateTime? readContestDate(dynamic value) {
+          if (value is Timestamp) return value.toDate();
+          if (value is String) return DateTime.tryParse(value);
+          return null;
+        }
+
+        docs.sort((a, b) {
+          final ad = a.data();
+          final bd = b.data();
+          final aStart = readContestDate(ad['submissionStart']);
+          final bStart = readContestDate(bd['submissionStart']);
+          final aEnd =
+              readContestDate(ad['votingEnd']) ??
+              readContestDate(ad['submissionEnd']);
+          final bEnd =
+              readContestDate(bd['votingEnd']) ??
+              readContestDate(bd['submissionEnd']);
+          final aEnded = aEnd != null && aEnd.isBefore(nowSort);
+          final bEnded = bEnd != null && bEnd.isBefore(nowSort);
+          if (aEnded != bEnded) return aEnded ? 1 : -1;
+          if (aStart == null && bStart == null) return 0;
+          if (aStart == null) return 1;
+          if (bStart == null) return -1;
+          return aStart.compareTo(bStart);
+        });
+
         if (docs.isEmpty) {
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -1592,6 +1623,26 @@ class _UserProfileTabState extends State<_UserProfileTab> {
             },
             icon: const Icon(Icons.privacy_tip_outlined),
             label: Text(context.tr('Legal & Privacy')),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.textMuted,
+              backgroundColor: AppColors.card,
+              side: const BorderSide(color: AppColors.border),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const BlockedUsersScreen()),
+              );
+            },
+            icon: const Icon(Icons.block),
+            label: Text(context.tr('Blocked Users')),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.textMuted,
               backgroundColor: AppColors.card,

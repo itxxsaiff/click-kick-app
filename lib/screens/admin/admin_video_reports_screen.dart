@@ -1397,15 +1397,20 @@ DateTime _timestampOf(Map<String, dynamic> data, String key) {
   return DateTime.fromMillisecondsSinceEpoch(0);
 }
 
+bool _isBlockReport(Map<String, dynamic> data) {
+  return (data['type'] ?? '').toString().toLowerCase().trim() == 'block';
+}
+
 String _videoTypeKey(Map<String, dynamic> data) {
   final raw = (data['videoType'] ?? '').toString().toLowerCase().trim();
   if (raw.contains('admin')) return 'feed';
   if (raw.contains('feed')) return 'feed';
-  if (raw.contains('contest')) return 'contest';
+  if (raw.contains('contest') || raw.contains('participant')) return 'contest';
   return 'unknown';
 }
 
 String _videoTypeLabel(Map<String, dynamic> data) {
+  if (_isBlockReport(data)) return 'Participant Block';
   switch (_videoTypeKey(data)) {
     case 'feed':
       return 'Feed Video';

@@ -14,7 +14,8 @@ Future<void> showReportVideoDialog({
   String? contestTitle,
   String? participantName,
 }) async {
-  final reasonController = TextEditingController();
+  final detailsController = TextEditingController();
+  String? selectedReason;
   String? error;
   var submitting = false;
 
@@ -24,18 +25,27 @@ Future<void> showReportVideoDialog({
       return StatefulBuilder(
         builder: (dialogContext, setState) {
           Future<void> submit() async {
-            final reason = reasonController.text.trim();
-            if (reason.isEmpty) {
-              setState(() => error = dialogContext.tr('Report reason is required.'));
+            final reason = selectedReason;
+            if (reason == null || reason.isEmpty) {
+              setState(
+                () => error = dialogContext.tr('Please select a reason.'),
+              );
               return;
             }
             setState(() {
               submitting = true;
               error = null;
             });
+            final loginMsg = dialogContext.tr('Please login to report videos.');
+            final dupMsg = dialogContext.tr('You already reported this video.');
+            final failMsg = dialogContext.tr('Failed to submit report.');
+            final successMsg = dialogContext.tr(
+              'Report submitted. Our team will review it within 24 hours.',
+            );
             try {
               await VideoReportService().submitReport(
                 reason: reason,
+                details: detailsController.text.trim(),
                 videoType: videoType,
                 contestId: contestId,
                 submissionId: submissionId,
@@ -48,15 +58,21 @@ Future<void> showReportVideoDialog({
                 Navigator.pop(dialogContext);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text(dialogContext.tr('Report submitted.')),
+                    content: Text(successMsg),
                     behavior: SnackBarBehavior.floating,
                   ),
                 );
               }
             } catch (e) {
-              final message = e.toString().contains('login-required')
-                  ? dialogContext.tr('Please login to report videos.')
-                  : dialogContext.tr('Failed to submit report.');
+              final text = e.toString();
+              String message;
+              if (text.contains('login-required')) {
+                message = loginMsg;
+              } else if (text.contains('duplicate-report')) {
+                message = dupMsg;
+              } else {
+                message = failMsg;
+              }
               setState(() {
                 submitting = false;
                 error = message;
@@ -66,30 +82,61 @@ Future<void> showReportVideoDialog({
 
           return AlertDialog(
             title: Text(dialogContext.tr('Report Video')),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: reasonController,
-                  minLines: 3,
-                  maxLines: 5,
-                  decoration: InputDecoration(
-                    labelText: dialogContext.tr('Report reason'),
-                    hintText: dialogContext.tr('Explain why this video should be reviewed.'),
-                  ),
-                ),
-                if (error != null) ...[
-                  const SizedBox(height: 10),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    error!,
-                    style: const TextStyle(
-                      color: AppColors.hotPink,
-                      fontWeight: FontWeight.w600,
+                    dialogContext.tr('Why are you reporting this video?'),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedReason,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: dialogContext.tr('Reason'),
+                      border: const OutlineInputBorder(),
+                    ),
+                    hint: Text(dialogContext.tr('Select a reason')),
+                    items: [
+                      for (final reason in kReportReasons)
+                        DropdownMenuItem<String>(
+                          value: reason,
+                          child: Text(dialogContext.tr(reason)),
+                        ),
+                    ],
+                    onChanged: submitting
+                        ? null
+                        : (value) => setState(() => selectedReason = value),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: detailsController,
+                    minLines: 2,
+                    maxLines: 4,
+                    enabled: !submitting,
+                    decoration: InputDecoration(
+                      labelText: dialogContext.tr('Additional details (optional)'),
+                      hintText: dialogContext.tr(
+                        'Explain why this video should be reviewed.',
+                      ),
+                      border: const OutlineInputBorder(),
                     ),
                   ),
+                  if (error != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      error!,
+                      style: const TextStyle(
+                        color: AppColors.hotPink,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
             actions: [
               TextButton(

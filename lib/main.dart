@@ -13,6 +13,7 @@ import 'screens/auth/forgot_password_screen.dart';
 import 'screens/auth/auth_action_screen.dart';
 import 'screens/auth/register_screen.dart';
 import 'screens/home/home_router.dart';
+import 'screens/profile/general_video_player_screen.dart';
 import 'screens/public/public_feed_screen.dart';
 
 final RouteObserver<ModalRoute<void>> appRouteObserver =
@@ -142,6 +143,14 @@ class VideoContestApp extends StatelessWidget {
                       initialTabIndex: 1,
                       sharedContestId: contestId,
                     ),
+                  );
+                }
+              }
+              if (uri.path == '/general-video') {
+                final videoId = uri.queryParameters['videoId'] ?? '';
+                if (videoId.isNotEmpty) {
+                  return MaterialPageRoute(
+                    builder: (_) => GeneralVideoLinkScreen(videoId: videoId),
                   );
                 }
               }

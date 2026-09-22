@@ -487,6 +487,20 @@ class AuthService {
     await callable.call<Map<String, dynamic>>({'videoId': videoId});
   }
 
+  Future<void> incrementGeneralVideoView(String videoId) async {
+    final callable = FirebaseFunctions.instance.httpsCallable(
+      'incrementGeneralVideoView',
+    );
+    await callable.call<Map<String, dynamic>>({'videoId': videoId});
+  }
+
+  Future<void> incrementGeneralVideoShare(String videoId) async {
+    final callable = FirebaseFunctions.instance.httpsCallable(
+      'incrementGeneralVideoShare',
+    );
+    await callable.call<Map<String, dynamic>>({'videoId': videoId});
+  }
+
   Future<void> deleteUserAccountPermanently(String userId) async {
     final callable = FirebaseFunctions.instance.httpsCallable(
       'deleteUserAccountPermanently',

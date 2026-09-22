@@ -5,6 +5,7 @@ import 'package:video_player/video_player.dart';
 import '../../l10n/l10n.dart';
 import '../../services/video_download_service.dart';
 import '../../theme/app_colors.dart';
+import 'admin_general_videos_view.dart';
 
 class AdminVideosScreen extends StatefulWidget {
   const AdminVideosScreen({super.key, this.contestIdFilter, this.customTitle});
@@ -21,6 +22,83 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
   String _search = '';
   String _statusFilter = 'all';
   String _sortBy = 'newest';
+  // 'competition' (default, the existing list) or 'general'.
+  String _videoType = 'competition';
+  late final Future<String> _roleFuture = _loadRole();
+
+  Future<String> _loadRole() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (uid.isEmpty) return '';
+    final snap = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .get();
+    return (snap.data()?['role'] ?? '').toString().toLowerCase();
+  }
+
+  /// Video Type switch (General / Competition). General videos are not tied to
+  /// a contest, so only admins see it, and only on the all-videos screen.
+  Widget _buildVideoTypeToggle(BuildContext context) {
+    if (widget.contestIdFilter != null) return const SizedBox.shrink();
+    return FutureBuilder<String>(
+      future: _roleFuture,
+      builder: (context, snapshot) {
+        final role = snapshot.data ?? '';
+        if (!const {'admin', 'super_admin', 'superadmin'}.contains(role)) {
+          return const SizedBox.shrink();
+        }
+        Widget chip(String value, String label) {
+          final selected = _videoType == value;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _videoType = value),
+              child: Container(
+                height: 40,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: selected
+                      ? const Color(0xFF1F6FEB)
+                      : AppColors.card.withValues(alpha: 0.8),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: selected
+                        ? const Color(0xFF4DA3FF)
+                        : AppColors.border,
+                  ),
+                ),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Row(
+            children: [
+              Text(
+                '${context.tr('Video Type')}:',
+                style: const TextStyle(
+                  color: AppColors.textLight,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 12),
+              chip('general', context.tr('General')),
+              const SizedBox(width: 8),
+              chip('competition', context.tr('Competition')),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   @override
   void dispose() {
@@ -73,6 +151,7 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
           const _SpaceBackground(),
           Column(
             children: [
+              _buildVideoTypeToggle(context),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
                 child: Row(
@@ -144,6 +223,14 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                   ],
                 ),
               ),
+              if (_videoType == 'general' && widget.contestIdFilter == null)
+                Expanded(
+                  child: AdminGeneralVideosView(
+                    search: _search,
+                    statusFilter: _statusFilter,
+                  ),
+                )
+              else
               Expanded(
                 child: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
                   future: FirebaseFirestore.instance

@@ -172,8 +172,34 @@ async function cleanupUserPrivateData(targetUid) {
       .delete()
       .catch(() => null);
 
+  // General videos and the follow graph (both directions).
+  const generalVideos = await db
+      .collection("general_videos")
+      .where("userId", "==", targetUid)
+      .get()
+      .catch(() => null);
+  if (generalVideos) {
+    for (const videoDoc of generalVideos.docs) {
+      await db.recursiveDelete(videoDoc.ref).catch(() => null);
+    }
+  }
+  for (const field of ["followerId", "followingId"]) {
+    const followsSnap = await db
+        .collection("follows")
+        .where(field, "==", targetUid)
+        .get()
+        .catch(() => null);
+    if (!followsSnap) continue;
+    for (let i = 0; i < followsSnap.docs.length; i += 400) {
+      const batch = db.batch();
+      followsSnap.docs.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
+      await batch.commit().catch(() => null);
+    }
+  }
+
   const bucket = admin.storage().bucket();
   const prefixes = [
+    `general_videos/${targetUid}/`,
     `profile_photos/${targetUid}/`,
     `support_attachments/${targetUid}/`,
     `invoices/${targetUid}/`,
@@ -395,21 +421,39 @@ exports.incrementContestVote = onCall(async (request) => {
   }
 
   const contestRef = db.collection("contests").doc(contestId);
-  const voteRef = contestRef.collection("votes").doc(userId);
+  // One user + one video = one vote. A user can vote for every video in a
+  // contest, but never twice for the same video.
+  const voteRef = contestRef
+      .collection("votes")
+      .doc(`${userId}_${submissionId}`);
+  // Before per-video voting, a vote doc was keyed by the voter id only (one
+  // vote per contest). Honour those legacy votes so nobody can vote for the
+  // same video a second time.
+  const legacyVoteRef = contestRef.collection("votes").doc(userId);
   const submissionRef = contestRef.collection("submissions").doc(submissionId);
 
   await db.runTransaction(async (tx) => {
-    const [contestSnap, voteSnap, submissionSnap] = await Promise.all([
-      tx.get(contestRef),
-      tx.get(voteRef),
-      tx.get(submissionRef),
-    ]);
+    const [contestSnap, voteSnap, legacyVoteSnap, submissionSnap] =
+      await Promise.all([
+        tx.get(contestRef),
+        tx.get(voteRef),
+        tx.get(legacyVoteRef),
+        tx.get(submissionRef),
+      ]);
 
     if (!contestSnap.exists) {
       throw new HttpsError("not-found", "Contest not found.");
     }
-    if (voteSnap.exists) {
-      throw new HttpsError("already-exists", "User already voted.");
+    if (
+      voteSnap.exists ||
+      (legacyVoteSnap.exists &&
+        String((legacyVoteSnap.data() || {}).submissionId || "") ===
+          submissionId)
+    ) {
+      throw new HttpsError(
+          "already-exists",
+          "User already voted for this video.",
+      );
     }
     if (!submissionSnap.exists) {
       throw new HttpsError("not-found", "Submission not found.");
@@ -524,6 +568,81 @@ exports.incrementAdminVideoShare = onCall(async (request) => {
   }
 
   const videoRef = db.collection("admin_videos").doc(videoId);
+  const videoSnap = await videoRef.get();
+  if (!videoSnap.exists) {
+    throw new HttpsError("not-found", "Video not found.");
+  }
+
+  await videoRef.set(
+      {
+        shareCount: admin.firestore.FieldValue.increment(1),
+        lastSharedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      {merge: true},
+  );
+
+  return {ok: true};
+});
+
+exports.incrementGeneralVideoView = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Authentication required.");
+  }
+
+  const data = request.data || {};
+  const videoId = String(data.videoId || "").trim();
+  if (!videoId) {
+    throw new HttpsError("invalid-argument", "videoId is required.");
+  }
+
+  const videoRef = db.collection("general_videos").doc(videoId);
+  const viewerRef = videoRef.collection("viewers").doc(request.auth.uid);
+
+  await db.runTransaction(async (tx) => {
+    const [videoSnap, viewerSnap] = await Promise.all([
+      tx.get(videoRef),
+      tx.get(viewerRef),
+    ]);
+
+    if (!videoSnap.exists) {
+      throw new HttpsError("not-found", "Video not found.");
+    }
+    if (String((videoSnap.data() || {}).status || "") !== "approved") {
+      throw new HttpsError("failed-precondition", "Video is not approved.");
+    }
+    if (viewerSnap.exists) {
+      return;
+    }
+
+    tx.set(viewerRef, {
+      userId: request.auth.uid,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    tx.set(
+        videoRef,
+        {
+          viewCount: admin.firestore.FieldValue.increment(1),
+          lastViewedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        {merge: true},
+    );
+  });
+
+  return {ok: true};
+});
+
+exports.incrementGeneralVideoShare = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Authentication required.");
+  }
+
+  const data = request.data || {};
+  const videoId = String(data.videoId || "").trim();
+  if (!videoId) {
+    throw new HttpsError("invalid-argument", "videoId is required.");
+  }
+
+  const videoRef = db.collection("general_videos").doc(videoId);
   const videoSnap = await videoRef.get();
   if (!videoSnap.exists) {
     throw new HttpsError("not-found", "Video not found.");

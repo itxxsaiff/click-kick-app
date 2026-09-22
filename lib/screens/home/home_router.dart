@@ -81,7 +81,10 @@ class HomeRouter extends StatelessWidget {
 
         final authService = AuthService();
         if (authService.requiresOtpVerification(user: user, userData: data)) {
-          return OtpVerificationScreen(maskedPhone: _maskedPhone(data));
+          return OtpVerificationScreen(
+            maskedPhone: _maskedPhone(data),
+            sendOnOpen: true,
+          );
         }
 
         if (role == 'superAdmin' || role == 'super_admin' || role == 'admin') {

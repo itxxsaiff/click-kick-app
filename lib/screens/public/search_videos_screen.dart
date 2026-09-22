@@ -340,7 +340,7 @@ class _SearchVideoDetailScreenState extends State<_SearchVideoDetailScreen> {
     if (_voting) return;
     final successMsg = context.tr('Vote submitted. Thank you!');
     final loginMsg = context.tr('Please login to vote.');
-    final alreadyMsg = context.tr('You already voted in this contest.');
+    final alreadyMsg = context.tr('You already voted for this video.');
     final closedMsg = context.tr('Voting is not open for this contest.');
     final failMsg = context.tr('Could not vote. Please try again.');
     setState(() => _voting = true);

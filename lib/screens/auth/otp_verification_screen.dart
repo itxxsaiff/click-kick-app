@@ -9,9 +9,16 @@ import '../../theme/app_colors.dart';
 import '../../widgets/gradient_button.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
-  const OtpVerificationScreen({super.key, required this.maskedPhone});
+  const OtpVerificationScreen({
+    super.key,
+    required this.maskedPhone,
+    this.sendOnOpen = false,
+  });
 
   final String maskedPhone;
+
+  /// True when opened from login, so a code still has to be sent.
+  final bool sendOnOpen;
 
   @override
   State<OtpVerificationScreen> createState() => _OtpVerificationScreenState();
@@ -52,6 +59,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   void initState() {
     super.initState();
     _startTimer();
+    if (widget.sendOnOpen) _sendCodeOnOpen();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _requestOtpFocus();
       unawaited(
@@ -69,6 +77,22 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     _codeController.dispose();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  /// Opened from login (not right after registration, which already sent a
+  /// code): nobody has sent this user a code yet, so send one now instead of
+  /// making them wait for the resend timer.
+  Future<void> _sendCodeOnOpen() async {
+    try {
+      await _authService.sendLoginOtp();
+      if (!mounted) return;
+      _showMessage(context.tr('OTP sent on WhatsApp.'));
+    } catch (e) {
+      if (!mounted) return;
+      // "Please wait" means a code was sent moments ago; nothing to report.
+      if (e.toString().contains('Please wait')) return;
+      _showMessage(_friendlyOtpError(e));
+    }
   }
 
   void _startTimer() {
@@ -262,74 +286,82 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                           behavior: HitTestBehavior.opaque,
                           onTap: _requestOtpFocus,
                           child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            AnimatedBuilder(
-                              animation: _codeController,
-                              builder: (context, _) => Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: List.generate(6, (index) {
-                                  final text = _codeController.text;
-                                  final digit = index < text.length
-                                      ? text[index]
-                                      : '';
-                                  final active =
-                                      index == text.length && text.length < 6;
-                                  return _OtpBox(digit: digit, active: active);
-                                }),
-                              ),
-                            ),
-                            Positioned.fill(
-                              child: TextField(
-                                controller: _codeController,
-                                focusNode: _focusNode,
-                                autofocus: true,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(),
-                                textInputAction: TextInputAction.done,
-                                maxLength: 6,
-                                enableInteractiveSelection: true,
-                                inputFormatters: [
-                                  TextInputFormatter.withFunction((
-                                    oldValue,
-                                    newValue,
-                                  ) {
-                                    final normalized = _normalizeOtpDigits(
-                                      newValue.text,
-                                    );
-                                    final truncated = normalized.length > 6
-                                        ? normalized.substring(0, 6)
-                                        : normalized;
-                                    return TextEditingValue(
-                                      text: truncated,
-                                      selection: TextSelection.collapsed(
-                                        offset: truncated.length,
-                                      ),
+                            alignment: Alignment.center,
+                            children: [
+                              AnimatedBuilder(
+                                animation: _codeController,
+                                builder: (context, _) => Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: List.generate(6, (index) {
+                                    final text = _codeController.text;
+                                    final digit = index < text.length
+                                        ? text[index]
+                                        : '';
+                                    final active =
+                                        index == text.length && text.length < 6;
+                                    return _OtpBox(
+                                      digit: digit,
+                                      active: active,
                                     );
                                   }),
-                                ],
-                                style: const TextStyle(
-                                  color: Colors.transparent,
-                                  fontSize: 1,
                                 ),
-                                cursorColor: Colors.transparent,
-                                decoration: const InputDecoration(
-                                  counterText: '',
-                                  border: InputBorder.none,
-                                  focusedBorder: InputBorder.none,
-                                  enabledBorder: InputBorder.none,
-                                ),
-                                onTap: _requestOtpFocus,
-                                onChanged: (value) {
-                                  setState(() {});
-                                  if (value.length == 6 && !_isLoading) {
-                                    _verify();
-                                  }
-                                },
                               ),
-                            ),
-                          ],
+                              Positioned.fill(
+                                child: TextField(
+                                  controller: _codeController,
+                                  focusNode: _focusNode,
+                                  autofocus: true,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(),
+                                  textInputAction: TextInputAction.done,
+                                  maxLength: 6,
+                                  enableInteractiveSelection: true,
+                                  inputFormatters: [
+                                    TextInputFormatter.withFunction((
+                                      oldValue,
+                                      newValue,
+                                    ) {
+                                      final normalized = _normalizeOtpDigits(
+                                        newValue.text,
+                                      );
+                                      final truncated = normalized.length > 6
+                                          ? normalized.substring(0, 6)
+                                          : normalized;
+                                      return TextEditingValue(
+                                        text: truncated,
+                                        selection: TextSelection.collapsed(
+                                          offset: truncated.length,
+                                        ),
+                                      );
+                                    }),
+                                  ],
+                                  style: const TextStyle(
+                                    color: Colors.transparent,
+                                    fontSize: 1,
+                                  ),
+                                  cursorColor: Colors.transparent,
+                                  decoration: const InputDecoration(
+                                    // The app theme fills text fields; without
+                                    // this the invisible input paints over the
+                                    // six boxes and hides them.
+                                    filled: false,
+                                    contentPadding: EdgeInsets.zero,
+                                    counterText: '',
+                                    border: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    enabledBorder: InputBorder.none,
+                                  ),
+                                  onTap: _requestOtpFocus,
+                                  onChanged: (value) {
+                                    setState(() {});
+                                    if (value.length == 6 && !_isLoading) {
+                                      _verify();
+                                    }
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(height: 26),

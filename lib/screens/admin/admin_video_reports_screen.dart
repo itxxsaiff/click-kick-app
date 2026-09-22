@@ -1405,6 +1405,7 @@ String _videoTypeKey(Map<String, dynamic> data) {
   final raw = (data['videoType'] ?? '').toString().toLowerCase().trim();
   if (raw.contains('admin')) return 'feed';
   if (raw.contains('feed')) return 'feed';
+  if (raw.contains('general')) return 'general';
   if (raw.contains('contest') || raw.contains('participant')) return 'contest';
   return 'unknown';
 }
@@ -1416,6 +1417,8 @@ String _videoTypeLabel(Map<String, dynamic> data) {
       return 'Feed Video';
     case 'contest':
       return 'Contest Submission';
+    case 'general':
+      return 'General Video';
     default:
       return 'Reported Video';
   }

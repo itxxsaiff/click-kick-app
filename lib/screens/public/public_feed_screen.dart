@@ -16,21 +16,22 @@ import 'package:video_player/video_player.dart';
 import '../../l10n/l10n.dart';
 import '../../services/auth_service.dart';
 import '../../services/block_service.dart';
+import '../../services/follow_service.dart';
 import '../../theme/app_colors.dart';
-import '../../widgets/delete_account_dialog.dart';
 import '../../widgets/report_video_dialog.dart';
 import '../../widgets/block_participant_dialog.dart';
 import '../../widgets/blocked_users_builder.dart';
-import '../../widgets/settings_action_tile.dart';
+import '../../widgets/follow_widgets.dart';
 import '../../widgets/password_change_layout.dart';
 import '../../main.dart';
-import '../shared/legal_center_screen.dart';
-import '../shared/blocked_users_screen.dart';
 import '../shared/click_kick_star_page.dart';
 import 'search_videos_screen.dart';
-import '../shared/support_chat_screen.dart';
 import '../user/contest_detail_screen.dart';
-import '../auth/login_screen.dart';
+import '../profile/general_video_player_screen.dart'
+    show formatCount, openVideoWithRetry;
+import '../profile/user_profile_screen.dart';
+import '../user/general_video_upload_screen.dart';
+import '../../services/general_video_service.dart';
 
 const _shareBaseUrl = 'https://video-contest-show-b788b.firebaseapp.com';
 final Set<Future<void> Function()> _feedStopHandlers =
@@ -112,235 +113,55 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
     return context.tr(labels[safeIndex]);
   }
 
-  Future<_PublicNavConfig> _loadNavConfig(String userId) async {
-    try {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .get()
-          .timeout(const Duration(seconds: 8));
-      final role = (userDoc.data()?['role'] ?? 'user').toString().toLowerCase();
-      final isParticipant = role == 'participant';
-      if (!isParticipant) {
-        return const _PublicNavConfig(isParticipant: false, hasUploads: false);
-      }
-
-      try {
-        final uploadSnap = await FirebaseFirestore.instance
-            .collectionGroup('submissions')
-            .where('userId', isEqualTo: userId)
-            .limit(1)
-            .get()
-            .timeout(const Duration(seconds: 8));
-        return _PublicNavConfig(
-          isParticipant: true,
-          hasUploads: uploadSnap.docs.isNotEmpty,
-        );
-      } catch (_) {
-        return const _PublicNavConfig(isParticipant: true, hasUploads: false);
-      }
-    } catch (_) {
-      return const _PublicNavConfig(isParticipant: false, hasUploads: false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, authSnapshot) {
-        final isLoggedIn = authSnapshot.data != null;
-        if (!isLoggedIn) {
-          return _buildShell(
-            context: context,
-            labels: const <String>[
-              'Home',
-              'Contests',
-              'Search',
-              'Click Kick Star',
-              'Sign',
-            ],
-            icons: const <IconData>[
-              Icons.home_outlined,
-              Icons.local_fire_department_outlined,
-              Icons.search_outlined,
-              Icons.star_outline_rounded,
-              Icons.person_outline,
-            ],
-            activeIcons: const <IconData>[
-              Icons.home,
-              Icons.local_fire_department,
-              Icons.search,
-              Icons.star_rounded,
-              Icons.person,
-            ],
-            pages: <Widget>[
-              _HomeFeedTab(
-                isVisible: _tabIndex == 0,
-                sharedAdminVideoId: widget.sharedAdminVideoId,
-              ),
-              _PublicContestsTab(
-                isVisible: _tabIndex == 1,
-                sharedContestId: widget.sharedContestId,
-              ),
-              const SearchVideosScreen(embedded: true),
-              const ClickKickStarPage(),
-              const _LoginRequiredCard(),
-            ],
-          );
-        }
+    // One set of tabs for everyone: Home, Contests, Search, Profile. Signed-out
+    // users get the same Profile tab, which itself asks them to log in
+    // (_ProfileGateTab), and Upload / following / voting / etc. all prompt
+    // login on demand instead of needing a separate signed-out nav.
+    return _buildShell(
+      context: context,
+      labels: const <String>['Home', 'Contests', 'Search', 'Profile'],
+      icons: const <IconData>[
+        Icons.home_outlined,
+        Icons.emoji_events_outlined,
+        Icons.search_outlined,
+        Icons.person_outline,
+      ],
+      activeIcons: const <IconData>[
+        Icons.home,
+        Icons.emoji_events,
+        Icons.search,
+        Icons.person,
+      ],
+      pages: <Widget>[
+        _HomeFeedTab(
+          isVisible: _tabIndex == 0,
+          sharedAdminVideoId: widget.sharedAdminVideoId,
+          onOpenSearch: () => setState(() => _tabIndex = 2),
+        ),
+        _PublicContestsTab(
+          isVisible: _tabIndex == 1,
+          sharedContestId: widget.sharedContestId,
+        ),
+        const SearchVideosScreen(embedded: true),
+        const _ProfileGateTab(),
+      ],
+    );
+  }
 
-        final userId = authSnapshot.data!.uid;
-        return FutureBuilder<_PublicNavConfig>(
-          future: _loadNavConfig(userId),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done &&
-                !snapshot.hasData) {
-              return const Scaffold(
-                body: Stack(
-                  children: [
-                    _SpaceBackground(),
-                    Center(child: CircularProgressIndicator()),
-                  ],
-                ),
-              );
-            }
-
-            final nav =
-                snapshot.data ??
-                const _PublicNavConfig(isParticipant: false, hasUploads: false);
-            final labels = nav.isParticipant
-                ? (nav.hasUploads
-                      ? const <String>[
-                          'Home',
-                          'Contests',
-                          'Search',
-                          'Click Kick Star',
-                          'Dashboard',
-                          'Profile',
-                        ]
-                      : const <String>[
-                          'Home',
-                          'Contests',
-                          'Search',
-                          'Click Kick Star',
-                          'Dashboard',
-                          'Profile',
-                        ])
-                : const <String>[
-                    'Home',
-                    'Contests',
-                    'Search',
-                    'Click Kick Star',
-                    'Profile',
-                  ];
-
-            final icons = nav.isParticipant
-                ? (nav.hasUploads
-                      ? const <IconData>[
-                          Icons.home_outlined,
-                          Icons.local_fire_department_outlined,
-                          Icons.search_outlined,
-                          Icons.star_outline_rounded,
-                          Icons.dashboard_outlined,
-                          Icons.person_outline,
-                        ]
-                      : const <IconData>[
-                          Icons.home_outlined,
-                          Icons.local_fire_department_outlined,
-                          Icons.search_outlined,
-                          Icons.star_outline_rounded,
-                          Icons.dashboard_outlined,
-                          Icons.person_outline,
-                        ])
-                : const <IconData>[
-                    Icons.home_outlined,
-                    Icons.local_fire_department_outlined,
-                    Icons.search_outlined,
-                    Icons.star_outline_rounded,
-                    Icons.person_outline,
-                  ];
-
-            final activeIcons = nav.isParticipant
-                ? (nav.hasUploads
-                      ? const <IconData>[
-                          Icons.home,
-                          Icons.local_fire_department,
-                          Icons.search,
-                          Icons.star_rounded,
-                          Icons.dashboard_customize,
-                          Icons.person,
-                        ]
-                      : const <IconData>[
-                          Icons.home,
-                          Icons.local_fire_department,
-                          Icons.search,
-                          Icons.star_rounded,
-                          Icons.dashboard_customize,
-                          Icons.person,
-                        ])
-                : const <IconData>[
-                    Icons.home,
-                    Icons.local_fire_department,
-                    Icons.search,
-                    Icons.star_rounded,
-                    Icons.person,
-                  ];
-
-            final pages = nav.isParticipant
-                ? (nav.hasUploads
-                      ? <Widget>[
-                          _HomeFeedTab(
-                            isVisible: _tabIndex == 0,
-                            sharedAdminVideoId: widget.sharedAdminVideoId,
-                          ),
-                          _PublicContestsTab(
-                            isVisible: _tabIndex == 1,
-                            sharedContestId: widget.sharedContestId,
-                          ),
-                          const SearchVideosScreen(embedded: true),
-                          const ClickKickStarPage(),
-                          const _DashboardGateTab(),
-                          const _ProfileGateTab(),
-                        ]
-                      : <Widget>[
-                          _HomeFeedTab(
-                            isVisible: _tabIndex == 0,
-                            sharedAdminVideoId: widget.sharedAdminVideoId,
-                          ),
-                          _PublicContestsTab(
-                            isVisible: _tabIndex == 1,
-                            sharedContestId: widget.sharedContestId,
-                          ),
-                          const SearchVideosScreen(embedded: true),
-                          const ClickKickStarPage(),
-                          const _DashboardGateTab(),
-                          const _ProfileGateTab(),
-                        ])
-                : <Widget>[
-                    _HomeFeedTab(
-                      isVisible: _tabIndex == 0,
-                      sharedAdminVideoId: widget.sharedAdminVideoId,
-                    ),
-                    _PublicContestsTab(
-                      isVisible: _tabIndex == 1,
-                      sharedContestId: widget.sharedContestId,
-                    ),
-                    const SearchVideosScreen(embedded: true),
-                    const ClickKickStarPage(),
-                    const _ProfileGateTab(),
-                  ];
-
-            return _buildShell(
-              context: context,
-              labels: labels,
-              icons: icons,
-              activeIcons: activeIcons,
-              pages: pages,
-            );
-          },
-        );
-      },
+  /// The bottom nav's raised "+" button. Uploading a General Video needs no
+  /// competition, so it goes straight there; a signed-out visitor is asked to
+  /// log in first. Competition entries keep going through the existing
+  /// Contests -> contest -> upload flow.
+  Future<void> _openUpload() async {
+    if (FirebaseAuth.instance.currentUser == null) {
+      await _promptLoginDialog(context);
+      return;
+    }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const GeneralVideoUploadScreen()),
     );
   }
 
@@ -353,6 +174,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
   }) {
     final safeIndex = _tabIndex.clamp(0, labels.length - 1);
     final isImmersiveFeed = safeIndex == 0 || labels[safeIndex] == 'Contests';
+    final showTitleCard = !isImmersiveFeed && labels[safeIndex] != 'Profile';
     if (_tabIndex != safeIndex) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() => _tabIndex = safeIndex);
@@ -361,7 +183,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
 
     final bodyContent = Column(
       children: [
-        if (!isImmersiveFeed)
+        if (showTitleCard)
           Container(
             margin: const EdgeInsets.fromLTRB(12, 10, 12, 8),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -421,23 +243,41 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(26),
-            child: BottomNavigationBar(
-              currentIndex: safeIndex,
-              onTap: (v) => setState(() => _tabIndex = v),
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              type: BottomNavigationBarType.fixed,
-              selectedItemColor: AppColors.hotPink,
-              unselectedItemColor: AppColors.textMuted.withOpacity(0.95),
-              selectedFontSize: 13,
-              unselectedFontSize: 12,
-              items: List.generate(labels.length, (i) {
-                return BottomNavigationBarItem(
-                  icon: Icon(icons[i]),
-                  activeIcon: Icon(activeIcons[i]),
-                  label: context.tr(labels[i]),
-                );
-              }),
+            child: SizedBox(
+              height: 64,
+              child: Row(
+                children: [
+                  _NavBarItem(
+                    icon: icons[0],
+                    activeIcon: activeIcons[0],
+                    label: context.tr(labels[0]),
+                    selected: safeIndex == 0,
+                    onTap: () => setState(() => _tabIndex = 0),
+                  ),
+                  _NavBarItem(
+                    icon: icons[1],
+                    activeIcon: activeIcons[1],
+                    label: context.tr(labels[1]),
+                    selected: safeIndex == 1,
+                    onTap: () => setState(() => _tabIndex = 1),
+                  ),
+                  _NavBarUploadButton(onTap: _openUpload),
+                  _NavBarItem(
+                    icon: icons[2],
+                    activeIcon: activeIcons[2],
+                    label: context.tr(labels[2]),
+                    selected: safeIndex == 2,
+                    onTap: () => setState(() => _tabIndex = 2),
+                  ),
+                  _NavBarItem(
+                    icon: icons[3],
+                    activeIcon: activeIcons[3],
+                    label: context.tr(labels[3]),
+                    selected: safeIndex == 3,
+                    onTap: () => setState(() => _tabIndex = 3),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -446,21 +286,101 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
   }
 }
 
-class _PublicNavConfig {
-  const _PublicNavConfig({
-    required this.isParticipant,
-    required this.hasUploads,
+/// One Home / Contests / Search / Profile slot in the bottom bar.
+class _NavBarItem extends StatelessWidget {
+  const _NavBarItem({
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
   });
 
-  final bool isParticipant;
-  final bool hasUploads;
+  final IconData icon;
+  final IconData activeIcon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected
+        ? AppColors.hotPink
+        : AppColors.textMuted.withValues(alpha: 0.95);
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(selected ? activeIcon : icon, color: color, size: 24),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
+/// The raised pink "+" button at the center of the bottom bar (Upload).
+class _NavBarUploadButton extends StatelessWidget {
+  const _NavBarUploadButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              colors: [AppColors.hotPink, Color(0xFFB12EDB)],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.hotPink.withValues(alpha: 0.5),
+                blurRadius: 14,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
+        ),
+      ),
+    );
+  }
+}
+
+enum _FeedMode { forYou, following }
+
 class _HomeFeedTab extends StatefulWidget {
-  const _HomeFeedTab({required this.isVisible, this.sharedAdminVideoId});
+  const _HomeFeedTab({
+    required this.isVisible,
+    this.sharedAdminVideoId,
+    this.onOpenSearch,
+  });
 
   final bool isVisible;
   final String? sharedAdminVideoId;
+
+  /// Opens the Search tab (the magnifier in the For You / Following header).
+  final VoidCallback? onOpenSearch;
 
   @override
   State<_HomeFeedTab> createState() => _HomeFeedTabState();
@@ -468,7 +388,10 @@ class _HomeFeedTab extends StatefulWidget {
 
 class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
   static const _watchedAdminVideosPrefsKey = 'watched_admin_videos_v1';
-  final _pageController = PageController();
+  PageController _pageController = PageController();
+  _FeedMode _feedMode = _FeedMode.forYou;
+  Future<List<_FeedItem>>? _followingFuture;
+  String? _lastTrackedGeneralVideoId;
   final Set<String> _failedAdminVideoUrls = <String>{};
   int _activeIndex = 0;
   VideoPlayerController? _videoController;
@@ -575,22 +498,23 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
     await previous?.pause();
     await previous?.dispose();
 
-    final controller = VideoPlayerController.networkUrl(Uri.parse(url));
+    VideoPlayerController? controller;
     try {
-      await controller.initialize();
-      await controller.setLooping(true);
-      await controller.setVolume(1);
-      controller.addListener(() {
-        if (!mounted ||
-            _currentVideoUrl != url ||
-            controller != _videoController) {
+      // Retries transient load failures (see openVideoWithRetry) so a good
+      // video is not hidden from the feed after one hiccup.
+      final opened = await openVideoWithRetry(url);
+      controller = opened;
+      await opened.setLooping(true);
+      await opened.setVolume(1);
+      opened.addListener(() {
+        if (!mounted || _currentVideoUrl != url || opened != _videoController) {
           return;
         }
         setState(() {});
       });
       if (requestId != _videoRequestId || !mounted) {
-        await controller.pause();
-        await controller.dispose();
+        await opened.pause();
+        await opened.dispose();
         return;
       }
       if (mounted) {
@@ -606,7 +530,7 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
         await controller.pause();
       }
     } catch (_) {
-      await controller.dispose();
+      await controller?.dispose();
       if (mounted) {
         setState(() {
           _currentVideoUrl = '';
@@ -697,6 +621,18 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
       } catch (_) {}
       return;
     }
+    if (item.isGeneralVideo) {
+      if (item.generalVideoId.isEmpty) return;
+      if (_lastTrackedGeneralVideoId == item.generalVideoId) return;
+      _lastTrackedGeneralVideoId = item.generalVideoId;
+      final user = FirebaseAuth.instance.currentUser;
+      // The owner watching their own video does not count as a view.
+      if (user == null || user.uid == item.authorId) return;
+      try {
+        await AuthService().incrementGeneralVideoView(item.generalVideoId);
+      } catch (_) {}
+      return;
+    }
     if (item.isContest) {
       if (item.contestId.isEmpty) return;
       if (_lastTrackedContestId == item.contestId) return;
@@ -755,8 +691,9 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
     });
   }
 
-  @override
-  Widget build(BuildContext context) {
+  /// "For You": competitions and their videos, general videos, admin videos and
+  /// news in the existing order.
+  Widget _buildForYou(BuildContext context) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
           .collection('news')
@@ -840,125 +777,32 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
                     final submissionDocs =
                         submissionsSnapshot.data?.docs ??
                         const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-                    final feedItems = _buildFeedItems(
-                      newsDocs,
-                      adminVideoDocs,
-                      contestDocs,
-                      submissionDocs,
-                    );
-
-                if (feedItems.isEmpty) {
-                  return Center(
-                    child: Text(
-                      context.tr('No updates available right now.'),
-                      style: const TextStyle(color: AppColors.textMuted),
-                    ),
-                  );
-                }
-
-                if (!_appliedSharedTarget &&
-                    widget.sharedAdminVideoId != null &&
-                    widget.sharedAdminVideoId!.isNotEmpty) {
-                  final targetIndex = feedItems.indexWhere(
-                    (item) => item.adminVideoId == widget.sharedAdminVideoId,
-                  );
-                  if (targetIndex >= 0) {
-                    _appliedSharedTarget = true;
-                    _activeIndex = targetIndex;
-                    WidgetsBinding.instance.addPostFrameCallback((_) async {
-                      if (!mounted || !_pageController.hasClients) return;
-                      _pageController.jumpToPage(targetIndex);
-                      if (widget.isVisible) {
-                        await _setActiveVideo(
-                          feedItems[targetIndex].videoUrl,
-                          autoplay: true,
+                    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                      stream: FirebaseFirestore.instance
+                          .collection('general_videos')
+                          .where('status', isEqualTo: 'approved')
+                          .snapshots(),
+                      builder: (context, generalSnapshot) {
+                        final generalDocs =
+                            generalSnapshot.data?.docs ??
+                            const <
+                              QueryDocumentSnapshot<Map<String, dynamic>>
+                            >[];
+                        final feedItems = _buildFeedItems(
+                          newsDocs,
+                          adminVideoDocs,
+                          contestDocs,
+                          submissionDocs,
+                          generalDocs,
                         );
-                      }
-                    });
-                  }
-                }
-
-                final safeIndex = _activeIndex.clamp(0, feedItems.length - 1);
-                final activeItem = feedItems[safeIndex];
-                if (widget.isVisible) {
-                  _scheduleActiveVideoSync(activeItem, autoplay: true);
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    _trackFeedVideoView(activeItem);
-                  });
-                }
-
-                return PageView.builder(
-                  scrollDirection: Axis.vertical,
-                  controller: _pageController,
-                  itemCount: feedItems.length,
-                  onPageChanged: (i) async {
-                    setState(() => _activeIndex = i);
-                    if (!widget.isVisible || _feedPlaybackLocked) return;
-                    final item = feedItems[i];
-                    if (item.hasVideo && item.videoUrl.isNotEmpty) {
-                      await _setActiveVideo(item.videoUrl, autoplay: true);
-                    } else {
-                      await _clearActiveVideo();
-                    }
-                  },
-                  itemBuilder: (context, index) {
-                    final item = feedItems[index];
-                    if (item.isNews) {
-                      return _NewsFeedCard(item: item);
-                    }
-                    final isActive = index == safeIndex;
-                    final isShowingActiveVideo =
-                        isActive &&
-                        _videoController != null &&
-                        _videoController!.value.isInitialized &&
-                        _currentVideoUrl == item.videoUrl;
-                    final shouldShowLoading =
-                        isActive &&
-                        item.hasVideo &&
-                        (_isVideoLoading || !isShowingActiveVideo);
-                    final isPlaying =
-                        isShowingActiveVideo &&
-                        _videoController!.value.isPlaying;
-                    if (item.isContest) {
-                      return _ContestFeedCard(
-                        item: item.toContestFeedItem(),
-                        controller: isShowingActiveVideo
-                            ? _videoController
-                            : null,
-                        isShowingActiveVideo: isShowingActiveVideo,
-                        isPlaying: isPlaying,
-                        isLoading: shouldShowLoading,
-                        onTapVideo: isShowingActiveVideo
-                            ? _togglePlayback
-                            : null,
-                      );
-                    }
-                    if (item.isParticipantVideo) {
-                      return _ParticipantFeedCard(
-                        item: item,
-                        isShowingActiveVideo: isShowingActiveVideo,
-                        isPlaying: isPlaying,
-                        isLoading: shouldShowLoading,
-                        controller: isShowingActiveVideo
-                            ? _videoController
-                            : null,
-                        onTapVideo: isShowingActiveVideo
-                            ? _togglePlayback
-                            : null,
-                      );
-                    }
-                    return _AdminVideoFeedCard(
-                      item: item,
-                      isShowingActiveVideo: isShowingActiveVideo,
-                      isPlaying: isPlaying,
-                      isLoading: shouldShowLoading,
-                      controller: isShowingActiveVideo
-                          ? _videoController
-                          : null,
-                      onTapVideo: isShowingActiveVideo ? _togglePlayback : null,
+                        return _buildPager(
+                          feedItems,
+                          emptyText: context.tr(
+                            'No updates available right now.',
+                          ),
+                        );
+                      },
                     );
-                  },
-                );
                   },
                 );
               },
@@ -969,11 +813,332 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
     );
   }
 
+  /// The vertical, full-screen video pager shared by the For You and Following
+  /// feeds.
+  Widget _buildPager(List<_FeedItem> feedItems, {required String emptyText}) {
+    if (feedItems.isEmpty) {
+      return Center(
+        child: Text(
+          emptyText,
+          style: const TextStyle(color: AppColors.textMuted),
+        ),
+      );
+    }
+
+    if (_feedMode == _FeedMode.forYou &&
+        !_appliedSharedTarget &&
+        widget.sharedAdminVideoId != null &&
+        widget.sharedAdminVideoId!.isNotEmpty) {
+      final targetIndex = feedItems.indexWhere(
+        (item) => item.adminVideoId == widget.sharedAdminVideoId,
+      );
+      if (targetIndex >= 0) {
+        _appliedSharedTarget = true;
+        _activeIndex = targetIndex;
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          if (!mounted || !_pageController.hasClients) return;
+          _pageController.jumpToPage(targetIndex);
+          if (widget.isVisible) {
+            await _setActiveVideo(
+              feedItems[targetIndex].videoUrl,
+              autoplay: true,
+            );
+          }
+        });
+      }
+    }
+
+    final safeIndex = _activeIndex.clamp(0, feedItems.length - 1);
+    final activeItem = feedItems[safeIndex];
+    if (widget.isVisible) {
+      _scheduleActiveVideoSync(activeItem, autoplay: true);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _trackFeedVideoView(activeItem);
+      });
+    }
+
+    return PageView.builder(
+      key: ValueKey(_feedMode),
+      scrollDirection: Axis.vertical,
+      controller: _pageController,
+      itemCount: feedItems.length,
+      onPageChanged: (i) async {
+        setState(() => _activeIndex = i);
+        if (!widget.isVisible || _feedPlaybackLocked) return;
+        final item = feedItems[i];
+        if (item.hasVideo && item.videoUrl.isNotEmpty) {
+          await _setActiveVideo(item.videoUrl, autoplay: true);
+        } else {
+          await _clearActiveVideo();
+        }
+      },
+      itemBuilder: (context, index) {
+        final item = feedItems[index];
+        if (item.isNews) {
+          return _NewsFeedCard(item: item);
+        }
+        final isActive = index == safeIndex;
+        final isShowingActiveVideo =
+            isActive &&
+            _videoController != null &&
+            _videoController!.value.isInitialized &&
+            _currentVideoUrl == item.videoUrl;
+        final shouldShowLoading =
+            isActive &&
+            item.hasVideo &&
+            (_isVideoLoading || !isShowingActiveVideo);
+        final isPlaying =
+            isShowingActiveVideo && _videoController!.value.isPlaying;
+        if (item.isContest) {
+          return _ContestFeedCard(
+            item: item.toContestFeedItem(),
+            controller: isShowingActiveVideo ? _videoController : null,
+            isShowingActiveVideo: isShowingActiveVideo,
+            isPlaying: isPlaying,
+            isLoading: shouldShowLoading,
+            onTapVideo: isShowingActiveVideo ? _togglePlayback : null,
+          );
+        }
+        if (item.isParticipantVideo) {
+          return _ParticipantFeedCard(
+            item: item,
+            isShowingActiveVideo: isShowingActiveVideo,
+            isPlaying: isPlaying,
+            isLoading: shouldShowLoading,
+            controller: isShowingActiveVideo ? _videoController : null,
+            onTapVideo: isShowingActiveVideo ? _togglePlayback : null,
+          );
+        }
+        if (item.isGeneralVideo) {
+          return _GeneralVideoFeedCard(
+            item: item,
+            isShowingActiveVideo: isShowingActiveVideo,
+            isPlaying: isPlaying,
+            isLoading: shouldShowLoading,
+            controller: isShowingActiveVideo ? _videoController : null,
+            onTapVideo: isShowingActiveVideo ? _togglePlayback : null,
+          );
+        }
+        return _AdminVideoFeedCard(
+          item: item,
+          isShowingActiveVideo: isShowingActiveVideo,
+          isPlaying: isPlaying,
+          isLoading: shouldShowLoading,
+          controller: isShowingActiveVideo ? _videoController : null,
+          onTapVideo: isShowingActiveVideo ? _togglePlayback : null,
+        );
+      },
+    );
+  }
+
+  Future<List<_FeedItem>> _loadFollowingItems() async {
+    final me = FirebaseAuth.instance.currentUser;
+    if (me == null) return <_FeedItem>[];
+    final followed = (await FollowService().followingIds(
+      me.uid,
+    )).where((id) => !_blockedUserIds.contains(id)).toList();
+    final items = <_FeedItem>[];
+    for (var i = 0; i < followed.length; i += 30) {
+      final chunk = followed.sublist(
+        i,
+        i + 30 > followed.length ? followed.length : i + 30,
+      );
+      final snap = await FirebaseFirestore.instance
+          .collection('general_videos')
+          .where('userId', whereIn: chunk)
+          .where('status', isEqualTo: 'approved')
+          .get();
+      items.addAll(
+        snap.docs
+            .where((d) => (d.data()['videoUrl'] ?? '').toString().isNotEmpty)
+            .map(_FeedItem.fromGeneralVideo),
+      );
+    }
+    items.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return items.take(200).toList();
+  }
+
+  /// "Following": approved general videos from the people the user follows.
+  Widget _buildFollowing(BuildContext context) {
+    if (FirebaseAuth.instance.currentUser == null) {
+      return _FeedMessage(
+        text: context.tr('Login to see videos from people you follow.'),
+        actionLabel: context.tr('Login'),
+        onAction: () async {
+          await stopAllFeedPlayback();
+          if (!context.mounted) return;
+          await Navigator.pushNamed(context, '/login');
+          unlockFeedPlayback();
+        },
+      );
+    }
+    return FutureBuilder<List<_FeedItem>>(
+      future: _followingFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return _FeedMessage(
+            text: context.tr('Unable to load videos. Tap retry.'),
+            actionLabel: context.tr('Retry'),
+            onAction: () => setState(() {
+              _followingFuture = _loadFollowingItems();
+            }),
+          );
+        }
+        return _buildPager(
+          snapshot.data ?? const <_FeedItem>[],
+          emptyText: context.tr('Follow creators to see their videos here.'),
+        );
+      },
+    );
+  }
+
+  Future<void> _setFeedMode(_FeedMode mode) async {
+    if (_feedMode == mode) return;
+    await _clearActiveVideo();
+    if (!mounted) return;
+    // Each mode gets its own controller so the outgoing pager can never share
+    // one with the incoming pager during the swap.
+    final oldController = _pageController;
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => oldController.dispose(),
+    );
+    setState(() {
+      _pageController = PageController();
+      _activeIndex = 0;
+      _feedMode = mode;
+      if (mode == _FeedMode.following) {
+        _followingFuture = _loadFollowingItems();
+      }
+    });
+  }
+
+  Future<void> _openClickKickStar() async {
+    await stopAllFeedPlayback();
+    if (!mounted) return;
+    // ClickKickStarPage has no Scaffold of its own: it was only ever an
+    // embedded tab body sitting inside the shell's Scaffold. Pushed on its
+    // own it needs that Scaffold (and the Material it provides).
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(
+            title: Text(context.tr('Click Kick Star')),
+            backgroundColor: AppColors.deepSpace,
+          ),
+          body: const Stack(
+            children: [
+              _SpaceBackground(),
+              SafeArea(child: ClickKickStarPage()),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (mounted) unlockFeedPlayback();
+  }
+
+  Widget _buildModeHeader(BuildContext context) {
+    Widget tab(_FeedMode mode, String label) {
+      final selected = _feedMode == mode;
+      return GestureDetector(
+        onTap: () => _setFeedMode(mode),
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected ? Colors.white : Colors.white70,
+                  fontSize: 16,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  shadows: const [Shadow(blurRadius: 6, color: Colors.black54)],
+                ),
+              ),
+              const SizedBox(height: 4),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: selected ? 28 : 0,
+                height: 3,
+                decoration: BoxDecoration(
+                  color: AppColors.hotPink,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        IconButton(
+          tooltip: context.tr('Search'),
+          onPressed: widget.onOpenSearch,
+          icon: const Icon(
+            Icons.search_rounded,
+            color: Colors.white,
+            size: 28,
+            shadows: [Shadow(blurRadius: 6, color: Colors.black54)],
+          ),
+        ),
+        IconButton(
+          tooltip: context.tr('Click Kick Star'),
+          onPressed: _openClickKickStar,
+          icon: const Icon(
+            Icons.star_rounded,
+            color: Colors.white,
+            size: 26,
+            shadows: [Shadow(blurRadius: 6, color: Colors.black54)],
+          ),
+        ),
+        Expanded(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              tab(_FeedMode.forYou, context.tr('For You')),
+              tab(_FeedMode.following, context.tr('Following')),
+            ],
+          ),
+        ),
+        // Room for the logo badge every feed card draws in the top-right.
+        const SizedBox(width: 70),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: _feedMode == _FeedMode.forYou
+              ? _buildForYou(context)
+              : _buildFollowing(context),
+        ),
+        Positioned(
+          top: MediaQuery.paddingOf(context).top + 4,
+          left: 4,
+          right: 0,
+          child: _buildModeHeader(context),
+        ),
+      ],
+    );
+  }
+
   List<_FeedItem> _buildFeedItems(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> newsDocs,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> adminVideoDocs,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> contestDocs,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> submissionDocs,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> generalDocs,
   ) {
     final newsItems = newsDocs.map(_FeedItem.fromNews).toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -981,9 +1146,7 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
     final adminVideoItems =
         adminVideoDocs
             .where((doc) {
-              final videoUrl = (doc.data()['videoUrl'] ?? '')
-                  .toString()
-                  .trim();
+              final videoUrl = (doc.data()['videoUrl'] ?? '').toString().trim();
               return videoUrl.isNotEmpty &&
                   !_failedAdminVideoUrls.contains(videoUrl);
             })
@@ -1055,12 +1218,35 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
 
     // Build the grouped feed: each competition, then its participant videos
     // directly below it, then the next competition, and so on.
+    // General (non-competition) videos, newest first, hiding blocked users.
+    final generalItems =
+        generalDocs
+            .where((doc) {
+              final data = doc.data();
+              final videoUrl = (data['videoUrl'] ?? '').toString().trim();
+              return videoUrl.isNotEmpty &&
+                  !_blockedUserIds.contains(
+                    (data['userId'] ?? '').toString(),
+                  ) &&
+                  !_failedAdminVideoUrls.contains(videoUrl);
+            })
+            .map(_FeedItem.fromGeneralVideo)
+            .toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    var nextGeneral = 0;
+
     final grouped = <_FeedItem>[];
     for (final contest in contestItems) {
       grouped.add(contest);
       final participants = participantsByContest[contest.contestId];
       if (participants != null) grouped.addAll(participants);
+      // Slot up to two general videos in after each complete competition, so a
+      // competition is never split from its own participant videos.
+      for (var i = 0; i < 2 && nextGeneral < generalItems.length; i++) {
+        grouped.add(generalItems[nextGeneral++]);
+      }
     }
+    grouped.addAll(generalItems.skip(nextGeneral));
 
     // Competitions + their participant videos first, then any promotional admin
     // videos, then news.
@@ -1171,22 +1357,23 @@ class _PublicContestsTabState extends State<_PublicContestsTab>
     await previous?.pause();
     await previous?.dispose();
 
-    final controller = VideoPlayerController.networkUrl(Uri.parse(url));
+    VideoPlayerController? controller;
     try {
-      await controller.initialize();
-      await controller.setLooping(true);
-      await controller.setVolume(1);
-      controller.addListener(() {
-        if (!mounted ||
-            _currentVideoUrl != url ||
-            controller != _videoController) {
+      // Retries transient load failures (see openVideoWithRetry) so a good
+      // video is not hidden from the feed after one hiccup.
+      final opened = await openVideoWithRetry(url);
+      controller = opened;
+      await opened.setLooping(true);
+      await opened.setVolume(1);
+      opened.addListener(() {
+        if (!mounted || _currentVideoUrl != url || opened != _videoController) {
           return;
         }
         setState(() {});
       });
       if (requestId != _videoRequestId || !mounted) {
-        await controller.pause();
-        await controller.dispose();
+        await opened.pause();
+        await opened.dispose();
         return;
       }
       if (mounted) {
@@ -1198,7 +1385,7 @@ class _PublicContestsTabState extends State<_PublicContestsTab>
       }
       await controller.play();
     } catch (_) {
-      await controller.dispose();
+      await controller?.dispose();
       if (mounted) {
         setState(() {
           _currentVideoUrl = '';
@@ -1977,6 +2164,8 @@ class _FeedItem {
     this.submissionId = '',
     this.participantUserId = '',
     this.voteCount = 0,
+    this.generalVideoId = '',
+    this.authorId = '',
   });
 
   final String type;
@@ -1997,12 +2186,16 @@ class _FeedItem {
   final String submissionId;
   final String participantUserId;
   final int voteCount;
+  final String generalVideoId;
+  final String authorId;
 
   bool get isNews => type == 'news';
   bool get isAdminVideo => type == 'admin_video';
   bool get isContest => type == 'contest';
   bool get isParticipantVideo => type == 'participant_video';
-  bool get hasVideo => isAdminVideo || isContest || isParticipantVideo;
+  bool get isGeneralVideo => type == 'general_video';
+  bool get hasVideo =>
+      isAdminVideo || isContest || isParticipantVideo || isGeneralVideo;
 
   factory _FeedItem.fromParticipant(
     QueryDocumentSnapshot<Map<String, dynamic>> doc,
@@ -2010,9 +2203,8 @@ class _FeedItem {
     final data = doc.data();
     return _FeedItem(
       type: 'participant_video',
-      title:
-          (data['participantName'] ?? data['userName'] ?? 'Participant')
-              .toString(),
+      title: (data['participantName'] ?? data['userName'] ?? 'Participant')
+          .toString(),
       description: (data['contestTitle'] ?? '').toString(),
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime(2000),
       videoUrl: (data['videoUrl'] ?? '').toString(),
@@ -2020,6 +2212,23 @@ class _FeedItem {
       submissionId: doc.id,
       participantUserId: (data['userId'] ?? '').toString(),
       voteCount: ((data['voteCount'] ?? 0) as num).toInt(),
+      shareCount: ((data['shareCount'] ?? 0) as num).toInt(),
+    );
+  }
+
+  factory _FeedItem.fromGeneralVideo(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data();
+    return _FeedItem(
+      type: 'general_video',
+      title: (data['userName'] ?? '').toString(),
+      description: (data['caption'] ?? '').toString(),
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime(2000),
+      videoUrl: (data['videoUrl'] ?? '').toString(),
+      generalVideoId: doc.id,
+      authorId: (data['userId'] ?? '').toString(),
+      viewCount: ((data['viewCount'] ?? 0) as num).toInt(),
       shareCount: ((data['shareCount'] ?? 0) as num).toInt(),
     );
   }
@@ -2304,6 +2513,440 @@ class _AdminVideoFeedCard extends StatelessWidget {
   }
 }
 
+/// Centered message with an optional action, for empty / signed-out feeds.
+class _FeedMessage extends StatelessWidget {
+  const _FeedMessage({required this.text, this.actionLabel, this.onAction});
+
+  final String text;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              text,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.textMuted, height: 1.4),
+            ),
+            if (actionLabel != null) ...[
+              const SizedBox(height: 14),
+              FilledButton(onPressed: onAction, child: Text(actionLabel!)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _promptLoginDialog(BuildContext context) async {
+  await stopAllFeedPlayback();
+  if (!context.mounted) return;
+  var navigated = false;
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text(context.tr('Sign Up / Login first')),
+      content: Text(context.tr('Please sign up or login first to continue.')),
+      actions: [
+        TextButton(
+          onPressed: () async {
+            Navigator.pop(dialogContext);
+            navigated = true;
+            Navigator.pushNamed(context, '/register');
+          },
+          child: Text(context.tr('Sign Up')),
+        ),
+        FilledButton(
+          onPressed: () async {
+            Navigator.pop(dialogContext);
+            navigated = true;
+            Navigator.pushNamed(context, '/login');
+          },
+          child: Text(context.tr('Login')),
+        ),
+      ],
+    ),
+  );
+  if (!navigated) unlockFeedPlayback();
+}
+
+/// A general (non-competition) video in the feed: Follow, Views, Share and the
+/// author's name and picture. It never shows competition information.
+class _GeneralVideoFeedCard extends StatelessWidget {
+  const _GeneralVideoFeedCard({
+    required this.item,
+    required this.isShowingActiveVideo,
+    required this.isPlaying,
+    required this.isLoading,
+    required this.controller,
+    this.onTapVideo,
+  });
+
+  final _FeedItem item;
+  final bool isShowingActiveVideo;
+  final bool isPlaying;
+  final bool isLoading;
+  final VideoPlayerController? controller;
+  final VoidCallback? onTapVideo;
+
+  bool get _isOwn => FirebaseAuth.instance.currentUser?.uid == item.authorId;
+
+  Future<void> _openProfile(BuildContext context) async {
+    if (FirebaseAuth.instance.currentUser == null) {
+      await _promptLoginDialog(context);
+      return;
+    }
+    // Lock playback so a feed rebuild cannot restart the video (and its audio)
+    // behind the profile; it is unlocked when we come back.
+    await stopAllFeedPlayback();
+    if (!context.mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UserProfileScreen(userId: item.authorId),
+      ),
+    );
+    unlockFeedPlayback();
+  }
+
+  Future<void> _follow(BuildContext context) async {
+    if (FirebaseAuth.instance.currentUser == null) {
+      await _promptLoginDialog(context);
+      return;
+    }
+    final failMsg = context.tr('Could not update follow. Please try again.');
+    try {
+      await FollowService().follow(item.authorId);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(failMsg), behavior: SnackBarBehavior.floating),
+        );
+      }
+    }
+  }
+
+  Future<void> _share(BuildContext context, String authorName) async {
+    if (FirebaseAuth.instance.currentUser == null) {
+      await _promptLoginDialog(context);
+      return;
+    }
+    try {
+      await AuthService().incrementGeneralVideoShare(item.generalVideoId);
+    } catch (_) {}
+    if (!context.mounted) return;
+    await Share.share(
+      '$authorName\nClick Kick\n${GeneralVideoService.shareLink(item.generalVideoId)}',
+      subject: authorName,
+      sharePositionOrigin: _shareOriginForContext(context),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<UserBrief>(
+      future: UserDirectory.get(item.authorId),
+      builder: (context, snapshot) {
+        final author = snapshot.data;
+        final name = (author?.name.isNotEmpty ?? false)
+            ? author!.name
+            : item.title;
+        final photoUrl = author?.photoUrl ?? '';
+
+        return GestureDetector(
+          onTap: onTapVideo,
+          behavior: HitTestBehavior.opaque,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (isShowingActiveVideo && controller != null)
+                FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: controller!.value.size.width,
+                    height: controller!.value.size.height,
+                    child: VideoPlayer(controller!),
+                  ),
+                )
+              else if (isLoading || isShowingActiveVideo)
+                Container(
+                  color: AppColors.card,
+                  child: const Center(
+                    child: CircularProgressIndicator(
+                      color: AppColors.hotPink,
+                      strokeWidth: 4.6,
+                    ),
+                  ),
+                )
+              else
+                Container(color: AppColors.card),
+              Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Color(0xD0100A1E)],
+                    stops: [0.5, 1],
+                  ),
+                ),
+              ),
+              const Positioned(right: 16, top: 18, child: _FeedLogoBadge()),
+              if (isShowingActiveVideo)
+                IgnorePointer(
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 180),
+                    opacity: (isPlaying || isLoading) ? 0 : 1,
+                    child: Center(
+                      child: Container(
+                        width: 82,
+                        height: 82,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.32),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.22),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.play_arrow_rounded,
+                          color: AppColors.hotPink,
+                          size: 48,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              // Right rail: author + Follow, Views, Share.
+              Positioned(
+                right: 12,
+                bottom: 40,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    StreamBuilder<bool>(
+                      stream: FollowService().isFollowingStream(item.authorId),
+                      builder: (context, followSnap) {
+                        final following = followSnap.data ?? false;
+                        final showPlus = !_isOwn && !following;
+                        return SizedBox(
+                          width: 60,
+                          height: 74,
+                          child: Stack(
+                            alignment: Alignment.topCenter,
+                            clipBehavior: Clip.none,
+                            children: [
+                              GestureDetector(
+                                onTap: () => _openProfile(context),
+                                child: UserAvatar(
+                                  photoUrl: photoUrl,
+                                  size: 56,
+                                  borderColor: Colors.white,
+                                ),
+                              ),
+                              // "+" badge: tap to follow.
+                              if (showPlus)
+                                Positioned(
+                                  top: 42,
+                                  child: GestureDetector(
+                                    onTap: () => _follow(context),
+                                    behavior: HitTestBehavior.opaque,
+                                    child: Container(
+                                      width: 26,
+                                      height: 26,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: AppColors.hotPink,
+                                        border: Border.all(
+                                          color: Colors.white,
+                                          width: 1.5,
+                                        ),
+                                      ),
+                                      child: const Icon(
+                                        Icons.add,
+                                        color: Colors.white,
+                                        size: 18,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    _GeneralRailItem(
+                      icon: Icons.visibility_outlined,
+                      value: formatCount(item.viewCount),
+                      label: context.tr('Views'),
+                    ),
+                    const SizedBox(height: 18),
+                    _GeneralRailItem(
+                      icon: Icons.share_outlined,
+                      value: formatCount(item.shareCount),
+                      label: context.tr('Share'),
+                      onTap: () => _share(context, name),
+                    ),
+                    if (!_isOwn)
+                      PopupMenuButton<String>(
+                        color: AppColors.card,
+                        icon: const Icon(
+                          Icons.more_horiz_rounded,
+                          color: Colors.white,
+                          size: 28,
+                        ),
+                        onSelected: (value) {
+                          if (value == 'report') {
+                            showReportVideoDialog(
+                              context: context,
+                              videoType: 'general_video',
+                              submissionId: item.generalVideoId,
+                              targetUserId: item.authorId,
+                              participantName: name,
+                            );
+                          } else if (value == 'block') {
+                            showBlockParticipantDialog(
+                              context: context,
+                              blockedUserId: item.authorId,
+                              submissionId: item.generalVideoId,
+                              participantName: name,
+                            );
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          PopupMenuItem(
+                            value: 'report',
+                            child: Text(context.tr('Report')),
+                          ),
+                          PopupMenuItem(
+                            value: 'block',
+                            child: Text(context.tr('Block')),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+              Positioned(
+                left: 16,
+                right: 90,
+                bottom: 24,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    GestureDetector(
+                      onTap: () => _openProfile(context),
+                      behavior: HitTestBehavior.opaque,
+                      child: Row(
+                        children: [
+                          UserAvatar(photoUrl: photoUrl, size: 38),
+                          const SizedBox(width: 10),
+                          Flexible(
+                            child: Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          if (!_isOwn) ...[
+                            const SizedBox(width: 10),
+                            FollowButton(
+                              targetUserId: item.authorId,
+                              width: 88,
+                              height: 32,
+                              onLoginRequired: () =>
+                                  _promptLoginDialog(context),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    if (item.description.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        item.description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.textLight,
+                          fontSize: 14,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _GeneralRailItem extends StatelessWidget {
+  const _GeneralRailItem({
+    required this.icon,
+    required this.value,
+    required this.label,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: SizedBox(
+        width: 64,
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              color: Colors.white,
+              size: 34,
+              shadows: const [Shadow(blurRadius: 8, color: Colors.black54)],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ParticipantFeedCard extends StatelessWidget {
   const _ParticipantFeedCard({
     required this.item,
@@ -2360,7 +3003,7 @@ class _ParticipantFeedCard extends StatelessWidget {
       return;
     }
     final successMsg = context.tr('Vote submitted. Thank you!');
-    final alreadyMsg = context.tr('You already voted in this contest.');
+    final alreadyMsg = context.tr('You already voted for this video.');
     final closedMsg = context.tr('Voting is not open for this contest.');
     final failMsg = context.tr('Could not vote. Please try again.');
     try {
@@ -2390,10 +3033,7 @@ class _ParticipantFeedCard extends StatelessWidget {
       }
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            behavior: SnackBarBehavior.floating,
-          ),
+          SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
         );
       }
     }
@@ -3069,285 +3709,288 @@ class _ContestParticipantVideosSheet extends StatelessWidget {
               ),
               Expanded(
                 child: BlockedUsersBuilder(
-                  builder: (context, blockedUserIds) =>
-                      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                  stream: FirebaseFirestore.instance
-                      .collection('contests')
-                      .doc(contestId)
-                      .collection('submissions')
-                      .where('status', isEqualTo: 'approved')
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    final docs = snapshot.data!.docs
-                        .where(
-                          (d) => !blockedUserIds.contains(
-                            (d.data()['userId'] ?? '').toString(),
-                          ),
-                        )
-                        .toList()
-                      ..sort((a, b) {
-                        final av = ((a.data()['voteCount'] ?? 0) as num)
-                            .toInt();
-                        final bv = ((b.data()['voteCount'] ?? 0) as num)
-                            .toInt();
-                        return bv.compareTo(av);
-                      });
-                    if (docs.isEmpty) {
-                      return Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Text(
-                            context.tr('No participant videos yet.'),
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: AppColors.textMuted,
-                              fontSize: 15,
-                            ),
-                          ),
-                        ),
-                      );
-                    }
-
-                    return ListView.separated(
-                      controller: scrollController,
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                      itemCount: docs.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final doc = docs[index];
-                        final data = doc.data();
-                        final title =
-                            (data['title'] ??
-                                    data['description'] ??
-                                    context.tr('Contest Video'))
-                                .toString();
-                        final userName =
-                            (data['userName'] ??
-                                    data['participantName'] ??
-                                    data['displayName'] ??
-                                    context.tr('Participant'))
-                                .toString();
-                        final videoUrl = (data['videoUrl'] ?? '').toString();
-                        final thumbUrl = (data['thumbnailUrl'] ?? '')
-                            .toString();
-                        final votes = ((data['voteCount'] ?? 0) as num).toInt();
-                        final shares = ((data['shareCount'] ?? 0) as num)
-                            .toInt();
-
-                        return InkWell(
-                          borderRadius: BorderRadius.circular(20),
-                          onTap: videoUrl.isEmpty
-                              ? null
-                              : () async {
-                                  await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => _ContestParticipantReelsScreen(
-                                        contestTitle: contestTitle,
-                                        initialIndex: index,
-                                        videos: docs
-                                            .map(
-                                              (
-                                                entry,
-                                              ) => _ContestParticipantVideo(
-                                                id: entry.id,
-                                                userId:
-                                                    (entry.data()['userId'] ??
-                                                            '')
-                                                        .toString(),
-                                                contestId: contestId,
-                                                title:
-                                                    (entry.data()['title'] ??
-                                                            entry
-                                                                .data()['description'] ??
-                                                            context.tr(
-                                                              'Contest Video',
-                                                            ))
-                                                        .toString(),
-                                                participantName:
-                                                    (entry.data()['userName'] ??
-                                                            entry
-                                                                .data()['participantName'] ??
-                                                            entry
-                                                                .data()['displayName'] ??
-                                                            context.tr(
-                                                              'Participant',
-                                                            ))
-                                                        .toString(),
-                                                videoUrl:
-                                                    (entry.data()['videoUrl'] ??
-                                                            '')
-                                                        .toString(),
-                                                votes:
-                                                    ((entry.data()['voteCount'] ??
-                                                                0)
-                                                            as num)
-                                                        .toInt(),
-                                                shares:
-                                                    ((entry.data()['shareCount'] ??
-                                                                0)
-                                                            as num)
-                                                        .toInt(),
-                                              ),
-                                            )
-                                            .where(
-                                              (entry) =>
-                                                  entry.videoUrl.isNotEmpty,
-                                            )
-                                            .toList(),
-                                      ),
-                                    ),
-                                  );
-                                },
-                          child: Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: AppColors.card,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: AppColors.border),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 88,
-                                  height: 112,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.cardSoft,
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  clipBehavior: Clip.antiAlias,
-                                  child: Stack(
-                                    fit: StackFit.expand,
-                                    children: [
-                                      if (thumbUrl.isNotEmpty)
-                                        Image.network(
-                                          thumbUrl,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) =>
-                                              const SizedBox.shrink(),
-                                        ),
-                                      Container(
-                                        color: thumbUrl.isEmpty
-                                            ? Colors.black.withValues(
-                                                alpha: 0.16,
-                                              )
-                                            : Colors.black.withValues(
-                                                alpha: 0.16,
-                                              ),
-                                      ),
-                                      const Center(
-                                        child: Icon(
-                                          Icons.play_circle_fill_rounded,
-                                          color: Colors.white,
-                                          size: 42,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                  builder: (context, blockedUserIds) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    stream: FirebaseFirestore.instance
+                        .collection('contests')
+                        .doc(contestId)
+                        .collection('submissions')
+                        .where('status', isEqualTo: 'approved')
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      final docs =
+                          snapshot.data!.docs
+                              .where(
+                                (d) => !blockedUserIds.contains(
+                                  (d.data()['userId'] ?? '').toString(),
                                 ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        title,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        userName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: AppColors.textMuted,
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 10),
-                                      Row(
-                                        children: [
-                                          const Icon(
-                                            Icons.how_to_vote_rounded,
-                                            color: AppColors.hotPink,
-                                            size: 18,
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            '$votes ${context.tr('votes')}',
-                                            style: const TextStyle(
-                                              color: AppColors.textLight,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 14),
-                                          const Icon(
-                                            Icons.share_outlined,
-                                            color: AppColors.hotPink,
-                                            size: 17,
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            '$shares',
-                                            style: const TextStyle(
-                                              color: AppColors.textLight,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 12),
-                                      Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 6,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: AppColors.hotPink
-                                                  .withValues(alpha: 0.12),
-                                              borderRadius:
-                                                  BorderRadius.circular(999),
-                                              border: Border.all(
-                                                color: AppColors.hotPink
-                                                    .withValues(alpha: 0.32),
-                                              ),
-                                            ),
-                                            child: Text(
-                                              context.tr('Watch'),
-                                              style: const TextStyle(
-                                                color: AppColors.hotPink,
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w800,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
+                              )
+                              .toList()
+                            ..sort((a, b) {
+                              final av = ((a.data()['voteCount'] ?? 0) as num)
+                                  .toInt();
+                              final bv = ((b.data()['voteCount'] ?? 0) as num)
+                                  .toInt();
+                              return bv.compareTo(av);
+                            });
+                      if (docs.isEmpty) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Text(
+                              context.tr('No participant videos yet.'),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: AppColors.textMuted,
+                                fontSize: 15,
+                              ),
                             ),
                           ),
                         );
-                      },
-                    );
-                  },
+                      }
+
+                      return ListView.separated(
+                        controller: scrollController,
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                        itemCount: docs.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          final doc = docs[index];
+                          final data = doc.data();
+                          final title =
+                              (data['title'] ??
+                                      data['description'] ??
+                                      context.tr('Contest Video'))
+                                  .toString();
+                          final userName =
+                              (data['userName'] ??
+                                      data['participantName'] ??
+                                      data['displayName'] ??
+                                      context.tr('Participant'))
+                                  .toString();
+                          final videoUrl = (data['videoUrl'] ?? '').toString();
+                          final thumbUrl = (data['thumbnailUrl'] ?? '')
+                              .toString();
+                          final votes = ((data['voteCount'] ?? 0) as num)
+                              .toInt();
+                          final shares = ((data['shareCount'] ?? 0) as num)
+                              .toInt();
+
+                          return InkWell(
+                            borderRadius: BorderRadius.circular(20),
+                            onTap: videoUrl.isEmpty
+                                ? null
+                                : () async {
+                                    await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => _ContestParticipantReelsScreen(
+                                          contestTitle: contestTitle,
+                                          initialIndex: index,
+                                          videos: docs
+                                              .map(
+                                                (
+                                                  entry,
+                                                ) => _ContestParticipantVideo(
+                                                  id: entry.id,
+                                                  userId:
+                                                      (entry.data()['userId'] ??
+                                                              '')
+                                                          .toString(),
+                                                  contestId: contestId,
+                                                  title:
+                                                      (entry.data()['title'] ??
+                                                              entry
+                                                                  .data()['description'] ??
+                                                              context.tr(
+                                                                'Contest Video',
+                                                              ))
+                                                          .toString(),
+                                                  participantName:
+                                                      (entry
+                                                                  .data()['userName'] ??
+                                                              entry
+                                                                  .data()['participantName'] ??
+                                                              entry
+                                                                  .data()['displayName'] ??
+                                                              context.tr(
+                                                                'Participant',
+                                                              ))
+                                                          .toString(),
+                                                  videoUrl:
+                                                      (entry.data()['videoUrl'] ??
+                                                              '')
+                                                          .toString(),
+                                                  votes:
+                                                      ((entry.data()['voteCount'] ??
+                                                                  0)
+                                                              as num)
+                                                          .toInt(),
+                                                  shares:
+                                                      ((entry.data()['shareCount'] ??
+                                                                  0)
+                                                              as num)
+                                                          .toInt(),
+                                                ),
+                                              )
+                                              .where(
+                                                (entry) =>
+                                                    entry.videoUrl.isNotEmpty,
+                                              )
+                                              .toList(),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                            child: Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: AppColors.card,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: AppColors.border),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 88,
+                                    height: 112,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.cardSoft,
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    clipBehavior: Clip.antiAlias,
+                                    child: Stack(
+                                      fit: StackFit.expand,
+                                      children: [
+                                        if (thumbUrl.isNotEmpty)
+                                          Image.network(
+                                            thumbUrl,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) =>
+                                                const SizedBox.shrink(),
+                                          ),
+                                        Container(
+                                          color: thumbUrl.isEmpty
+                                              ? Colors.black.withValues(
+                                                  alpha: 0.16,
+                                                )
+                                              : Colors.black.withValues(
+                                                  alpha: 0.16,
+                                                ),
+                                        ),
+                                        const Center(
+                                          child: Icon(
+                                            Icons.play_circle_fill_rounded,
+                                            color: Colors.white,
+                                            size: 42,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          title,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          userName,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: AppColors.textMuted,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 10),
+                                        Row(
+                                          children: [
+                                            const Icon(
+                                              Icons.how_to_vote_rounded,
+                                              color: AppColors.hotPink,
+                                              size: 18,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              '$votes ${context.tr('votes')}',
+                                              style: const TextStyle(
+                                                color: AppColors.textLight,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 14),
+                                            const Icon(
+                                              Icons.share_outlined,
+                                              color: AppColors.hotPink,
+                                              size: 17,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              '$shares',
+                                              style: const TextStyle(
+                                                color: AppColors.textLight,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 10,
+                                                    vertical: 6,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.hotPink
+                                                    .withValues(alpha: 0.12),
+                                                borderRadius:
+                                                    BorderRadius.circular(999),
+                                                border: Border.all(
+                                                  color: AppColors.hotPink
+                                                      .withValues(alpha: 0.32),
+                                                ),
+                                              ),
+                                              child: Text(
+                                                context.tr('Watch'),
+                                                style: const TextStyle(
+                                                  color: AppColors.hotPink,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w800,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
-              ),
               ),
             ],
           ),
@@ -3561,783 +4204,6 @@ class _NewsFeedCardState extends State<_NewsFeedCard> {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _DashboardGateTab extends StatelessWidget {
-  const _DashboardGateTab();
-
-  @override
-  Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return const _LoginRequiredCard();
-
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData)
-          return const Center(child: CircularProgressIndicator());
-        final role = (snapshot.data!.data()?['role'] ?? 'user').toString();
-        if (role == 'user' || role == 'participant') {
-          return _ParticipantDashboardTab(userId: user.uid);
-        }
-        return Center(
-          child: Container(
-            margin: const EdgeInsets.all(20),
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: AppColors.card,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.dashboard_customize,
-                  size: 44,
-                  color: AppColors.hotPink,
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  context.tr('Open your role dashboard.'),
-                  style: const TextStyle(color: AppColors.textLight),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 12),
-                ElevatedButton(
-                  onPressed: () => Navigator.pushNamed(context, '/home'),
-                  child: Text(context.tr('Open Dashboard')),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _ParticipantDashboardTab extends StatefulWidget {
-  const _ParticipantDashboardTab({required this.userId});
-
-  final String userId;
-
-  @override
-  State<_ParticipantDashboardTab> createState() =>
-      _ParticipantDashboardTabState();
-}
-
-class _ParticipantDashboardTabState extends State<_ParticipantDashboardTab> {
-  late Future<List<Map<String, dynamic>>> _future;
-  String? _errorMessage;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = _load();
-  }
-
-  Future<List<Map<String, dynamic>>> _load() async {
-    final firestore = FirebaseFirestore.instance;
-    try {
-      final snap = await firestore
-          .collectionGroup('submissions')
-          .where('userId', isEqualTo: widget.userId)
-          .get()
-          .timeout(const Duration(seconds: 15));
-
-      final docs = snap.docs.map((doc) {
-        final data = Map<String, dynamic>.from(doc.data());
-        data['_docId'] = doc.id;
-        data['contestId'] =
-            (data['contestId'] ?? doc.reference.parent.parent?.id ?? '')
-                .toString();
-        data['isWinner'] = false;
-        return data;
-      }).toList();
-      return _markOwnWinners(docs, firestore);
-    } catch (_) {
-      final contests = await firestore
-          .collection('contests')
-          .get()
-          .timeout(const Duration(seconds: 15));
-      final out = <Map<String, dynamic>>[];
-      for (final contest in contests.docs) {
-        final subSnap = await contest.reference
-            .collection('submissions')
-            .where('userId', isEqualTo: widget.userId)
-            .get()
-            .timeout(const Duration(seconds: 15));
-        for (final sub in subSnap.docs) {
-          final data = Map<String, dynamic>.from(sub.data());
-          data['contestId'] = contest.id;
-          data['contestName'] = (contest.data()['title'] ?? '').toString();
-          data['_docId'] = sub.id;
-          data['isWinner'] = false;
-          out.add(data);
-        }
-      }
-      return _markOwnWinners(out, firestore);
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> _markOwnWinners(
-    List<Map<String, dynamic>> docs,
-    FirebaseFirestore firestore,
-  ) async {
-    if (docs.isEmpty) return docs;
-    final now = DateTime.now();
-    final contestIds = docs
-        .map((d) => (d['contestId'] ?? '').toString())
-        .where((id) => id.isNotEmpty)
-        .toSet();
-
-    for (final contestId in contestIds) {
-      final contestDoc = await firestore
-          .collection('contests')
-          .doc(contestId)
-          .get();
-      if (!contestDoc.exists) continue;
-      final votingEnd = (contestDoc.data()?['votingEnd'] as Timestamp?)
-          ?.toDate();
-      if (votingEnd == null || now.isBefore(votingEnd)) continue;
-
-      final submissionsSnap = await contestDoc.reference
-          .collection('submissions')
-          .where('status', isEqualTo: 'approved')
-          .get()
-          .timeout(const Duration(seconds: 15));
-      if (submissionsSnap.docs.isEmpty) continue;
-
-      var maxVotes = 0;
-      for (final sub in submissionsSnap.docs) {
-        final votes = ((sub.data()['voteCount'] ?? 0) as num).toInt();
-        if (votes > maxVotes) maxVotes = votes;
-      }
-      final winnerIds = submissionsSnap.docs
-          .where(
-            (sub) =>
-                ((sub.data()['voteCount'] ?? 0) as num).toInt() == maxVotes,
-          )
-          .map((sub) => sub.id)
-          .toSet();
-
-      for (final doc in docs) {
-        if ((doc['contestId'] ?? '').toString() != contestId) continue;
-        if ((doc['status'] ?? '').toString() != 'approved') continue;
-        final docId = (doc['_docId'] ?? '').toString();
-        if (winnerIds.contains(docId)) {
-          doc['isWinner'] = true;
-        }
-      }
-    }
-    return docs;
-  }
-
-  Future<void> _refresh() async {
-    setState(() {
-      _errorMessage = null;
-      _future = _load();
-    });
-    try {
-      await _future;
-    } on TimeoutException {
-      if (!mounted) return;
-      setState(() {
-        _errorMessage = context.tr(
-          'Dashboard request timed out. Check internet and retry.',
-        );
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _errorMessage = context.tr('Unable to load dashboard data. Tap retry.');
-      });
-    }
-  }
-
-  String _t(BuildContext context, String key, String arFallback) {
-    final value = context.tr(key);
-    if (context.isArabic &&
-        (value == key || RegExp(r'^[A-Za-z]').hasMatch(value))) {
-      return arFallback;
-    }
-    return value;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (widget.userId.isEmpty) {
-      return Center(child: Text(context.tr('Please login.')));
-    }
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _future,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done &&
-            _errorMessage == null) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (_errorMessage != null || snapshot.hasError) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.wifi_off_rounded,
-                    size: 36,
-                    color: AppColors.hotPink,
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    _errorMessage ??
-                        context.tr('Unable to load dashboard data. Tap retry.'),
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 10),
-                  OutlinedButton(
-                    onPressed: _refresh,
-                    child: Text(context.tr('Retry')),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        final docs =
-            List<Map<String, dynamic>>.from(
-              snapshot.data ?? <Map<String, dynamic>>[],
-            )..sort((a, b) {
-              final at =
-                  (a['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
-              final bt =
-                  (b['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
-              return bt.compareTo(at);
-            });
-        final approved = docs
-            .where((e) => (e['status'] ?? '') == 'approved')
-            .length;
-        final winners = docs.where((e) => e['isWinner'] == true).length;
-        final authUser = FirebaseAuth.instance.currentUser;
-        final fallbackName = docs.isNotEmpty
-            ? ((docs.first['userName'] ??
-                          docs.first['participantName'] ??
-                          docs.first['displayName']) ??
-                      '')
-                  .toString()
-            : '';
-        final profileName = (authUser?.displayName?.trim().isNotEmpty ?? false)
-            ? authUser!.displayName!.trim()
-            : (fallbackName.isNotEmpty
-                  ? fallbackName
-                  : context.tr('Participant'));
-        final profileEmail = (authUser?.email ?? '').trim();
-        final profilePhotoUrl = (authUser?.photoURL ?? '').trim();
-
-        return RefreshIndicator(
-          onRefresh: _refresh,
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-                  child: Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: AppColors.card,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: Column(
-                      children: [
-                        Container(
-                          width: 74,
-                          height: 74,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: AppColors.cardSoft,
-                            border: Border.all(color: AppColors.border),
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: profilePhotoUrl.isNotEmpty
-                              ? Image.network(
-                                  profilePhotoUrl,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const Icon(
-                                    Icons.person_rounded,
-                                    color: AppColors.hotPink,
-                                    size: 38,
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.person_rounded,
-                                  color: AppColors.hotPink,
-                                  size: 38,
-                                ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          profileName,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        if (profileEmail.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            profileEmail,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: AppColors.textMuted,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 18),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _ProfileStatBlock(
-                                value: docs.length.toString(),
-                                label: _t(
-                                  context,
-                                  'Total Videos',
-                                  'إجمالي الفيديوهات',
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: _ProfileStatBlock(
-                                value: approved.toString(),
-                                label: _t(context, 'Approved', 'مقبول'),
-                              ),
-                            ),
-                            Expanded(
-                              child: _ProfileStatBlock(
-                                value: winners.toString(),
-                                label: _t(context, 'Winner', 'الفائز'),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              if (docs.isEmpty)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        context.tr('No videos found for selected filter.'),
-                      ),
-                    ),
-                  ),
-                )
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                  sliver: SliverGrid(
-                    delegate: SliverChildBuilderDelegate((context, index) {
-                      final data = docs[index];
-                      final status = (data['isWinner'] == true)
-                          ? 'winner'
-                          : (data['status'] ?? 'pending').toString();
-                      final videoUrl = (data['videoUrl'] ?? '').toString();
-                      final contestName =
-                          (data['contestName'] ??
-                                  data['contestTitle'] ??
-                                  data['contestId'] ??
-                                  '')
-                              .toString();
-                      final votes = ((data['voteCount'] ?? 0) as num).toInt();
-                      final reason = (data['rejectionReason'] ?? '').toString();
-
-                      Color badge = AppColors.sunset;
-                      String badgeLabel = _t(
-                        context,
-                        'Pending',
-                        'قيد الانتظار',
-                      );
-                      if (status == 'approved') {
-                        badge = const Color(0xFF2DAF6F);
-                        badgeLabel = _t(context, 'Approved', 'مقبول');
-                      } else if (status == 'rejected') {
-                        badge = const Color(0xFFC53D5D);
-                        badgeLabel = _t(context, 'Rejected', 'مرفوض');
-                      } else if (status == 'winner') {
-                        badge = AppColors.hotPink;
-                        badgeLabel = _t(context, 'Winner', 'الفائز');
-                      }
-
-                      return GestureDetector(
-                        onTap: videoUrl.isEmpty
-                            ? null
-                            : () async {
-                                await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => _DashboardVideoPlayerScreen(
-                                      videoUrl: videoUrl,
-                                      title: contestName,
-                                    ),
-                                  ),
-                                );
-                              },
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: AppColors.card,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: AppColors.border),
-                          ),
-                          child: Stack(
-                            children: [
-                              Positioned.fill(
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(18),
-                                    gradient: const LinearGradient(
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                      colors: [
-                                        AppColors.cardSoft,
-                                        AppColors.card,
-                                      ],
-                                    ),
-                                  ),
-                                  child: const Center(
-                                    child: Icon(
-                                      Icons.play_circle_fill_rounded,
-                                      color: AppColors.hotPink,
-                                      size: 38,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              Positioned(
-                                top: 8,
-                                left: 8,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: badge.withValues(alpha: 0.18),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: Text(
-                                    badgeLabel,
-                                    style: TextStyle(
-                                      color: badge,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              Positioned(
-                                left: 10,
-                                right: 10,
-                                bottom: 10,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      contestName,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        const Icon(
-                                          Icons.how_to_vote_rounded,
-                                          color: AppColors.hotPink,
-                                          size: 13,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Expanded(
-                                          child: Text(
-                                            '${_t(context, 'Votes', 'الأصوات')}: $votes',
-                                            style: const TextStyle(
-                                              color: AppColors.textLight,
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    if (status == 'rejected' &&
-                                        reason.isNotEmpty) ...[
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        reason,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: AppColors.textMuted,
-                                          fontSize: 10,
-                                          height: 1.25,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }, childCount: docs.length),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          mainAxisSpacing: 8,
-                          crossAxisSpacing: 8,
-                          childAspectRatio: 0.72,
-                        ),
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _ProfileStatBlock extends StatelessWidget {
-  const _ProfileStatBlock({required this.value, required this.label});
-
-  final String value;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: AppColors.textMuted,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _DashboardVideoPlayerScreen extends StatefulWidget {
-  const _DashboardVideoPlayerScreen({
-    required this.videoUrl,
-    required this.title,
-  });
-
-  final String videoUrl;
-  final String title;
-
-  @override
-  State<_DashboardVideoPlayerScreen> createState() =>
-      _DashboardVideoPlayerScreenState();
-}
-
-class _DashboardVideoPlayerScreenState
-    extends State<_DashboardVideoPlayerScreen> {
-  VideoPlayerController? _controller;
-  bool _showControls = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl))
-      ..initialize().then((_) async {
-        if (!mounted) return;
-        await _controller?.setLooping(true);
-        await _controller?.play();
-        setState(() {});
-      });
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
-
-  Future<void> _togglePlayback() async {
-    final controller = _controller;
-    if (controller == null || !controller.value.isInitialized) return;
-    if (controller.value.isPlaying) {
-      await controller.pause();
-    } else {
-      await controller.play();
-    }
-    if (mounted) setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final controller = _controller;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      ),
-      body: Stack(
-        children: [
-          const _SpaceBackground(),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.card,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: AppColors.border),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: controller != null && controller.value.isInitialized
-                    ? GestureDetector(
-                        onTap: () =>
-                            setState(() => _showControls = !_showControls),
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            FittedBox(
-                              fit: BoxFit.contain,
-                              child: SizedBox(
-                                width: controller.value.size.width,
-                                height: controller.value.size.height,
-                                child: VideoPlayer(controller),
-                              ),
-                            ),
-                            AnimatedOpacity(
-                              opacity: _showControls ? 1 : 0,
-                              duration: const Duration(milliseconds: 180),
-                              child: Container(
-                                color: Colors.black.withValues(alpha: 0.18),
-                                child: Column(
-                                  children: [
-                                    const Spacer(),
-                                    Center(
-                                      child: GestureDetector(
-                                        onTap: _togglePlayback,
-                                        child: Container(
-                                          width: 78,
-                                          height: 78,
-                                          decoration: BoxDecoration(
-                                            color: Colors.black.withValues(
-                                              alpha: 0.42,
-                                            ),
-                                            shape: BoxShape.circle,
-                                            border: Border.all(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.2,
-                                              ),
-                                            ),
-                                          ),
-                                          child: Icon(
-                                            controller.value.isPlaying
-                                                ? Icons.pause_rounded
-                                                : Icons.play_arrow_rounded,
-                                            color: Colors.white,
-                                            size: 42,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    const Spacer(),
-                                    Padding(
-                                      padding: const EdgeInsets.all(16),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          VideoProgressIndicator(
-                                            controller,
-                                            allowScrubbing: true,
-                                            colors: const VideoProgressColors(
-                                              playedColor: AppColors.hotPink,
-                                              bufferedColor:
-                                                  AppColors.textMuted,
-                                              backgroundColor: AppColors.border,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 12),
-                                          Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Text(
-                                                controller.value.isPlaying
-                                                    ? context.tr('Pause')
-                                                    : context.tr('Play'),
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontWeight: FontWeight.w700,
-                                                ),
-                                              ),
-                                              Text(
-                                                widget.title,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  color: AppColors.textLight,
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : const Center(child: CircularProgressIndicator()),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -4812,200 +4678,10 @@ class _ProfileGateTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const _LoginRequiredCard();
-    return _PublicUserProfileTab(user: user);
-  }
-}
-
-class _PublicUserProfileTab extends StatelessWidget {
-  const _PublicUserProfileTab({required this.user});
-
-  final User user;
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      future: FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get(),
-      builder: (context, snapshot) {
-        final data = snapshot.data?.data() ?? <String, dynamic>{};
-        final displayName =
-            (data['displayName'] ?? user.displayName ?? context.tr('User'))
-                .toString();
-        final email = (data['email'] ?? user.email ?? '').toString();
-        final photoUrl = (data['photoUrl'] ?? user.photoURL ?? '').toString();
-
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: AppColors.card,
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 54,
-                    height: 54,
-                    clipBehavior: Clip.antiAlias,
-                    decoration: BoxDecoration(
-                      color: AppColors.cardSoft,
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: photoUrl.isNotEmpty
-                        ? Image.network(
-                            photoUrl,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => const Icon(
-                              Icons.person,
-                              color: AppColors.hotPink,
-                              size: 28,
-                            ),
-                          )
-                        : const Icon(
-                            Icons.person,
-                            color: AppColors.hotPink,
-                            size: 28,
-                          ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          displayName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          email,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            SettingsActionTile(
-              icon: Icons.person_outline,
-              title: context.tr('Profile'),
-              subtitle: context.tr(
-                'Manage profile, language, and security in one place.',
-              ),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => _PublicUserProfileUpdateScreen(user: user),
-                  ),
-                );
-              },
-            ),
-            SettingsActionTile(
-              icon: Icons.support_agent_outlined,
-              title: context.tr('Support'),
-              subtitle: context.tr('Chat with support team.'),
-              onTap: () {
-                final user = FirebaseAuth.instance.currentUser;
-                if (user == null) return;
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => SupportChatScreen(
-                      threadId: user.uid,
-                      title: context.tr('Support'),
-                      subtitle: user.email,
-                    ),
-                  ),
-                );
-              },
-            ),
-            SettingsActionTile(
-              icon: Icons.privacy_tip_outlined,
-              title: context.tr('Legal & Privacy'),
-              subtitle: context.tr('Terms, guidelines, and privacy policy.'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const LegalCenterScreen()),
-                );
-              },
-            ),
-            SettingsActionTile(
-              icon: Icons.block,
-              title: context.tr('Blocked Users'),
-              subtitle: context.tr('Manage participants you have blocked.'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const BlockedUsersScreen()),
-                );
-              },
-            ),
-            SettingsActionTile(
-              icon: Icons.delete_outline_rounded,
-              title: context.tr('Delete Account'),
-              subtitle: context.tr('Permanently remove your account.'),
-              isDanger: true,
-              onTap: () async {
-                final confirmed = await showDeleteAccountDialog(context);
-                if (confirmed != true) return;
-                try {
-                  await AuthService().deleteCurrentAccount();
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        context.tr(
-                          'Your account has been permanently deleted.',
-                        ),
-                      ),
-                    ),
-                  );
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    (_) => false,
-                  );
-                } catch (e) {
-                  if (!context.mounted) return;
-                  final message = e.toString().contains('requires-recent-login')
-                      ? context.tr(
-                          'Please login again before deleting your account.',
-                        )
-                      : context.tr(
-                          'Unable to delete account right now. Please try again.',
-                        );
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text(message)));
-                }
-              },
-            ),
-            SettingsActionTile(
-              icon: Icons.logout,
-              title: context.tr('Logout'),
-              subtitle: context.tr('Sign out from your account.'),
-              isDanger: true,
-              onTap: () async {
-                await AuthService().signOut();
-                if (!context.mounted) return;
-                Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
-              },
-            ),
-          ],
-        );
-      },
+    return UserProfileScreen(
+      key: ValueKey(user.uid),
+      userId: user.uid,
+      embedded: true,
     );
   }
 }
@@ -5070,18 +4746,18 @@ class _PublicUserProfileInfoScreen extends StatelessWidget {
   }
 }
 
-class _PublicUserProfileUpdateScreen extends StatefulWidget {
-  const _PublicUserProfileUpdateScreen({required this.user});
+class PublicUserProfileUpdateScreen extends StatefulWidget {
+  const PublicUserProfileUpdateScreen({required this.user});
 
   final User user;
 
   @override
-  State<_PublicUserProfileUpdateScreen> createState() =>
+  State<PublicUserProfileUpdateScreen> createState() =>
       _PublicUserProfileUpdateScreenState();
 }
 
 class _PublicUserProfileUpdateScreenState
-    extends State<_PublicUserProfileUpdateScreen> {
+    extends State<PublicUserProfileUpdateScreen> {
   late final TextEditingController _nameController;
   late final TextEditingController _emailController;
   final TextEditingController _phoneCodeController = TextEditingController(
@@ -5753,206 +5429,207 @@ class _LoginRequiredCard extends StatelessWidget {
     final user = FirebaseAuth.instance.currentUser;
     return SingleChildScrollView(
       child: Align(
-      alignment: Alignment.topCenter,
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(bottom: 18),
-              child: SizedBox(
-                width: 108,
-                height: 84,
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  fit: BoxFit.contain,
+        alignment: Alignment.topCenter,
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 18),
+                child: SizedBox(
+                  width: 108,
+                  height: 84,
+                  child: Image.asset(
+                    'assets/images/logo.png',
+                    fit: BoxFit.contain,
+                  ),
                 ),
               ),
-            ),
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppColors.card.withOpacity(0.96),
-                    AppColors.cardSoft.withOpacity(0.9),
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppColors.card.withOpacity(0.96),
+                      AppColors.cardSoft.withOpacity(0.9),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: AppColors.border),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.16),
+                      blurRadius: 18,
+                      offset: const Offset(0, 10),
+                    ),
                   ],
                 ),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: AppColors.border),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.16),
-                    blurRadius: 18,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 66,
-                    height: 66,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [AppColors.hotPink, AppColors.magenta],
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.hotPink.withOpacity(0.25),
-                          blurRadius: 16,
-                          offset: const Offset(0, 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 66,
+                      height: 66,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [AppColors.hotPink, AppColors.magenta],
                         ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.person_rounded,
-                      size: 34,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    context.tr('Sign In'),
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    user == null
-                        ? context.tr(
-                            'Login to manage your profile, contests and much more.',
-                          )
-                        : (user.email ?? context.tr('Logged in user')),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: AppColors.textLight,
-                      fontSize: 16,
-                      height: 1.35,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  if (user == null) ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
-                            colors: [AppColors.hotPink, AppColors.magenta],
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.hotPink.withOpacity(0.25),
+                            blurRadius: 16,
+                            offset: const Offset(0, 8),
                           ),
-                          borderRadius: BorderRadius.circular(18),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.hotPink.withOpacity(0.24),
-                              blurRadius: 16,
-                              offset: const Offset(0, 8),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.person_rounded,
+                        size: 34,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      context.tr('Sign In'),
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      user == null
+                          ? context.tr(
+                              'Login to manage your profile, contests and much more.',
+                            )
+                          : (user.email ?? context.tr('Logged in user')),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: AppColors.textLight,
+                        fontSize: 16,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    if (user == null) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                              colors: [AppColors.hotPink, AppColors.magenta],
                             ),
-                          ],
+                            borderRadius: BorderRadius.circular(18),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.hotPink.withOpacity(0.24),
+                                blurRadius: 16,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              stopAllFeedPlayback().then((_) {
+                                if (!context.mounted) return;
+                                Navigator.pushNamed(context, '/login');
+                              });
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              shadowColor: Colors.transparent,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                            ),
+                            icon: const Icon(Icons.login_rounded),
+                            label: Text(
+                              context.tr('Login'),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
                         ),
-                        child: ElevatedButton.icon(
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
                           onPressed: () {
                             stopAllFeedPlayback().then((_) {
                               if (!context.mounted) return;
-                              Navigator.pushNamed(context, '/login');
+                              Navigator.pushNamed(context, '/register');
                             });
                           },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.transparent,
-                            shadowColor: Colors.transparent,
+                          style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            side: BorderSide(
+                              color: Colors.white.withOpacity(0.42),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 15),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(18),
                             ),
                           ),
-                          icon: const Icon(Icons.login_rounded),
+                          icon: const Icon(Icons.person_add_alt_1_rounded),
                           label: Text(
-                            context.tr('Login'),
+                            context.tr('Create Account'),
                             style: const TextStyle(fontWeight: FontWeight.w700),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          stopAllFeedPlayback().then((_) {
-                            if (!context.mounted) return;
-                            Navigator.pushNamed(context, '/register');
-                          });
-                        },
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: BorderSide(
-                            color: Colors.white.withOpacity(0.42),
+                      const SizedBox(height: 18),
+                      const Row(
+                        children: [
+                          Expanded(
+                            child: _GuestBenefit(
+                              icon: Icons.verified_user_outlined,
+                              title: 'Secure',
+                              subtitle: '100% Safe',
+                            ),
                           ),
-                          padding: const EdgeInsets.symmetric(vertical: 15),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
+                          Expanded(
+                            child: _GuestBenefit(
+                              icon: Icons.emoji_events_outlined,
+                              title: 'Contests',
+                              subtitle: 'Join & Win',
+                            ),
                           ),
-                        ),
-                        icon: const Icon(Icons.person_add_alt_1_rounded),
-                        label: Text(
-                          context.tr('Create Account'),
-                          style: const TextStyle(fontWeight: FontWeight.w700),
+                          Expanded(
+                            child: _GuestBenefit(
+                              icon: Icons.person_outline_rounded,
+                              title: 'Personalized',
+                              subtitle: 'Just for you',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        context.tr('You are already signed in.'),
+                        style: const TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 18),
-                    const Row(
-                      children: [
-                        Expanded(
-                          child: _GuestBenefit(
-                            icon: Icons.verified_user_outlined,
-                            title: 'Secure',
-                            subtitle: '100% Safe',
-                          ),
-                        ),
-                        Expanded(
-                          child: _GuestBenefit(
-                            icon: Icons.emoji_events_outlined,
-                            title: 'Contests',
-                            subtitle: 'Join & Win',
-                          ),
-                        ),
-                        Expanded(
-                          child: _GuestBenefit(
-                            icon: Icons.person_outline_rounded,
-                            title: 'Personalized',
-                            subtitle: 'Just for you',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ] else ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      context.tr('You are already signed in.'),
-                      style: const TextStyle(
-                        color: AppColors.textMuted,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
       ),
     );
   }

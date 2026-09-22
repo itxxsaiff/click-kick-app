@@ -907,18 +907,23 @@ class _VotingGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final voteDocStream = FirebaseFirestore.instance
+    // One user + one video = one vote: a user can vote for every video in the
+    // contest, but only once for each. Vote docs carry `voterId` and
+    // `submissionId` (legacy one-vote-per-contest docs do too).
+    final voteStream = FirebaseFirestore.instance
         .collection('contests')
         .doc(contestId)
         .collection('votes')
-        .doc(userId)
+        .where('voterId', isEqualTo: userId)
         .snapshots();
 
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: voteDocStream,
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: voteStream,
       builder: (context, voteSnapshot) {
-        final votedSubmissionId =
-            (voteSnapshot.data?.data()?['submissionId'] ?? '').toString();
+        final votedSubmissionIds = <String>{
+          for (final voteDoc in voteSnapshot.data?.docs ?? const [])
+            (voteDoc.data()['submissionId'] ?? '').toString(),
+        };
 
         final orderedSubmissions = submissions.toList();
         if ((focusSubmissionId ?? '').isNotEmpty) {
@@ -957,8 +962,7 @@ class _VotingGrid extends StatelessWidget {
             final videoUrl = (data['videoUrl'] ?? '').toString();
             final ownerUserId = (data['userId'] ?? '').toString();
             final votes = ((data['voteCount'] ?? 0) as num).toInt();
-            final isVoted = votedSubmissionId == doc.id;
-            final hasVoted = votedSubmissionId.isNotEmpty;
+            final isVoted = votedSubmissionIds.contains(doc.id);
             final isOwnVideo = ownerUserId == userId;
             final isHighlighted = doc.id == focusSubmissionId;
 
@@ -1111,14 +1115,12 @@ class _VotingGrid extends StatelessWidget {
                       child: ElevatedButton(
                         onPressed: isOwnVideo
                             ? null
-                            : hasVoted && !isVoted
-                            ? null
                             : () => _castVote(
                                 context: context,
                                 contestId: contestId,
                                 userId: userId,
                                 submissionId: doc.id,
-                                alreadyVoted: hasVoted,
+                                alreadyVoted: isVoted,
                               ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: isOwnVideo
@@ -1155,7 +1157,7 @@ class _VotingGrid extends StatelessWidget {
     required bool alreadyVoted,
   }) async {
     if (alreadyVoted) {
-      _snack(context, context.tr('You already voted in this contest.'));
+      _snack(context, context.tr('You already voted for this video.'));
       return;
     }
 
@@ -1174,7 +1176,7 @@ class _VotingGrid extends StatelessWidget {
     } catch (e) {
       if (e is FirebaseFunctionsException) {
         if (e.code == 'already-exists') {
-          _snack(context, context.tr('You already voted in this contest.'));
+          _snack(context, context.tr('You already voted for this video.'));
           return;
         }
         final details = (e.message ?? '').toString();
@@ -1193,7 +1195,7 @@ class _VotingGrid extends StatelessWidget {
       }
       final msg = e.toString();
       if (msg.contains('already-voted')) {
-        _snack(context, context.tr('You already voted in this contest.'));
+        _snack(context, context.tr('You already voted for this video.'));
       } else if (msg.contains('cannot-self-vote')) {
         _snack(context, context.tr('You cannot vote for your own video.'));
       } else if (msg.contains('Voting has not started yet')) {

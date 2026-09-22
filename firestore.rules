@@ -61,11 +61,14 @@ service cloud.firestore {
         }
       }
 
+      // One user + one video = one vote. Vote docs are written only by the
+      // `incrementContestVote` Cloud Function (doc id `{uid}_{submissionId}`;
+      // legacy docs used just `{uid}`), so clients can never create them.
       match /votes/{voteId} {
         allow read: if isStaff()
           || isSponsorForContest(contestId)
-          || (signedIn() && request.auth.uid == voteId);
-        allow create: if signedIn() && request.auth.uid == voteId;
+          || (signedIn() && resource.data.voterId == request.auth.uid);
+        allow create: if false;
         allow update, delete: if isStaff();
       }
 
@@ -109,6 +112,40 @@ service cloud.firestore {
     match /admin_videos/{videoId} {
       allow read: if true;
       allow create, update, delete: if isStaff();
+    }
+
+    // General (non-competition) user videos. They start `pending` and only
+    // staff can approve/reject. Owners can edit the caption or delete their
+    // video; view/share counters are written by Cloud Functions.
+    match /general_videos/{videoId} {
+      allow read: if resource.data.status == 'approved'
+        || isOwner(resource.data.userId)
+        || isStaff();
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.viewCount == 0
+        && request.resource.data.shareCount == 0;
+      allow update: if isStaff()
+        || (
+          isOwner(resource.data.userId)
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['caption', 'updatedAt'])
+        );
+      allow delete: if isOwner(resource.data.userId) || isStaff();
+    }
+
+    // Follow graph. Doc id is `{followerId}_{followingId}`.
+    match /follows/{followId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.followerId == request.auth.uid
+        && request.resource.data.followingId is string
+        && request.resource.data.followingId != request.auth.uid
+        && followId == request.auth.uid + '_' + request.resource.data.followingId;
+      allow update: if false;
+      allow delete: if signedIn()
+        && (resource.data.followerId == request.auth.uid || isStaff());
     }
 
     // Public "Click Kick Star" leaderboard: anyone can read; only staff can

@@ -7,6 +7,8 @@ import '../../l10n/l10n.dart';
 import '../../services/auth_service.dart';
 import '../../services/follow_service.dart';
 import '../../services/general_video_service.dart';
+import '../../services/short_link_service.dart';
+import '../../services/video_download_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/follow_widgets.dart';
 import 'user_profile_screen.dart';
@@ -66,6 +68,7 @@ class _GeneralVideoPlayerScreenState extends State<GeneralVideoPlayerScreen> {
   bool _failed = false;
   String _error = '';
   late int _shareCount = widget.video.shareCount;
+  late int _likeCount = widget.video.likeCount;
   UserBrief _author = UserBrief.empty('');
 
   GeneralVideo get _video => widget.video;
@@ -118,6 +121,41 @@ class _GeneralVideoPlayerScreenState extends State<GeneralVideoPlayerScreen> {
     } catch (_) {}
   }
 
+  /// No watermark yet — that is a separate, not-yet-built feature.
+  Future<void> _download() async {
+    final result = await VideoDownloadService.saveVideo(
+      videoUrl: _video.videoUrl,
+      fileName: 'clickkick_${_video.id}',
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(context.tr(result.messageKey)),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _like() async {
+    if (FirebaseAuth.instance.currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr('Please login to like.'))),
+      );
+      return;
+    }
+    final failMsg = context.tr('Could not update like. Please try again.');
+    try {
+      final liked = await AuthService().toggleGeneralVideoLike(_video.id);
+      if (mounted) setState(() => _likeCount += liked ? 1 : -1);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(failMsg), behavior: SnackBarBehavior.floating),
+        );
+      }
+    }
+  }
+
   Future<void> _share() async {
     if (FirebaseAuth.instance.currentUser != null && _video.isApproved) {
       try {
@@ -126,8 +164,14 @@ class _GeneralVideoPlayerScreenState extends State<GeneralVideoPlayerScreen> {
       } catch (_) {}
     }
     final name = _author.name.isNotEmpty ? _author.name : _video.userName;
+    String link;
+    try {
+      link = await ShortLinkService().generalVideoLink(_video.id);
+    } catch (_) {
+      link = GeneralVideoService.shareLink(_video.id);
+    }
     await Share.share(
-      '$name\nClick Kick\n${GeneralVideoService.shareLink(_video.id)}',
+      '$name\nClick Kick\n$link',
       sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
     );
   }
@@ -223,6 +267,22 @@ class _GeneralVideoPlayerScreenState extends State<GeneralVideoPlayerScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  StreamBuilder<bool>(
+                    stream: GeneralVideoService().isLikedStream(_video.id),
+                    builder: (context, likeSnap) {
+                      final liked = likeSnap.data ?? false;
+                      return _Metric(
+                        icon: liked
+                            ? Icons.favorite_rounded
+                            : Icons.favorite_border_rounded,
+                        iconColor: liked ? AppColors.hotPink : Colors.white,
+                        value: formatCount(_likeCount),
+                        label: context.tr('Like'),
+                        onTap: _like,
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
                   _Metric(
                     icon: Icons.visibility_outlined,
                     value: formatCount(_video.viewCount),
@@ -235,6 +295,15 @@ class _GeneralVideoPlayerScreenState extends State<GeneralVideoPlayerScreen> {
                     label: context.tr('Share'),
                     onTap: _video.isApproved ? _share : null,
                   ),
+                  if (isOwner) ...[
+                    const SizedBox(height: 16),
+                    _Metric(
+                      icon: Icons.download_outlined,
+                      value: '',
+                      label: context.tr('Download'),
+                      onTap: _download,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -332,12 +401,14 @@ class _Metric extends StatelessWidget {
     required this.icon,
     required this.value,
     required this.label,
+    this.iconColor = Colors.white,
     this.onTap,
   });
 
   final IconData icon;
   final String value;
   final String label;
+  final Color iconColor;
   final VoidCallback? onTap;
 
   @override
@@ -347,16 +418,17 @@ class _Metric extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       child: Column(
         children: [
-          Icon(icon, color: Colors.white, size: 34),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
+          Icon(icon, color: iconColor, size: 34),
+          if (value.isNotEmpty) const SizedBox(height: 4),
+          if (value.isNotEmpty)
+            Text(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+              ),
             ),
-          ),
           Text(
             label,
             style: const TextStyle(color: Colors.white70, fontSize: 12),

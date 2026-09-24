@@ -3,16 +3,18 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../l10n/l10n.dart';
 import '../../services/follow_service.dart';
 import '../../services/general_video_service.dart';
+import '../../services/short_link_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/app_background.dart';
 import '../../widgets/block_participant_dialog.dart';
 import '../../widgets/follow_widgets.dart';
+import '../../services/video_download_service.dart';
 import '../../widgets/report_video_dialog.dart';
-import '../user/general_video_upload_screen.dart';
 import 'follow_list_screen.dart';
 import 'general_video_player_screen.dart';
 import 'settings_screen.dart';
@@ -343,12 +345,16 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
-  Future<void> _addVideo() async {
-    final added = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(builder: (_) => const GeneralVideoUploadScreen()),
-    );
-    if (added == true) await _reload();
+  Future<void> _shareProfile(String name) async {
+    String link;
+    try {
+      link = await ShortLinkService().profileLink(widget.userId);
+    } catch (_) {
+      link =
+          '${GeneralVideoService.shareBaseUrl}/profile?userId=${widget.userId}';
+    }
+    if (!mounted) return;
+    await Share.share('$name\nClick Kick\n$link', subject: name);
   }
 
   Future<void> _openSettings() async {
@@ -472,6 +478,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   ),
                 ),
                 const Spacer(),
+                IconButton(
+                  onPressed: () => _shareProfile(name),
+                  icon: const Icon(Icons.share_outlined, color: Colors.white),
+                ),
                 if (!_isOwner && FirebaseAuth.instance.currentUser != null)
                   PopupMenuButton<String>(
                     color: AppColors.card,
@@ -538,7 +548,32 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   ],
                 ),
               ),
-              if (_isOwner)
+              if (widget.embedded)
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      onPressed: () => _shareProfile(name),
+                      icon: const Icon(
+                        Icons.share_outlined,
+                        color: AppColors.hotPink,
+                      ),
+                    ),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: _openSettings,
+                      child: const Padding(
+                        padding: EdgeInsets.all(6),
+                        child: Icon(
+                          Icons.settings_outlined,
+                          color: AppColors.hotPink,
+                          size: 30,
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              else if (_isOwner)
                 InkWell(
                   borderRadius: BorderRadius.circular(14),
                   onTap: _openSettings,
@@ -580,47 +615,33 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   Widget _buildAvatar(UserBrief user) {
-    return SizedBox(
-      width: 104,
-      height: 104,
-      child: Stack(
-        children: [
-          Container(
-            width: 104,
-            height: 104,
-            padding: const EdgeInsets.all(4),
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                colors: [AppColors.hotPink, Color(0xFF7B3FF2)],
-              ),
-            ),
-            child: UserAvatar(photoUrl: user.photoUrl, size: 96),
-          ),
-          if (_photoBusy)
-            const Positioned.fill(
-              child: Center(child: CircularProgressIndicator(strokeWidth: 3)),
-            ),
-          // The "+" badge is only for changing the profile picture.
-          if (_isOwner)
-            Positioned(
-              right: 0,
-              bottom: 0,
-              child: GestureDetector(
-                onTap: _changePhoto,
-                child: Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.hotPink,
-                    border: Border.all(color: AppColors.deepSpace, width: 2),
-                  ),
-                  child: const Icon(Icons.add, color: Colors.white, size: 20),
+    // Tapping the avatar itself changes the photo (owner only) — no separate
+    // "+" badge needed, so it doesn't eat into the header for no reason.
+    return GestureDetector(
+      onTap: _isOwner ? _changePhoto : null,
+      child: SizedBox(
+        width: 104,
+        height: 104,
+        child: Stack(
+          children: [
+            Container(
+              width: 104,
+              height: 104,
+              padding: const EdgeInsets.all(4),
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [AppColors.hotPink, Color(0xFF7B3FF2)],
                 ),
               ),
+              child: UserAvatar(photoUrl: user.photoUrl, size: 96),
             ),
-        ],
+            if (_photoBusy)
+              const Positioned.fill(
+                child: Center(child: CircularProgressIndicator(strokeWidth: 3)),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -699,26 +720,39 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final count = isGeneral ? data.general.length : data.competition.length;
 
     return [
-      // "Add Video" is only for the account owner, only in General Videos.
-      // Competition uploads keep going through the competition flow.
-      if (isGeneral && _isOwner)
+      // Aggregate stats across the videos this viewer can see (approved-only
+      // for a non-owner, everything for the owner) — same idea as a TikTok /
+      // Facebook page's public totals.
+      if (isGeneral && !failed && count > 0)
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: SizedBox(
-              height: 48,
-              child: OutlinedButton.icon(
-                onPressed: _addVideo,
-                icon: const Icon(Icons.add_circle_outline_rounded),
-                label: Text(context.tr('Add Video')),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.hotPink,
-                  side: const BorderSide(color: AppColors.hotPink),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+            child: Row(
+              children: [
+                _SummaryChip(
+                  value: data.general.fold<int>(
+                    0,
+                    (acc, v) => acc + v.viewCount,
                   ),
+                  label: context.tr('Views'),
                 ),
-              ),
+                const SizedBox(width: 8),
+                _SummaryChip(
+                  value: data.general.fold<int>(
+                    0,
+                    (acc, v) => acc + v.likeCount,
+                  ),
+                  label: context.tr('Likes'),
+                ),
+                const SizedBox(width: 8),
+                _SummaryChip(
+                  value: data.general.fold<int>(
+                    0,
+                    (acc, v) => acc + v.shareCount,
+                  ),
+                  label: context.tr('Shares'),
+                ),
+              ],
             ),
           ),
         ),
@@ -797,6 +831,23 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     ];
   }
 
+  /// Downloads [videoUrl] to the device (web: opens it for the browser's own
+  /// download; mobile: saves to the gallery). No watermark is added — that is
+  /// a separate, not-yet-built feature.
+  Future<void> _download(String videoUrl, String fileName) async {
+    final result = await VideoDownloadService.saveVideo(
+      videoUrl: videoUrl,
+      fileName: fileName,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(context.tr(result.messageKey)),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   Widget _generalTile(
     BuildContext context,
     GeneralVideo video,
@@ -822,6 +873,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         onSelected: (value) {
           if (value == 'delete') {
             _deleteVideo(video);
+          } else if (value == 'download') {
+            _download(video.videoUrl, 'clickkick_${video.id}');
           } else if (value == 'report') {
             showReportVideoDialog(
               context: context,
@@ -833,9 +886,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           }
         },
         itemBuilder: (context) => [
-          if (_isOwner)
-            PopupMenuItem(value: 'delete', child: Text(context.tr('Delete')))
-          else
+          if (_isOwner) ...[
+            PopupMenuItem(
+              value: 'download',
+              child: Text(context.tr('Download')),
+            ),
+            PopupMenuItem(value: 'delete', child: Text(context.tr('Delete'))),
+          ] else
             PopupMenuItem(value: 'report', child: Text(context.tr('Report'))),
         ],
       ),
@@ -860,6 +917,21 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 ),
               ),
             ),
+      menu: _isOwner && video.videoUrl.isNotEmpty
+          ? PopupMenuButton<String>(
+              color: AppColors.card,
+              padding: EdgeInsets.zero,
+              icon: const Icon(Icons.more_vert, color: Colors.white, size: 20),
+              onSelected: (_) =>
+                  _download(video.videoUrl, 'clickkick_${video.id}'),
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'download',
+                  child: Text(context.tr('Download')),
+                ),
+              ],
+            )
+          : null,
     );
   }
 

@@ -320,9 +320,7 @@ class AuthService {
       );
     }
 
-    final oauthCredential = OAuthProvider(
-      'apple.com',
-    ).credential(
+    final oauthCredential = OAuthProvider('apple.com').credential(
       idToken: idToken,
       rawNonce: rawNonce,
       accessToken: appleCredential.authorizationCode,
@@ -499,6 +497,18 @@ class AuthService {
       'incrementGeneralVideoShare',
     );
     await callable.call<Map<String, dynamic>>({'videoId': videoId});
+  }
+
+  /// Toggles the current user's like on a General Video. Returns the new
+  /// liked state.
+  Future<bool> toggleGeneralVideoLike(String videoId) async {
+    final callable = FirebaseFunctions.instance.httpsCallable(
+      'toggleGeneralVideoLike',
+    );
+    final result = await callable.call<Map<String, dynamic>>({
+      'videoId': videoId,
+    });
+    return result.data['liked'] == true;
   }
 
   Future<void> deleteUserAccountPermanently(String userId) async {

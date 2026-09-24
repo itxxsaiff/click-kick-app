@@ -6,14 +6,13 @@ import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 import '../../l10n/l10n.dart';
 import '../../services/auth_service.dart';
+import '../../services/short_link_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/gradient_button.dart';
 import '../../widgets/report_video_dialog.dart';
 import '../../widgets/block_participant_dialog.dart';
 import '../../widgets/blocked_users_builder.dart';
 import 'video_upload_screen.dart';
-
-const _shareBaseUrl = 'https://video-contest-show-b788b.firebaseapp.com';
 
 Rect _shareOriginForContext(BuildContext context) {
   final renderObject = context.findRenderObject();
@@ -268,118 +267,122 @@ class _WinnersPage extends StatelessWidget {
     return BlockedUsersBuilder(
       builder: (context, blockedUserIds) =>
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: approvedStream,
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final docs = snapshot.data!.docs
-              .where(
-                (d) => !blockedUserIds.contains(
-                  (d.data()['userId'] ?? '').toString(),
-                ),
-              )
-              .toList();
-          if (docs.isEmpty) {
-          return ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              Row(
-                children: [
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Winners',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              _HeroCard(
-                title: title,
-                description: description,
-                logoUrl: logoUrl,
-                contestNumber: contestNumber,
-              ),
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: AppColors.card,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Text(
-                  context.tr('No approved videos found for this contest.'),
-                ),
-              ),
-            ],
-          );
-        }
+            stream: approvedStream,
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final docs = snapshot.data!.docs
+                  .where(
+                    (d) => !blockedUserIds.contains(
+                      (d.data()['userId'] ?? '').toString(),
+                    ),
+                  )
+                  .toList();
+              if (docs.isEmpty) {
+                return ListView(
+                  padding: const EdgeInsets.all(20),
+                  children: [
+                    Row(
+                      children: [
+                        IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Winners',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _HeroCard(
+                      title: title,
+                      description: description,
+                      logoUrl: logoUrl,
+                      contestNumber: contestNumber,
+                    ),
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: AppColors.card,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Text(
+                        context.tr(
+                          'No approved videos found for this contest.',
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }
 
-        int maxVotes = 0;
-        for (final d in docs) {
-          final v = ((d.data()['voteCount'] ?? 0) as num).toInt();
-          if (v > maxVotes) maxVotes = v;
-        }
-        final winners = docs
-            .where(
-              (d) => ((d.data()['voteCount'] ?? 0) as num).toInt() == maxVotes,
-            )
-            .toList();
+              int maxVotes = 0;
+              for (final d in docs) {
+                final v = ((d.data()['voteCount'] ?? 0) as num).toInt();
+                if (v > maxVotes) maxVotes = v;
+              }
+              final winners = docs
+                  .where(
+                    (d) =>
+                        ((d.data()['voteCount'] ?? 0) as num).toInt() ==
+                        maxVotes,
+                  )
+                  .toList();
 
-        return ListView.separated(
-          padding: const EdgeInsets.all(20),
-          itemCount: winners.length + 2,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
-          itemBuilder: (context, index) {
-            if (index == 0) {
-              return Row(
-                children: [
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Winners',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ],
+              return ListView.separated(
+                padding: const EdgeInsets.all(20),
+                itemCount: winners.length + 2,
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                itemBuilder: (context, index) {
+                  if (index == 0) {
+                    return Row(
+                      children: [
+                        IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Winners',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                      ],
+                    );
+                  }
+                  if (index == 1) {
+                    return Column(
+                      children: [
+                        _HeroCard(
+                          title: title,
+                          description: description,
+                          logoUrl: logoUrl,
+                          contestNumber: contestNumber,
+                        ),
+                        const SizedBox(height: 12),
+                        _LuckyDrawWinnersSection(contestId: contestId),
+                      ],
+                    );
+                  }
+                  final doc = winners[index - 2];
+                  final data = doc.data();
+                  final userId = (data['userId'] ?? '').toString();
+                  final videoUrl = (data['videoUrl'] ?? '').toString();
+                  final votes = ((data['voteCount'] ?? 0) as num).toInt();
+
+                  return _WinnerCard(
+                    userId: userId,
+                    votes: votes,
+                    videoUrl: videoUrl,
+                  );
+                },
               );
-            }
-            if (index == 1) {
-              return Column(
-                children: [
-                  _HeroCard(
-                    title: title,
-                    description: description,
-                    logoUrl: logoUrl,
-                    contestNumber: contestNumber,
-                  ),
-                  const SizedBox(height: 12),
-                  _LuckyDrawWinnersSection(contestId: contestId),
-                ],
-              );
-            }
-            final doc = winners[index - 2];
-            final data = doc.data();
-            final userId = (data['userId'] ?? '').toString();
-            final videoUrl = (data['videoUrl'] ?? '').toString();
-            final votes = ((data['voteCount'] ?? 0) as num).toInt();
-
-            return _WinnerCard(
-              userId: userId,
-              votes: votes,
-              videoUrl: videoUrl,
-            );
-          },
-        );
-        },
-      ),
+            },
+          ),
     );
   }
 }
@@ -784,108 +787,108 @@ class _VotingPage extends StatelessWidget {
     return BlockedUsersBuilder(
       builder: (context, blockedUserIds) =>
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: approvedStream,
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final docs =
-              snapshot.data!.docs
-                  .where(
-                    (d) => !blockedUserIds.contains(
-                      (d.data()['userId'] ?? '').toString(),
-                    ),
-                  )
-                  .toList()
-                ..sort((a, b) {
-                  final av = ((a.data()['voteCount'] ?? 0) as num).toInt();
-                  final bv = ((b.data()['voteCount'] ?? 0) as num).toInt();
-                  return bv.compareTo(av);
-                });
+            stream: approvedStream,
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final docs =
+                  snapshot.data!.docs
+                      .where(
+                        (d) => !blockedUserIds.contains(
+                          (d.data()['userId'] ?? '').toString(),
+                        ),
+                      )
+                      .toList()
+                    ..sort((a, b) {
+                      final av = ((a.data()['voteCount'] ?? 0) as num).toInt();
+                      final bv = ((b.data()['voteCount'] ?? 0) as num).toInt();
+                      return bv.compareTo(av);
+                    });
 
-        final readyForVoting = maxVideos > 0 && docs.length >= maxVideos;
+              final readyForVoting = maxVideos > 0 && docs.length >= maxVideos;
 
-        return ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            Row(
-              children: [
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  context.tr('Live Voting'),
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            _HeroCard(
-              title: title,
-              description: description,
-              logoUrl: logoUrl,
-              contestNumber: contestNumber,
-            ),
-            const SizedBox(height: 14),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppColors.card,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Row(
+              return ListView(
+                padding: const EdgeInsets.all(20),
                 children: [
-                  const Icon(Icons.how_to_vote, color: AppColors.hotPink),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      readyForVoting
-                          ? context.tr(
-                              'Pick your favorite video. You can vote only once in this contest.',
-                            )
-                          : '${context.tr('Voting opens when approved videos reach max limit')}: ($maxVideos). ${context.tr('Current approved')}: ${docs.length}.',
-                      style: Theme.of(context).textTheme.bodySmall,
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        context.tr('Live Voting'),
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  _HeroCard(
+                    title: title,
+                    description: description,
+                    logoUrl: logoUrl,
+                    contestNumber: contestNumber,
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.card,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.how_to_vote, color: AppColors.hotPink),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            readyForVoting
+                                ? context.tr(
+                                    'Pick your favorite video. You can vote only once in this contest.',
+                                  )
+                                : '${context.tr('Voting opens when approved videos reach max limit')}: ($maxVideos). ${context.tr('Current approved')}: ${docs.length}.',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
+                  const SizedBox(height: 14),
+                  if (!readyForVoting)
+                    Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: AppColors.card,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Text(context.tr('Voting is not ready yet.')),
+                    )
+                  else if (uid == null)
+                    Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: AppColors.card,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Text(context.tr('Please login to vote.')),
+                    )
+                  else
+                    _VotingGrid(
+                      contestId: contestId,
+                      userId: uid,
+                      contestTitle: title,
+                      submissions: docs,
+                      focusSubmissionId: focusSubmissionId,
+                    ),
                 ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            if (!readyForVoting)
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: AppColors.card,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Text(context.tr('Voting is not ready yet.')),
-              )
-            else if (uid == null)
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: AppColors.card,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Text(context.tr('Please login to vote.')),
-              )
-            else
-              _VotingGrid(
-                contestId: contestId,
-                userId: uid,
-                contestTitle: title,
-                submissions: docs,
-                focusSubmissionId: focusSubmissionId,
-              ),
-          ],
-        );
-        },
-      ),
+              );
+            },
+          ),
     );
   }
 }
@@ -1016,8 +1019,16 @@ class _VotingGrid extends StatelessWidget {
                         IconButton(
                           tooltip: context.tr('Share'),
                           onPressed: () async {
-                            final link =
-                                '$_shareBaseUrl/contest-share?contestId=$contestId&submissionId=${doc.id}';
+                            String link;
+                            try {
+                              link = await ShortLinkService().contestShareLink(
+                                contestId: contestId,
+                                submissionId: doc.id,
+                              );
+                            } catch (_) {
+                              return;
+                            }
+                            if (!context.mounted) return;
                             final text =
                                 '${context.tr('Vote for my video')}: $contestTitle\n$link';
                             try {
@@ -1340,8 +1351,7 @@ class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
                   final videoAspect = _controller.value.aspectRatio > 0
                       ? _controller.value.aspectRatio
                       : 9 / 16;
-                  final maxHeight =
-                      MediaQuery.sizeOf(context).height * 0.6;
+                  final maxHeight = MediaQuery.sizeOf(context).height * 0.6;
                   var displayWidth = playerWidth;
                   var displayHeight = displayWidth / videoAspect;
                   if (displayHeight > maxHeight) {

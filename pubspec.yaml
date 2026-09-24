@@ -43,7 +43,7 @@ dependencies:
   cloud_functions: ^6.0.0
   firebase_storage: ^13.0.0
   flutter_stripe: ^11.5.0
-  flutter_facebook_auth: ^7.1.2
+  flutter_facebook_auth: ^7.2.0
   sign_in_with_apple: ^7.0.1
   crypto: ^3.0.6
   image_picker: ^1.1.2
@@ -60,6 +60,7 @@ dependencies:
   country_picker: ^2.0.26
   google_sign_in: ^7.2.0
   flutter_svg: ^2.3.0
+  camera: ^0.11.0+2
 
 dev_dependencies:
   flutter_test:

@@ -43,6 +43,8 @@
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Click Kick needs access to the camera so users can record and upload contest videos.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Click Kick needs access to the microphone to record audio with your videos.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Click Kick needs access to save videos to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

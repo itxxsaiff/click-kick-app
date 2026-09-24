@@ -16,7 +16,12 @@ import '../../widgets/gradient_button.dart';
 /// Uploads a General Video (no competition). The video is saved as `pending`
 /// and appears on the profile / feed once an admin approves it.
 class GeneralVideoUploadScreen extends StatefulWidget {
-  const GeneralVideoUploadScreen({super.key});
+  const GeneralVideoUploadScreen({super.key, this.initialVideo});
+
+  /// Pre-selected video (e.g. just recorded by [VideoCaptureScreen]). When
+  /// set, the picker step is skipped, but the video-requirements dialog is
+  /// still shown before submission.
+  final XFile? initialVideo;
 
   @override
   State<GeneralVideoUploadScreen> createState() =>
@@ -42,6 +47,20 @@ class _GeneralVideoUploadScreenState extends State<GeneralVideoUploadScreen> {
   bool _agreedToRequirements = false;
   bool _saving = false;
   double? _uploadProgress;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initialVideo;
+    if (initial != null) {
+      _videoFile = initial;
+      if (kIsWeb) {
+        initial.readAsBytes().then((bytes) {
+          if (mounted) setState(() => _videoBytes = bytes);
+        });
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -181,6 +200,14 @@ class _GeneralVideoUploadScreenState extends State<GeneralVideoUploadScreen> {
       _showTr('Please select a video.');
       return;
     }
+    // A video reaching here from the camera / capture screen has not been
+    // through _pickVideo, so this is still the first chance to show the
+    // App Store Guideline 1.2 requirements gate.
+    if (!_agreedToRequirements) {
+      final agreed = await _showRequirementsDialog();
+      if (agreed != true || !mounted) return;
+      setState(() => _agreedToRequirements = true);
+    }
 
     setState(() => _saving = true);
     Reference? storageRef;
@@ -233,6 +260,7 @@ class _GeneralVideoUploadScreenState extends State<GeneralVideoUploadScreen> {
         'videoType': 'general',
         'viewCount': 0,
         'shareCount': 0,
+        'likeCount': 0,
         'rejectionReason': null,
         'createdAt': now,
         'updatedAt': now,

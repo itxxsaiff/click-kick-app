@@ -30,10 +30,10 @@ import '../user/contest_detail_screen.dart';
 import '../profile/general_video_player_screen.dart'
     show formatCount, openVideoWithRetry;
 import '../profile/user_profile_screen.dart';
-import '../user/general_video_upload_screen.dart';
+import '../user/video_capture_screen.dart';
 import '../../services/general_video_service.dart';
+import '../../services/short_link_service.dart';
 
-const _shareBaseUrl = 'https://video-contest-show-b788b.firebaseapp.com';
 final Set<Future<void> Function()> _feedStopHandlers =
     <Future<void> Function()>{};
 bool _feedPlaybackLocked = false;
@@ -64,20 +64,6 @@ Rect _shareOriginForContext(BuildContext context) {
   final width = size.width <= 0 ? 1.0 : size.width;
   final height = size.height <= 0 ? 1.0 : size.height;
   return Rect.fromLTWH(offset.dx, offset.dy, width, height);
-}
-
-String _contestShareLink(String contestId, {String? submissionId}) {
-  final params = <String, String>{'contestId': contestId};
-  if (submissionId != null && submissionId.isNotEmpty) {
-    params['submissionId'] = submissionId;
-  }
-  final query = Uri(queryParameters: params).query;
-  return '$_shareBaseUrl/contest-share?$query';
-}
-
-String _feedVideoShareLink(String adminVideoId) {
-  final query = Uri(queryParameters: {'videoId': adminVideoId}).query;
-  return '$_shareBaseUrl/feed-video?$query';
 }
 
 class PublicFeedScreen extends StatefulWidget {
@@ -150,10 +136,10 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
     );
   }
 
-  /// The bottom nav's raised "+" button. Uploading a General Video needs no
-  /// competition, so it goes straight there; a signed-out visitor is asked to
-  /// log in first. Competition entries keep going through the existing
-  /// Contests -> contest -> upload flow.
+  /// The bottom nav's raised "+" button: opens the camera to record a General
+  /// Video (or pick one from the gallery), matching TikTok / Instagram. A
+  /// signed-out visitor is asked to log in first. Competition entries keep
+  /// going through the existing Contests -> contest -> upload flow.
   Future<void> _openUpload() async {
     if (FirebaseAuth.instance.currentUser == null) {
       await _promptLoginDialog(context);
@@ -161,7 +147,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
     }
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const GeneralVideoUploadScreen()),
+      MaterialPageRoute(builder: (_) => const VideoCaptureScreen()),
     );
   }
 
@@ -1920,7 +1906,15 @@ class _ContestFeedCard extends StatelessWidget {
                       await _requireAuth(context);
                       return;
                     }
-                    final link = _contestShareLink(item.id);
+                    String link;
+                    try {
+                      link = await ShortLinkService().contestShareLink(
+                        contestId: item.id,
+                      );
+                    } catch (_) {
+                      return;
+                    }
+                    if (!context.mounted) return;
                     final text =
                         '${item.title}\n${item.description}\n${context.tr('Winner Prize')}: \$${item.winnerPrize.toStringAsFixed(0)}\n$link';
                     try {
@@ -2166,6 +2160,7 @@ class _FeedItem {
     this.voteCount = 0,
     this.generalVideoId = '',
     this.authorId = '',
+    this.likeCount = 0,
   });
 
   final String type;
@@ -2188,6 +2183,7 @@ class _FeedItem {
   final int voteCount;
   final String generalVideoId;
   final String authorId;
+  final int likeCount;
 
   bool get isNews => type == 'news';
   bool get isAdminVideo => type == 'admin_video';
@@ -2230,6 +2226,7 @@ class _FeedItem {
       authorId: (data['userId'] ?? '').toString(),
       viewCount: ((data['viewCount'] ?? 0) as num).toInt(),
       shareCount: ((data['shareCount'] ?? 0) as num).toInt(),
+      likeCount: ((data['likeCount'] ?? 0) as num).toInt(),
     );
   }
 
@@ -2459,7 +2456,15 @@ class _AdminVideoFeedCard extends StatelessWidget {
                       await _requireAuth(context);
                       return;
                     }
-                    final link = _feedVideoShareLink(item.adminVideoId);
+                    String link;
+                    try {
+                      link = await ShortLinkService().adminVideoLink(
+                        item.adminVideoId,
+                      );
+                    } catch (_) {
+                      return;
+                    }
+                    if (!context.mounted) return;
                     final text = '${item.adminName}\nClick Kick\n$link';
                     try {
                       await AuthService().incrementAdminVideoShare(
@@ -2633,6 +2638,23 @@ class _GeneralVideoFeedCard extends StatelessWidget {
     }
   }
 
+  Future<void> _like(BuildContext context) async {
+    if (FirebaseAuth.instance.currentUser == null) {
+      await _promptLoginDialog(context);
+      return;
+    }
+    final failMsg = context.tr('Could not update like. Please try again.');
+    try {
+      await AuthService().toggleGeneralVideoLike(item.generalVideoId);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(failMsg), behavior: SnackBarBehavior.floating),
+        );
+      }
+    }
+  }
+
   Future<void> _share(BuildContext context, String authorName) async {
     if (FirebaseAuth.instance.currentUser == null) {
       await _promptLoginDialog(context);
@@ -2642,8 +2664,15 @@ class _GeneralVideoFeedCard extends StatelessWidget {
       await AuthService().incrementGeneralVideoShare(item.generalVideoId);
     } catch (_) {}
     if (!context.mounted) return;
+    String link;
+    try {
+      link = await ShortLinkService().generalVideoLink(item.generalVideoId);
+    } catch (_) {
+      link = GeneralVideoService.shareLink(item.generalVideoId);
+    }
+    if (!context.mounted) return;
     await Share.share(
-      '$authorName\nClick Kick\n${GeneralVideoService.shareLink(item.generalVideoId)}',
+      '$authorName\nClick Kick\n$link',
       subject: authorName,
       sharePositionOrigin: _shareOriginForContext(context),
     );
@@ -2781,6 +2810,24 @@ class _GeneralVideoFeedCard extends StatelessWidget {
                         );
                       },
                     ),
+                    StreamBuilder<bool>(
+                      stream: GeneralVideoService().isLikedStream(
+                        item.generalVideoId,
+                      ),
+                      builder: (context, likeSnap) {
+                        final liked = likeSnap.data ?? false;
+                        return _GeneralRailItem(
+                          icon: liked
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                          iconColor: liked ? AppColors.hotPink : Colors.white,
+                          value: formatCount(item.likeCount),
+                          label: context.tr('Like'),
+                          onTap: () => _like(context),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 18),
                     _GeneralRailItem(
                       icon: Icons.visibility_outlined,
                       value: formatCount(item.viewCount),
@@ -2902,12 +2949,14 @@ class _GeneralRailItem extends StatelessWidget {
     required this.icon,
     required this.value,
     required this.label,
+    this.iconColor = Colors.white,
     this.onTap,
   });
 
   final IconData icon;
   final String value;
   final String label;
+  final Color iconColor;
   final VoidCallback? onTap;
 
   @override
@@ -2921,7 +2970,7 @@ class _GeneralRailItem extends StatelessWidget {
           children: [
             Icon(
               icon,
-              color: Colors.white,
+              color: iconColor,
               size: 34,
               shadows: const [Shadow(blurRadius: 8, color: Colors.black54)],
             ),
@@ -3130,8 +3179,16 @@ class _ParticipantFeedCard extends StatelessWidget {
                   value: formatMetric(item.shareCount),
                   label: context.tr('Shares'),
                   onTap: () async {
-                    final link =
-                        '$_shareBaseUrl/contest-share?contestId=${item.contestId}&submissionId=${item.submissionId}';
+                    String link;
+                    try {
+                      link = await ShortLinkService().contestShareLink(
+                        contestId: item.contestId,
+                        submissionId: item.submissionId,
+                      );
+                    } catch (_) {
+                      return;
+                    }
+                    if (!context.mounted) return;
                     final text =
                         '${context.tr('Vote for my video')} — ${item.title}\n$link';
                     await Share.share(

@@ -14,7 +14,9 @@ import 'screens/auth/auth_action_screen.dart';
 import 'screens/auth/register_screen.dart';
 import 'screens/home/home_router.dart';
 import 'screens/profile/general_video_player_screen.dart';
+import 'screens/profile/user_profile_screen.dart';
 import 'screens/public/public_feed_screen.dart';
+import 'screens/shared/short_link_screen.dart';
 
 final RouteObserver<ModalRoute<void>> appRouteObserver =
     RouteObserver<ModalRoute<void>>();
@@ -151,6 +153,22 @@ class VideoContestApp extends StatelessWidget {
                 if (videoId.isNotEmpty) {
                   return MaterialPageRoute(
                     builder: (_) => GeneralVideoLinkScreen(videoId: videoId),
+                  );
+                }
+              }
+              if (uri.pathSegments.length == 2 && uri.pathSegments[0] == 's') {
+                final code = uri.pathSegments[1];
+                if (code.isNotEmpty) {
+                  return MaterialPageRoute(
+                    builder: (_) => ShortLinkScreen(code: code),
+                  );
+                }
+              }
+              if (uri.path == '/profile') {
+                final userId = uri.queryParameters['userId'] ?? '';
+                if (userId.isNotEmpty) {
+                  return MaterialPageRoute(
+                    builder: (_) => UserProfileScreen(userId: userId),
                   );
                 }
               }

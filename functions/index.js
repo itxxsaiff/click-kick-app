@@ -631,6 +631,53 @@ exports.incrementGeneralVideoView = onCall(async (request) => {
   return {ok: true};
 });
 
+exports.toggleGeneralVideoLike = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Authentication required.");
+  }
+
+  const data = request.data || {};
+  const videoId = String(data.videoId || "").trim();
+  if (!videoId) {
+    throw new HttpsError("invalid-argument", "videoId is required.");
+  }
+
+  const videoRef = db.collection("general_videos").doc(videoId);
+  const likeRef = videoRef.collection("likes").doc(request.auth.uid);
+
+  return db.runTransaction(async (tx) => {
+    const [videoSnap, likeSnap] = await Promise.all([
+      tx.get(videoRef),
+      tx.get(likeRef),
+    ]);
+
+    if (!videoSnap.exists) {
+      throw new HttpsError("not-found", "Video not found.");
+    }
+
+    if (likeSnap.exists) {
+      tx.delete(likeRef);
+      tx.set(
+          videoRef,
+          {likeCount: admin.firestore.FieldValue.increment(-1)},
+          {merge: true},
+      );
+      return {liked: false};
+    }
+
+    tx.set(likeRef, {
+      userId: request.auth.uid,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    tx.set(
+        videoRef,
+        {likeCount: admin.firestore.FieldValue.increment(1)},
+        {merge: true},
+    );
+    return {liked: true};
+  });
+});
+
 exports.incrementGeneralVideoShare = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Authentication required.");

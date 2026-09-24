@@ -5,9 +5,8 @@ import 'package:video_player/video_player.dart';
 
 import '../../l10n/l10n.dart';
 import '../../services/auth_service.dart';
+import '../../services/short_link_service.dart';
 import '../../theme/app_colors.dart';
-
-const _shareBaseUrl = 'https://video-contest-show-b788b.firebaseapp.com';
 
 /// Lets any user find a specific contestant's video by name, video number, or
 /// nationality, then watch / vote / share it (e.g. to promote it on social
@@ -73,9 +72,13 @@ class _SearchVideosScreenState extends State<SearchVideosScreen> {
     return _all.where((doc) {
       final d = doc.data();
       final code = (d['videoCode'] ?? '').toString().toLowerCase();
-      final name = (d['participantNameLower'] ?? d['participantName'] ?? d['userName'] ?? '')
-          .toString()
-          .toLowerCase();
+      final name =
+          (d['participantNameLower'] ??
+                  d['participantName'] ??
+                  d['userName'] ??
+                  '')
+              .toString()
+              .toLowerCase();
       final country = (d['country'] ?? '').toString().toLowerCase();
       final countryCode = (d['countryCode'] ?? '').toString().toLowerCase();
       return code == q ||
@@ -83,12 +86,11 @@ class _SearchVideosScreenState extends State<SearchVideosScreen> {
           name.contains(q) ||
           country.contains(q) ||
           countryCode == q;
-    }).toList()
-      ..sort((a, b) {
-        final av = ((a.data()['voteCount'] ?? 0) as num).toInt();
-        final bv = ((b.data()['voteCount'] ?? 0) as num).toInt();
-        return bv.compareTo(av);
-      });
+    }).toList()..sort((a, b) {
+      final av = ((a.data()['voteCount'] ?? 0) as num).toInt();
+      final bv = ((b.data()['voteCount'] ?? 0) as num).toInt();
+      return bv.compareTo(av);
+    });
   }
 
   @override
@@ -96,34 +98,34 @@ class _SearchVideosScreenState extends State<SearchVideosScreen> {
     final results = _results;
     final inner = Column(
       children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: TextField(
-              controller: _searchController,
-              onChanged: (v) => setState(() => _query = v),
-              textInputAction: TextInputAction.search,
-              decoration: InputDecoration(
-                hintText: context.tr('Search by name, number, or country'),
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _query.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() => _query = '');
-                        },
-                      ),
-                filled: true,
-                fillColor: AppColors.card,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
-                ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: TextField(
+            controller: _searchController,
+            onChanged: (v) => setState(() => _query = v),
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: context.tr('Search by name, number, or country'),
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _query.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _query = '');
+                      },
+                    ),
+              filled: true,
+              fillColor: AppColors.card,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
               ),
             ),
           ),
-          Expanded(child: _buildBody(results)),
+        ),
+        Expanded(child: _buildBody(results)),
       ],
     );
     if (widget.embedded) return inner;
@@ -202,7 +204,9 @@ class _SearchResultCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name =
-        (data['participantName'] ?? data['userName'] ?? context.tr('Participant'))
+        (data['participantName'] ??
+                data['userName'] ??
+                context.tr('Participant'))
             .toString();
     final code = (data['videoCode'] ?? '').toString();
     final country = (data['country'] ?? '').toString();
@@ -227,7 +231,10 @@ class _SearchResultCard extends StatelessWidget {
                 color: AppColors.cardSoft,
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: const Icon(Icons.play_circle_fill, color: AppColors.hotPink),
+              child: const Icon(
+                Icons.play_circle_fill,
+                color: AppColors.hotPink,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -313,7 +320,9 @@ class _SearchVideoDetailScreenState extends State<_SearchVideoDetailScreen> {
   String get _videoUrl => (widget.data['videoUrl'] ?? '').toString();
   String get _code => (widget.data['videoCode'] ?? '').toString();
   String get _name =>
-      (widget.data['participantName'] ?? widget.data['userName'] ?? 'Participant')
+      (widget.data['participantName'] ??
+              widget.data['userName'] ??
+              'Participant')
           .toString();
 
   @override
@@ -371,20 +380,24 @@ class _SearchVideoDetailScreenState extends State<_SearchVideoDetailScreen> {
   }
 
   Future<void> _share() async {
-    final link =
-        '$_shareBaseUrl/contest-share?contestId=$_contestId&submissionId=${widget.submissionId}';
+    String link;
+    try {
+      link = await ShortLinkService().contestShareLink(
+        contestId: _contestId,
+        submissionId: widget.submissionId,
+      );
+    } catch (_) {
+      return;
+    }
+    if (!mounted) return;
     final code = _code.isEmpty ? '' : ' #$_code';
-    final text =
-        '${context.tr('Vote for my video')}$code — $_name\n$link';
+    final text = '${context.tr('Vote for my video')}$code — $_name\n$link';
     await Share.share(text);
   }
 
   void _show(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
   }
 
@@ -395,10 +408,7 @@ class _SearchVideoDetailScreenState extends State<_SearchVideoDetailScreen> {
     final controller = _controller;
     return Scaffold(
       backgroundColor: AppColors.deepSpace,
-      appBar: AppBar(
-        backgroundColor: AppColors.deepSpace,
-        title: Text(_name),
-      ),
+      appBar: AppBar(backgroundColor: AppColors.deepSpace, title: Text(_name)),
       body: SafeArea(
         child: Column(
           children: [

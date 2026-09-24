@@ -1149,5 +1149,16 @@
   "You already voted for this video.": "You already voted for this video.",
   "You confirm that the people appearing in the video agree to the video being published.": "You confirm that the people appearing in the video agree to the video being published.",
   "Your video was approved and is now public.": "Your video was approved and is now public.",
-  "Your video will be visible after an admin approves it.": "Your video will be visible after an admin approves it."
+  "Your video will be visible after an admin approves it.": "Your video will be visible after an admin approves it.",
+  "Like": "Like",
+  "Could not update like. Please try again.": "Could not update like. Please try again.",
+  "Please login to like.": "Please login to like.",
+  "Likes": "Likes",
+  "Choose from Gallery": "Choose from Gallery",
+  "Could not save the recording. Please try again.": "Could not save the recording. Please try again.",
+  "Could not start recording. Please try again.": "Could not start recording. Please try again.",
+  "No camera was found on this device.": "No camera was found on this device.",
+  "Recording was too short.": "Recording was too short.",
+  "Camera access was denied. You can still upload a video from your library.": "Camera access was denied. You can still upload a video from your library.",
+  "This link is not available.": "This link is not available."
 }

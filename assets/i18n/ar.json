@@ -1149,5 +1149,16 @@
   "You already voted for this video.": "لقد قمت بالتصويت لهذا الفيديو مسبقًا.",
   "You confirm that the people appearing in the video agree to the video being published.": "تؤكد أن الأشخاص الظاهرين في الفيديو يوافقون على نشره.",
   "Your video was approved and is now public.": "تمت الموافقة على الفيديو الخاص بك وأصبح متاحًا للجميع.",
-  "Your video will be visible after an admin approves it.": "سيظهر الفيديو بعد موافقة المشرف عليه."
+  "Your video will be visible after an admin approves it.": "سيظهر الفيديو بعد موافقة المشرف عليه.",
+  "Like": "إعجاب",
+  "Could not update like. Please try again.": "تعذر تحديث الإعجاب. يرجى المحاولة مرة أخرى.",
+  "Please login to like.": "يرجى تسجيل الدخول للإعجاب بالفيديو.",
+  "Likes": "إعجابات",
+  "Choose from Gallery": "اختيار من المعرض",
+  "Could not save the recording. Please try again.": "تعذر حفظ التسجيل. يرجى المحاولة مرة أخرى.",
+  "Could not start recording. Please try again.": "تعذر بدء التسجيل. يرجى المحاولة مرة أخرى.",
+  "No camera was found on this device.": "لم يتم العثور على كاميرا في هذا الجهاز.",
+  "Recording was too short.": "التسجيل قصير جدًا.",
+  "Camera access was denied. You can still upload a video from your library.": "تم رفض الوصول إلى الكاميرا. يمكنك مع ذلك رفع فيديو من مكتبتك.",
+  "This link is not available.": "هذا الرابط غير متاح."
 }

@@ -121,10 +121,9 @@ class _GeneralVideoPlayerScreenState extends State<GeneralVideoPlayerScreen> {
     } catch (_) {}
   }
 
-  /// No watermark yet — that is a separate, not-yet-built feature.
   Future<void> _download() async {
     final result = await VideoDownloadService.saveVideo(
-      videoUrl: _video.videoUrl,
+      videoUrl: _video.downloadUrl,
       fileName: 'clickkick_${_video.id}',
     );
     if (!mounted) return;
@@ -157,7 +156,15 @@ class _GeneralVideoPlayerScreenState extends State<GeneralVideoPlayerScreen> {
   }
 
   Future<void> _share() async {
-    if (FirebaseAuth.instance.currentUser != null && _video.isApproved) {
+    // Matches the rest of the app: sharing needs an account, with a clear
+    // message rather than silently doing nothing.
+    if (FirebaseAuth.instance.currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr('Please login to share.'))),
+      );
+      return;
+    }
+    if (_video.isApproved) {
       try {
         await AuthService().incrementGeneralVideoShare(_video.id);
         if (mounted) setState(() => _shareCount++);
@@ -170,8 +177,9 @@ class _GeneralVideoPlayerScreenState extends State<GeneralVideoPlayerScreen> {
     } catch (_) {
       link = GeneralVideoService.shareLink(_video.id);
     }
+    if (!mounted) return;
     await Share.share(
-      '$name\nClick Kick\n$link',
+      '${context.tr('Watch my video on Click Kick')}: $name\n$link',
       sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
     );
   }
@@ -293,7 +301,7 @@ class _GeneralVideoPlayerScreenState extends State<GeneralVideoPlayerScreen> {
                     icon: Icons.share_outlined,
                     value: formatCount(_shareCount),
                     label: context.tr('Share'),
-                    onTap: _video.isApproved ? _share : null,
+                    onTap: _share,
                   ),
                   if (isOwner) ...[
                     const SizedBox(height: 16),

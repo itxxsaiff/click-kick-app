@@ -34,6 +34,16 @@ service cloud.firestore {
       allow read: if signedIn();
       allow update: if isOwner(userId) || isStaff();
       allow delete: if isStaff();
+
+      // Per-user notification inbox (video approved/rejected, a sponsor's
+      // report reaching an admin, new contest, voting started, results). Any
+      // signed-in caller can create one for someone else, matching how e.g.
+      // sponsors already notify a contest admin of a report; only the owner
+      // (or staff) can read/manage their own inbox.
+      match /notifications/{notifId} {
+        allow read, update, delete: if isOwner(userId) || isStaff();
+        allow create: if signedIn();
+      }
     }
 
     match /contests/{contestId} {

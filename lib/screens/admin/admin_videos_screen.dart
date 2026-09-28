@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
@@ -24,6 +25,7 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
   String _sortBy = 'newest';
   // 'competition' (default, the existing list) or 'general'.
   String _videoType = 'competition';
+  bool _backfillingWatermarks = false;
   late final Future<String> _roleFuture = _loadRole();
 
   Future<String> _loadRole() async {
@@ -120,6 +122,46 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
     );
   }
 
+  /// One-time tool: generates the Click Kick watermark for every video
+  /// uploaded before automatic watermarking existed. Remove this button once
+  /// it has been run against everything (same as the earlier thumbnail
+  /// backfill tool).
+  Future<void> _backfillWatermarks() async {
+    setState(() => _backfillingWatermarks = true);
+    try {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable(
+            'backfillVideoWatermarks',
+            options: HttpsCallableOptions(timeout: const Duration(minutes: 9)),
+          )
+          .call();
+      if (!mounted) return;
+      final data = Map<String, dynamic>.from(result.data as Map);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${context.tr('Watermarks generated')}: '
+            '${data['processed']} / ${data['total']}'
+            '${(data['failed'] ?? 0) > 0 ? ' (${data['failed']} ${context.tr('failed')})' : ''}',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.tr('Could not generate watermarks. Please try again.'),
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _backfillingWatermarks = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
@@ -145,6 +187,32 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
           ],
         ),
         backgroundColor: AppColors.deepSpace,
+        actions: [
+          FutureBuilder<String>(
+            future: _roleFuture,
+            builder: (context, snapshot) {
+              final role = snapshot.data ?? '';
+              if (!const {
+                'admin',
+                'super_admin',
+                'superadmin',
+              }.contains(role)) {
+                return const SizedBox.shrink();
+              }
+              return IconButton(
+                tooltip: context.tr('Generate watermarks for old videos'),
+                onPressed: _backfillingWatermarks ? null : _backfillWatermarks,
+                icon: _backfillingWatermarks
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.branding_watermark_outlined),
+              );
+            },
+          ),
+        ],
       ),
       body: Stack(
         children: [
@@ -231,38 +299,126 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                   ),
                 )
               else
-              Expanded(
-                child: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                  future: FirebaseFirestore.instance
-                      .collection('users')
-                      .doc(currentUid)
-                      .get(),
-                  builder: (context, roleSnap) {
-                    if (!roleSnap.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    final role = (roleSnap.data!.data()?['role'] ?? '')
-                        .toString()
-                        .toLowerCase();
-                    final isSuperAdmin =
-                        role == 'super_admin' || role == 'superadmin';
+                Expanded(
+                  child: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                    future: FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(currentUid)
+                        .get(),
+                    builder: (context, roleSnap) {
+                      if (!roleSnap.hasData) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      final role = (roleSnap.data!.data()?['role'] ?? '')
+                          .toString()
+                          .toLowerCase();
+                      final isSuperAdmin =
+                          role == 'super_admin' || role == 'superadmin';
 
-                    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                      stream: stream,
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData) {
-                          return const Center(
-                            child: CircularProgressIndicator(),
+                      return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                        stream: stream,
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData) {
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
+                          }
+
+                          final docs =
+                              snapshot.data!.docs.where((d) {
+                                if (isSuperAdmin) return true;
+                                final adminId =
+                                    (d.data()['contestAdminId'] ?? '')
+                                        .toString();
+                                return adminId == currentUid;
+                              }).toList()..sort((a, b) {
+                                final at =
+                                    (a.data()['createdAt'] as Timestamp?)
+                                        ?.millisecondsSinceEpoch ??
+                                    0;
+                                final bt =
+                                    (b.data()['createdAt'] as Timestamp?)
+                                        ?.millisecondsSinceEpoch ??
+                                    0;
+                                return bt.compareTo(at);
+                              });
+
+                          final pendingCount = docs
+                              .where(
+                                (d) =>
+                                    (d.data()['status'] ?? 'pending')
+                                        .toString() ==
+                                    'pending',
+                              )
+                              .length;
+                          final underReviewCount = docs
+                              .where(
+                                (d) =>
+                                    (d.data()['status'] ?? 'pending')
+                                        .toString() ==
+                                    'under_review',
+                              )
+                              .length;
+                          final approvedCount = docs
+                              .where(
+                                (d) =>
+                                    (d.data()['status'] ?? 'pending')
+                                        .toString() ==
+                                    'approved',
+                              )
+                              .length;
+                          final rejectedCount = docs
+                              .where(
+                                (d) =>
+                                    (d.data()['status'] ?? 'pending')
+                                        .toString() ==
+                                    'rejected',
+                              )
+                              .length;
+                          final totalVotes = docs.fold<int>(
+                            0,
+                            (sum, d) =>
+                                sum +
+                                (((d.data()['voteCount'] ?? 0) as num).toInt()),
                           );
-                        }
+                          final totalShares = docs.fold<int>(
+                            0,
+                            (sum, d) =>
+                                sum +
+                                (((d.data()['shareCount'] ?? 0) as num)
+                                    .toInt()),
+                          );
 
-                        final docs =
-                            snapshot.data!.docs.where((d) {
-                              if (isSuperAdmin) return true;
-                              final adminId = (d.data()['contestAdminId'] ?? '')
-                                  .toString();
-                              return adminId == currentUid;
-                            }).toList()..sort((a, b) {
+                          final filtered = docs.where((doc) {
+                            final status = (doc.data()['status'] ?? 'pending')
+                                .toString();
+                            final contestId = (doc.data()['contestId'] ?? '')
+                                .toString();
+                            if (widget.contestIdFilter != null &&
+                                widget.contestIdFilter!.trim().isNotEmpty &&
+                                contestId != widget.contestIdFilter) {
+                              return false;
+                            }
+                            if (_statusFilter == 'pending') {
+                              if (status != 'pending' &&
+                                  status != 'under_review') {
+                                return false;
+                              }
+                            } else if (_statusFilter != 'all' &&
+                                status != _statusFilter) {
+                              return false;
+                            }
+                            if (_search.isEmpty) return true;
+                            final contestIdLc = contestId.toLowerCase();
+                            final userId = (doc.data()['userId'] ?? '')
+                                .toString()
+                                .toLowerCase();
+                            return contestIdLc.contains(_search) ||
+                                userId.contains(_search);
+                          }).toList();
+
+                          if (_sortBy == 'oldest') {
+                            filtered.sort((a, b) {
                               final at =
                                   (a.data()['createdAt'] as Timestamp?)
                                       ?.millisecondsSinceEpoch ??
@@ -271,871 +427,814 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                                   (b.data()['createdAt'] as Timestamp?)
                                       ?.millisecondsSinceEpoch ??
                                   0;
-                              return bt.compareTo(at);
+                              return at.compareTo(bt);
                             });
-
-                        final pendingCount = docs
-                            .where(
-                              (d) =>
-                                  (d.data()['status'] ?? 'pending')
-                                      .toString() ==
-                                  'pending',
-                            )
-                            .length;
-                        final underReviewCount = docs
-                            .where(
-                              (d) =>
-                                  (d.data()['status'] ?? 'pending')
-                                      .toString() ==
-                                  'under_review',
-                            )
-                            .length;
-                        final approvedCount = docs
-                            .where(
-                              (d) =>
-                                  (d.data()['status'] ?? 'pending')
-                                      .toString() ==
-                                  'approved',
-                            )
-                            .length;
-                        final rejectedCount = docs
-                            .where(
-                              (d) =>
-                                  (d.data()['status'] ?? 'pending')
-                                      .toString() ==
-                                  'rejected',
-                            )
-                            .length;
-                        final totalVotes = docs.fold<int>(
-                          0,
-                          (sum, d) =>
-                              sum +
-                              (((d.data()['voteCount'] ?? 0) as num).toInt()),
-                        );
-                        final totalShares = docs.fold<int>(
-                          0,
-                          (sum, d) =>
-                              sum +
-                              (((d.data()['shareCount'] ?? 0) as num).toInt()),
-                        );
-
-                        final filtered = docs.where((doc) {
-                          final status = (doc.data()['status'] ?? 'pending')
-                              .toString();
-                          final contestId = (doc.data()['contestId'] ?? '')
-                              .toString();
-                          if (widget.contestIdFilter != null &&
-                              widget.contestIdFilter!.trim().isNotEmpty &&
-                              contestId != widget.contestIdFilter) {
-                            return false;
+                          } else if (_sortBy == 'most_votes') {
+                            filtered.sort((a, b) {
+                              final av = ((a.data()['voteCount'] ?? 0) as num)
+                                  .toInt();
+                              final bv = ((b.data()['voteCount'] ?? 0) as num)
+                                  .toInt();
+                              return bv.compareTo(av);
+                            });
+                          } else if (_sortBy == 'most_shared') {
+                            filtered.sort((a, b) {
+                              final av = ((a.data()['shareCount'] ?? 0) as num)
+                                  .toInt();
+                              final bv = ((b.data()['shareCount'] ?? 0) as num)
+                                  .toInt();
+                              return bv.compareTo(av);
+                            });
                           }
-                          if (_statusFilter == 'pending') {
-                            if (status != 'pending' &&
-                                status != 'under_review') {
-                              return false;
-                            }
-                          } else if (_statusFilter != 'all' &&
-                              status != _statusFilter) {
-                            return false;
-                          }
-                          if (_search.isEmpty) return true;
-                          final contestIdLc = contestId.toLowerCase();
-                          final userId = (doc.data()['userId'] ?? '')
-                              .toString()
-                              .toLowerCase();
-                          return contestIdLc.contains(_search) ||
-                              userId.contains(_search);
-                        }).toList();
 
-                        if (_sortBy == 'oldest') {
-                          filtered.sort((a, b) {
-                            final at =
-                                (a.data()['createdAt'] as Timestamp?)
-                                    ?.millisecondsSinceEpoch ??
-                                0;
-                            final bt =
-                                (b.data()['createdAt'] as Timestamp?)
-                                    ?.millisecondsSinceEpoch ??
-                                0;
-                            return at.compareTo(bt);
-                          });
-                        } else if (_sortBy == 'most_votes') {
-                          filtered.sort((a, b) {
-                            final av = ((a.data()['voteCount'] ?? 0) as num)
-                                .toInt();
-                            final bv = ((b.data()['voteCount'] ?? 0) as num)
-                                .toInt();
-                            return bv.compareTo(av);
-                          });
-                        } else if (_sortBy == 'most_shared') {
-                          filtered.sort((a, b) {
-                            final av = ((a.data()['shareCount'] ?? 0) as num)
-                                .toInt();
-                            final bv = ((b.data()['shareCount'] ?? 0) as num)
-                                .toInt();
-                            return bv.compareTo(av);
-                          });
-                        }
-
-                        return SingleChildScrollView(
-                          child: Column(
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  16,
-                                  0,
-                                  16,
-                                  12,
+                          return SingleChildScrollView(
+                            child: Column(
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    0,
+                                    16,
+                                    12,
+                                  ),
+                                  child: LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      final width = constraints.maxWidth;
+                                      final crossAxisCount = width > 880
+                                          ? 5
+                                          : width > 620
+                                          ? 3
+                                          : 2;
+                                      return GridView.count(
+                                        crossAxisCount: crossAxisCount,
+                                        shrinkWrap: true,
+                                        physics:
+                                            const NeverScrollableScrollPhysics(),
+                                        crossAxisSpacing: 10,
+                                        mainAxisSpacing: 10,
+                                        childAspectRatio: width > 620
+                                            ? 1.55
+                                            : 1.8,
+                                        children: [
+                                          _ModerationStatCard(
+                                            label: context.tr('Pending'),
+                                            value:
+                                                '${pendingCount + underReviewCount}',
+                                            icon: Icons.hourglass_top_rounded,
+                                            color: AppColors.sunset,
+                                          ),
+                                          _ModerationStatCard(
+                                            label: context.tr('Approved'),
+                                            value: '$approvedCount',
+                                            icon: Icons.verified_rounded,
+                                            color: const Color(0xFF2DAF6F),
+                                          ),
+                                          _ModerationStatCard(
+                                            label: context.tr('Rejected'),
+                                            value: '$rejectedCount',
+                                            icon: Icons.cancel_rounded,
+                                            color: const Color(0xFFC53D5D),
+                                          ),
+                                          _ModerationStatCard(
+                                            label: context.tr('Total Votes'),
+                                            value: '$totalVotes',
+                                            icon: Icons.how_to_vote_rounded,
+                                            color: const Color(0xFF5AB4FF),
+                                          ),
+                                          _ModerationStatCard(
+                                            label: context.tr('Total Shares'),
+                                            value: '$totalShares',
+                                            icon: Icons.share_rounded,
+                                            color: const Color(0xFFFF5BD2),
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  ),
                                 ),
-                                child: LayoutBuilder(
-                                  builder: (context, constraints) {
-                                    final width = constraints.maxWidth;
-                                    final crossAxisCount = width > 880
-                                        ? 5
-                                        : width > 620
-                                        ? 3
-                                        : 2;
-                                    return GridView.count(
-                                      crossAxisCount: crossAxisCount,
-                                      shrinkWrap: true,
-                                      physics:
-                                          const NeverScrollableScrollPhysics(),
-                                      crossAxisSpacing: 10,
-                                      mainAxisSpacing: 10,
-                                      childAspectRatio: width > 620
-                                          ? 1.55
-                                          : 1.8,
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    0,
+                                    16,
+                                    10,
+                                  ),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF18152A),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: AppColors.border,
+                                      ),
+                                    ),
+                                    child: Row(
                                       children: [
-                                        _ModerationStatCard(
-                                          label: context.tr('Pending'),
-                                          value:
-                                              '${pendingCount + underReviewCount}',
-                                          icon: Icons.hourglass_top_rounded,
-                                          color: AppColors.sunset,
+                                        Expanded(
+                                          child: _ModerationTab(
+                                            label:
+                                                '${context.tr('Pending')} (${pendingCount + underReviewCount})',
+                                            selected:
+                                                _statusFilter == 'pending' ||
+                                                _statusFilter == 'under_review',
+                                            onTap: () => setState(
+                                              () => _statusFilter = 'pending',
+                                            ),
+                                          ),
                                         ),
-                                        _ModerationStatCard(
-                                          label: context.tr('Approved'),
-                                          value: '$approvedCount',
-                                          icon: Icons.verified_rounded,
-                                          color: const Color(0xFF2DAF6F),
+                                        Expanded(
+                                          child: _ModerationTab(
+                                            label:
+                                                '${context.tr('Approved')} ($approvedCount)',
+                                            selected:
+                                                _statusFilter == 'approved',
+                                            onTap: () => setState(
+                                              () => _statusFilter = 'approved',
+                                            ),
+                                          ),
                                         ),
-                                        _ModerationStatCard(
-                                          label: context.tr('Rejected'),
-                                          value: '$rejectedCount',
-                                          icon: Icons.cancel_rounded,
-                                          color: const Color(0xFFC53D5D),
-                                        ),
-                                        _ModerationStatCard(
-                                          label: context.tr('Total Votes'),
-                                          value: '$totalVotes',
-                                          icon: Icons.how_to_vote_rounded,
-                                          color: const Color(0xFF5AB4FF),
-                                        ),
-                                        _ModerationStatCard(
-                                          label: context.tr('Total Shares'),
-                                          value: '$totalShares',
-                                          icon: Icons.share_rounded,
-                                          color: const Color(0xFFFF5BD2),
+                                        Expanded(
+                                          child: _ModerationTab(
+                                            label:
+                                                '${context.tr('Rejected')} ($rejectedCount)',
+                                            selected:
+                                                _statusFilter == 'rejected',
+                                            onTap: () => setState(
+                                              () => _statusFilter = 'rejected',
+                                            ),
+                                          ),
                                         ),
                                       ],
-                                    );
-                                  },
+                                    ),
+                                  ),
                                 ),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  16,
-                                  0,
-                                  16,
-                                  10,
-                                ),
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF18152A),
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(color: AppColors.border),
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    0,
+                                    16,
+                                    12,
                                   ),
                                   child: Row(
                                     children: [
                                       Expanded(
-                                        child: _ModerationTab(
-                                          label:
-                                              '${context.tr('Pending')} (${pendingCount + underReviewCount})',
-                                          selected:
-                                              _statusFilter == 'pending' ||
-                                              _statusFilter == 'under_review',
-                                          onTap: () => setState(
-                                            () => _statusFilter = 'pending',
+                                        child: SingleChildScrollView(
+                                          scrollDirection: Axis.horizontal,
+                                          child: Row(
+                                            children: [
+                                              _ModerationChip(
+                                                label: context.tr('All'),
+                                                selected:
+                                                    _statusFilter == 'all',
+                                                onTap: () => setState(
+                                                  () => _statusFilter = 'all',
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              _ModerationChip(
+                                                label: context.tr('Pending'),
+                                                selected:
+                                                    _statusFilter ==
+                                                        'pending' ||
+                                                    _statusFilter ==
+                                                        'under_review',
+                                                dotColor: AppColors.sunset,
+                                                onTap: () => setState(
+                                                  () =>
+                                                      _statusFilter = 'pending',
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              _ModerationChip(
+                                                label: context.tr('Approved'),
+                                                selected:
+                                                    _statusFilter == 'approved',
+                                                dotColor: const Color(
+                                                  0xFF2DAF6F,
+                                                ),
+                                                onTap: () => setState(
+                                                  () => _statusFilter =
+                                                      'approved',
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              _ModerationChip(
+                                                label: context.tr('Rejected'),
+                                                selected:
+                                                    _statusFilter == 'rejected',
+                                                dotColor: const Color(
+                                                  0xFFC53D5D,
+                                                ),
+                                                onTap: () => setState(
+                                                  () => _statusFilter =
+                                                      'rejected',
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
                                       ),
-                                      Expanded(
-                                        child: _ModerationTab(
-                                          label:
-                                              '${context.tr('Approved')} ($approvedCount)',
-                                          selected: _statusFilter == 'approved',
-                                          onTap: () => setState(
-                                            () => _statusFilter = 'approved',
+                                      const SizedBox(width: 10),
+                                      Container(
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF18152A),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          border: Border.all(
+                                            color: AppColors.border,
                                           ),
                                         ),
-                                      ),
-                                      Expanded(
-                                        child: _ModerationTab(
-                                          label:
-                                              '${context.tr('Rejected')} ($rejectedCount)',
-                                          selected: _statusFilter == 'rejected',
-                                          onTap: () => setState(
-                                            () => _statusFilter = 'rejected',
+                                        child: PopupMenuButton<String>(
+                                          initialValue: _sortBy,
+                                          color: AppColors.card,
+                                          onSelected: (value) =>
+                                              setState(() => _sortBy = value),
+                                          itemBuilder: (context) => [
+                                            PopupMenuItem(
+                                              value: 'newest',
+                                              child: Text(
+                                                context.tr('Newest First'),
+                                              ),
+                                            ),
+                                            PopupMenuItem(
+                                              value: 'oldest',
+                                              child: Text(
+                                                context.tr('Oldest First'),
+                                              ),
+                                            ),
+                                            PopupMenuItem(
+                                              value: 'most_votes',
+                                              child: Text(
+                                                context.tr('Most Voted'),
+                                              ),
+                                            ),
+                                            PopupMenuItem(
+                                              value: 'most_shared',
+                                              child: Text(
+                                                context.tr('Most Shared'),
+                                              ),
+                                            ),
+                                          ],
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 10,
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Text(
+                                                  context.tr(switch (_sortBy) {
+                                                    'oldest' => 'Oldest First',
+                                                    'most_votes' =>
+                                                      'Most Voted',
+                                                    'most_shared' =>
+                                                      'Most Shared',
+                                                    _ => 'Newest First',
+                                                  }),
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                const Icon(
+                                                  Icons.expand_more_rounded,
+                                                  color: AppColors.textMuted,
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  16,
-                                  0,
-                                  16,
-                                  12,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: SingleChildScrollView(
-                                        scrollDirection: Axis.horizontal,
-                                        child: Row(
-                                          children: [
-                                            _ModerationChip(
-                                              label: context.tr('All'),
-                                              selected: _statusFilter == 'all',
-                                              onTap: () => setState(
-                                                () => _statusFilter = 'all',
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            _ModerationChip(
-                                              label: context.tr('Pending'),
-                                              selected:
-                                                  _statusFilter == 'pending' ||
-                                                  _statusFilter ==
-                                                      'under_review',
-                                              dotColor: AppColors.sunset,
-                                              onTap: () => setState(
-                                                () => _statusFilter = 'pending',
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            _ModerationChip(
-                                              label: context.tr('Approved'),
-                                              selected:
-                                                  _statusFilter == 'approved',
-                                              dotColor: const Color(0xFF2DAF6F),
-                                              onTap: () => setState(
-                                                () =>
-                                                    _statusFilter = 'approved',
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            _ModerationChip(
-                                              label: context.tr('Rejected'),
-                                              selected:
-                                                  _statusFilter == 'rejected',
-                                              dotColor: const Color(0xFFC53D5D),
-                                              onTap: () => setState(
-                                                () =>
-                                                    _statusFilter = 'rejected',
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Container(
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF18152A),
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(
-                                          color: AppColors.border,
-                                        ),
-                                      ),
-                                      child: PopupMenuButton<String>(
-                                        initialValue: _sortBy,
-                                        color: AppColors.card,
-                                        onSelected: (value) =>
-                                            setState(() => _sortBy = value),
-                                        itemBuilder: (context) => [
-                                          PopupMenuItem(
-                                            value: 'newest',
-                                            child: Text(
-                                              context.tr('Newest First'),
-                                            ),
+                                ListView.separated(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    0,
+                                    16,
+                                    16,
+                                  ),
+                                  itemCount: filtered.isEmpty
+                                      ? 1
+                                      : filtered.length + 1,
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(height: 12),
+                                  itemBuilder: (context, index) {
+                                    if (filtered.isEmpty) {
+                                      return Container(
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF151324),
+                                          borderRadius: BorderRadius.circular(
+                                            14,
                                           ),
-                                          PopupMenuItem(
-                                            value: 'oldest',
-                                            child: Text(
-                                              context.tr('Oldest First'),
-                                            ),
-                                          ),
-                                          PopupMenuItem(
-                                            value: 'most_votes',
-                                            child: Text(
-                                              context.tr('Most Voted'),
-                                            ),
-                                          ),
-                                          PopupMenuItem(
-                                            value: 'most_shared',
-                                            child: Text(
-                                              context.tr('Most Shared'),
-                                            ),
-                                          ),
-                                        ],
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 10,
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Text(
-                                                context.tr(switch (_sortBy) {
-                                                  'oldest' => 'Oldest First',
-                                                  'most_votes' => 'Most Voted',
-                                                  'most_shared' =>
-                                                    'Most Shared',
-                                                  _ => 'Newest First',
-                                                }),
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontWeight: FontWeight.w700,
-                                                ),
-                                              ),
-                                              const SizedBox(width: 6),
-                                              const Icon(
-                                                Icons.expand_more_rounded,
-                                                color: AppColors.textMuted,
-                                              ),
-                                            ],
+                                          border: Border.all(
+                                            color: AppColors.border,
                                           ),
                                         ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              ListView.separated(
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                padding: const EdgeInsets.fromLTRB(
-                                  16,
-                                  0,
-                                  16,
-                                  16,
-                                ),
-                                itemCount: filtered.isEmpty
-                                    ? 1
-                                    : filtered.length + 1,
-                                separatorBuilder: (_, __) =>
-                                    const SizedBox(height: 12),
-                                itemBuilder: (context, index) {
-                                  if (filtered.isEmpty) {
+                                        child: Text(
+                                          context.tr('No matching videos.'),
+                                        ),
+                                      );
+                                    }
+                                    if (index == filtered.length) {
+                                      return Padding(
+                                        padding: const EdgeInsets.only(
+                                          top: 4,
+                                          bottom: 6,
+                                        ),
+                                        child: Center(
+                                          child: Text(
+                                            context.tr('No more videos'),
+                                            style: const TextStyle(
+                                              color: AppColors.textMuted,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }
+
+                                    final doc = filtered[index];
+                                    final data = doc.data();
+                                    final status = (data['status'] ?? 'pending')
+                                        .toString();
+                                    final contestId = (data['contestId'] ?? '')
+                                        .toString();
+                                    final userId = (data['userId'] ?? '')
+                                        .toString();
+                                    final videoUrl = (data['videoUrl'] ?? '')
+                                        .toString();
+                                    final thumbnailUrl =
+                                        (data['thumbnailUrl'] ??
+                                                data['thumbUrl'] ??
+                                                '')
+                                            .toString();
+                                    final durationLabel =
+                                        (data['durationLabel'] ?? '')
+                                            .toString();
+                                    final createdAt =
+                                        (data['createdAt'] as Timestamp?)
+                                            ?.toDate();
+
                                     return Container(
-                                      padding: const EdgeInsets.all(16),
+                                      padding: const EdgeInsets.all(10),
                                       decoration: BoxDecoration(
                                         color: const Color(0xFF151324),
-                                        borderRadius: BorderRadius.circular(14),
+                                        borderRadius: BorderRadius.circular(16),
                                         border: Border.all(
                                           color: AppColors.border,
                                         ),
                                       ),
-                                      child: Text(
-                                        context.tr('No matching videos.'),
-                                      ),
-                                    );
-                                  }
-                                  if (index == filtered.length) {
-                                    return Padding(
-                                      padding: const EdgeInsets.only(
-                                        top: 4,
-                                        bottom: 6,
-                                      ),
-                                      child: Center(
-                                        child: Text(
-                                          context.tr('No more videos'),
-                                          style: const TextStyle(
-                                            color: AppColors.textMuted,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }
-
-                                  final doc = filtered[index];
-                                  final data = doc.data();
-                                  final status = (data['status'] ?? 'pending')
-                                      .toString();
-                                  final contestId = (data['contestId'] ?? '')
-                                      .toString();
-                                  final userId = (data['userId'] ?? '')
-                                      .toString();
-                                  final videoUrl = (data['videoUrl'] ?? '')
-                                      .toString();
-                                  final thumbnailUrl =
-                                      (data['thumbnailUrl'] ??
-                                              data['thumbUrl'] ??
-                                              '')
-                                          .toString();
-                                  final durationLabel =
-                                      (data['durationLabel'] ?? '').toString();
-                                  final createdAt =
-                                      (data['createdAt'] as Timestamp?)
-                                          ?.toDate();
-
-                                  return Container(
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF151324),
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(
-                                        color: AppColors.border,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Stack(
-                                          children: [
-                                            Container(
-                                              width: 116,
-                                              height: 78,
-                                              decoration: BoxDecoration(
-                                                color: AppColors.cardSoft,
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                                gradient: thumbnailUrl.isEmpty
-                                                    ? const LinearGradient(
-                                                        begin:
-                                                            Alignment.topLeft,
-                                                        end: Alignment
-                                                            .bottomRight,
-                                                        colors: [
-                                                          Color(0xFF4B1A7E),
-                                                          Color(0xFF12101C),
-                                                        ],
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Stack(
+                                            children: [
+                                              Container(
+                                                width: 116,
+                                                height: 78,
+                                                decoration: BoxDecoration(
+                                                  color: AppColors.cardSoft,
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                  gradient: thumbnailUrl.isEmpty
+                                                      ? const LinearGradient(
+                                                          begin:
+                                                              Alignment.topLeft,
+                                                          end: Alignment
+                                                              .bottomRight,
+                                                          colors: [
+                                                            Color(0xFF4B1A7E),
+                                                            Color(0xFF12101C),
+                                                          ],
+                                                        )
+                                                      : null,
+                                                ),
+                                                child: thumbnailUrl.isNotEmpty
+                                                    ? ClipRRect(
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              12,
+                                                            ),
+                                                        child: Image.network(
+                                                          thumbnailUrl,
+                                                          fit: BoxFit.cover,
+                                                          errorBuilder:
+                                                              (
+                                                                _,
+                                                                __,
+                                                                ___,
+                                                              ) => const Icon(
+                                                                Icons
+                                                                    .video_file,
+                                                                color: Colors
+                                                                    .white70,
+                                                              ),
+                                                        ),
                                                       )
-                                                    : null,
+                                                    : const Center(
+                                                        child: Icon(
+                                                          Icons.video_file,
+                                                          color: Colors.white70,
+                                                          size: 28,
+                                                        ),
+                                                      ),
                                               ),
-                                              child: thumbnailUrl.isNotEmpty
-                                                  ? ClipRRect(
+                                              if (durationLabel
+                                                  .trim()
+                                                  .isNotEmpty)
+                                                Positioned(
+                                                  right: 6,
+                                                  bottom: 6,
+                                                  child: Container(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 6,
+                                                          vertical: 3,
+                                                        ),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.black
+                                                          .withOpacity(0.72),
                                                       borderRadius:
                                                           BorderRadius.circular(
-                                                            12,
+                                                            8,
                                                           ),
-                                                      child: Image.network(
-                                                        thumbnailUrl,
-                                                        fit: BoxFit.cover,
-                                                        errorBuilder:
-                                                            (
-                                                              _,
-                                                              __,
-                                                              ___,
-                                                            ) => const Icon(
-                                                              Icons.video_file,
-                                                              color: Colors
-                                                                  .white70,
-                                                            ),
-                                                      ),
-                                                    )
-                                                  : const Center(
-                                                      child: Icon(
-                                                        Icons.video_file,
-                                                        color: Colors.white70,
-                                                        size: 28,
-                                                      ),
                                                     ),
-                                            ),
-                                            if (durationLabel.trim().isNotEmpty)
-                                              Positioned(
-                                                right: 6,
-                                                bottom: 6,
-                                                child: Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                        horizontal: 6,
-                                                        vertical: 3,
+                                                    child: Text(
+                                                      durationLabel,
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 11,
+                                                        fontWeight:
+                                                            FontWeight.w700,
                                                       ),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.black
-                                                        .withOpacity(0.72),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          8,
-                                                        ),
-                                                  ),
-                                                  child: Text(
-                                                    durationLabel,
-                                                    style: const TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 11,
-                                                      fontWeight:
-                                                          FontWeight.w700,
                                                     ),
                                                   ),
                                                 ),
+                                            ],
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: FutureBuilder<_SubmissionMeta>(
+                                              future: _loadMeta(
+                                                contestId: contestId,
+                                                userId: userId,
                                               ),
-                                          ],
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: FutureBuilder<_SubmissionMeta>(
-                                            future: _loadMeta(
-                                              contestId: contestId,
-                                              userId: userId,
-                                            ),
-                                            builder: (context, metaSnap) {
-                                              final fallbackContestName =
-                                                  (data['contestTitle'] ??
-                                                          data['contestName'] ??
-                                                          '')
-                                                      .toString();
-                                              final fallbackUserName =
-                                                  (data['userName'] ??
-                                                          data['participantName'] ??
-                                                          '')
-                                                      .toString();
-                                              final contestName =
-                                                  metaSnap.data?.contestName ??
-                                                  (fallbackContestName
-                                                          .isNotEmpty
-                                                      ? fallbackContestName
-                                                      : context.tr(
-                                                          'Video submission',
-                                                        ));
-                                              final userName =
-                                                  metaSnap.data?.userName ??
-                                                  (fallbackUserName.isNotEmpty
-                                                      ? fallbackUserName
-                                                      : context.tr(
-                                                          'Unknown User',
-                                                        ));
-                                              return Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Row(
-                                                    crossAxisAlignment:
-                                                        CrossAxisAlignment
-                                                            .start,
-                                                    children: [
-                                                      Expanded(
-                                                        child: Text(
-                                                          contestName,
-                                                          maxLines: 1,
-                                                          overflow: TextOverflow
-                                                              .ellipsis,
-                                                          style:
-                                                              const TextStyle(
-                                                                color: Colors
-                                                                    .white,
-                                                                fontSize: 19,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w800,
-                                                              ),
-                                                        ),
-                                                      ),
-                                                      const SizedBox(width: 8),
-                                                      Container(
-                                                        padding:
-                                                            const EdgeInsets.symmetric(
-                                                              horizontal: 10,
-                                                              vertical: 5,
-                                                            ),
-                                                        decoration: BoxDecoration(
-                                                          color: _statusColor(
-                                                            status,
-                                                          ).withOpacity(0.18),
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                10,
-                                                              ),
-                                                        ),
-                                                        child: Text(
-                                                          _toStatusLabel(
-                                                            context,
-                                                            status,
-                                                          ),
-                                                          style: TextStyle(
-                                                            color: _statusColor(
-                                                              status,
-                                                            ),
-                                                            fontSize: 11,
-                                                            fontWeight:
-                                                                FontWeight.w800,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  const SizedBox(height: 2),
-                                                  Text(
-                                                    '${context.tr('by')} $userName',
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                    style: const TextStyle(
-                                                      color:
-                                                          AppColors.textMuted,
-                                                      fontSize: 13,
-                                                      fontWeight:
-                                                          FontWeight.w500,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 8),
-                                                  _VideoMeta(
-                                                    icon: Icons
-                                                        .calendar_today_outlined,
-                                                    label:
-                                                        '${context.tr('Submitted')}: ${_formatShortDate(createdAt)}',
-                                                  ),
-                                                  const SizedBox(height: 8),
-                                                  Wrap(
-                                                    spacing: 12,
-                                                    runSpacing: 8,
-                                                    children: [
-                                                      _VideoMeta(
-                                                        icon: Icons
-                                                            .how_to_vote_rounded,
-                                                        label:
-                                                            '${((data['voteCount'] ?? 0) as num).toInt()} ${context.tr('Votes')}',
-                                                      ),
-                                                      _VideoMeta(
-                                                        icon: Icons
-                                                            .share_outlined,
-                                                        label:
-                                                            '${((data['shareCount'] ?? 0) as num).toInt()} ${context.tr('Shares')}',
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  if (status == 'pending' ||
-                                                      status ==
-                                                          'under_review') ...[
-                                                    const SizedBox(height: 10),
+                                              builder: (context, metaSnap) {
+                                                final fallbackContestName =
+                                                    (data['contestTitle'] ??
+                                                            data['contestName'] ??
+                                                            '')
+                                                        .toString();
+                                                final fallbackUserName =
+                                                    (data['userName'] ??
+                                                            data['participantName'] ??
+                                                            '')
+                                                        .toString();
+                                                final contestName =
+                                                    metaSnap
+                                                        .data
+                                                        ?.contestName ??
+                                                    (fallbackContestName
+                                                            .isNotEmpty
+                                                        ? fallbackContestName
+                                                        : context.tr(
+                                                            'Video submission',
+                                                          ));
+                                                final userName =
+                                                    metaSnap.data?.userName ??
+                                                    (fallbackUserName.isNotEmpty
+                                                        ? fallbackUserName
+                                                        : context.tr(
+                                                            'Unknown User',
+                                                          ));
+                                                return Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
                                                     Row(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .start,
                                                       children: [
                                                         Expanded(
-                                                          child: OutlinedButton.icon(
-                                                            onPressed: () =>
-                                                                _approve(
-                                                                  context,
-                                                                  doc.reference,
-                                                                  data,
+                                                          child: Text(
+                                                            contestName,
+                                                            maxLines: 1,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                            style:
+                                                                const TextStyle(
+                                                                  color: Colors
+                                                                      .white,
+                                                                  fontSize: 19,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w800,
                                                                 ),
-                                                            icon: const Icon(
-                                                              Icons.check,
-                                                              size: 16,
-                                                            ),
-                                                            label: Text(
-                                                              context.tr(
-                                                                'Approve',
-                                                              ),
-                                                            ),
-                                                            style: OutlinedButton.styleFrom(
-                                                              foregroundColor:
-                                                                  const Color(
-                                                                    0xFF2DAF6F,
-                                                                  ),
-                                                              side: const BorderSide(
-                                                                color: Color(
-                                                                  0xFF2DAF6F,
-                                                                ),
-                                                              ),
-                                                              padding:
-                                                                  const EdgeInsets.symmetric(
-                                                                    horizontal:
-                                                                        10,
-                                                                    vertical:
-                                                                        10,
-                                                                  ),
-                                                            ),
                                                           ),
                                                         ),
                                                         const SizedBox(
                                                           width: 8,
                                                         ),
-                                                        Expanded(
-                                                          child: OutlinedButton.icon(
-                                                            onPressed: () =>
-                                                                _reject(
-                                                                  context,
-                                                                  doc.reference,
-                                                                  data,
-                                                                ),
-                                                            icon: const Icon(
-                                                              Icons.close,
-                                                              size: 16,
-                                                            ),
-                                                            label: Text(
-                                                              context.tr(
-                                                                'Reject',
+                                                        Container(
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 10,
+                                                                vertical: 5,
                                                               ),
-                                                            ),
-                                                            style: OutlinedButton.styleFrom(
-                                                              foregroundColor:
-                                                                  const Color(
-                                                                    0xFFC53D5D,
-                                                                  ),
-                                                              side: const BorderSide(
-                                                                color: Color(
-                                                                  0xFFC53D5D,
+                                                          decoration: BoxDecoration(
+                                                            color: _statusColor(
+                                                              status,
+                                                            ).withOpacity(0.18),
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  10,
                                                                 ),
-                                                              ),
-                                                              padding:
-                                                                  const EdgeInsets.symmetric(
-                                                                    horizontal:
-                                                                        10,
-                                                                    vertical:
-                                                                        10,
+                                                          ),
+                                                          child: Text(
+                                                            _toStatusLabel(
+                                                              context,
+                                                              status,
+                                                            ),
+                                                            style: TextStyle(
+                                                              color:
+                                                                  _statusColor(
+                                                                    status,
                                                                   ),
+                                                              fontSize: 11,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w800,
                                                             ),
                                                           ),
                                                         ),
                                                       ],
                                                     ),
-                                                  ],
-                                                ],
-                                              );
-                                            },
-                                          ),
-                                        ),
-                                        PopupMenuButton<String>(
-                                          padding: EdgeInsets.zero,
-                                          icon: const Icon(
-                                            Icons.more_vert,
-                                            color: AppColors.textMuted,
-                                          ),
-                                          onSelected: (value) async {
-                                            switch (value) {
-                                              case 'preview':
-                                                if (videoUrl.isNotEmpty) {
-                                                  await showDialog<void>(
-                                                    context: context,
-                                                    barrierDismissible: true,
-                                                    builder: (_) =>
-                                                        _VideoPlayerDialog(
-                                                          videoUrl: videoUrl,
+                                                    const SizedBox(height: 2),
+                                                    Text(
+                                                      '${context.tr('by')} $userName',
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: const TextStyle(
+                                                        color:
+                                                            AppColors.textMuted,
+                                                        fontSize: 13,
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 8),
+                                                    _VideoMeta(
+                                                      icon: Icons
+                                                          .calendar_today_outlined,
+                                                      label:
+                                                          '${context.tr('Submitted')}: ${_formatShortDate(createdAt)}',
+                                                    ),
+                                                    const SizedBox(height: 8),
+                                                    Wrap(
+                                                      spacing: 12,
+                                                      runSpacing: 8,
+                                                      children: [
+                                                        _VideoMeta(
+                                                          icon: Icons
+                                                              .how_to_vote_rounded,
+                                                          label:
+                                                              '${((data['voteCount'] ?? 0) as num).toInt()} ${context.tr('Votes')}',
                                                         ),
-                                                  );
-                                                }
-                                                break;
-                                              case 'details':
-                                                await _showDetails(
-                                                  context,
-                                                  doc.reference,
-                                                  data,
+                                                        _VideoMeta(
+                                                          icon: Icons
+                                                              .share_outlined,
+                                                          label:
+                                                              '${((data['shareCount'] ?? 0) as num).toInt()} ${context.tr('Shares')}',
+                                                        ),
+                                                      ],
+                                                    ),
+                                                    if (status == 'pending' ||
+                                                        status ==
+                                                            'under_review') ...[
+                                                      const SizedBox(
+                                                        height: 10,
+                                                      ),
+                                                      Row(
+                                                        children: [
+                                                          Expanded(
+                                                            child: OutlinedButton.icon(
+                                                              onPressed: () =>
+                                                                  _approve(
+                                                                    context,
+                                                                    doc.reference,
+                                                                    data,
+                                                                  ),
+                                                              icon: const Icon(
+                                                                Icons.check,
+                                                                size: 16,
+                                                              ),
+                                                              label: Text(
+                                                                context.tr(
+                                                                  'Approve',
+                                                                ),
+                                                              ),
+                                                              style: OutlinedButton.styleFrom(
+                                                                foregroundColor:
+                                                                    const Color(
+                                                                      0xFF2DAF6F,
+                                                                    ),
+                                                                side: const BorderSide(
+                                                                  color: Color(
+                                                                    0xFF2DAF6F,
+                                                                  ),
+                                                                ),
+                                                                padding:
+                                                                    const EdgeInsets.symmetric(
+                                                                      horizontal:
+                                                                          10,
+                                                                      vertical:
+                                                                          10,
+                                                                    ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          const SizedBox(
+                                                            width: 8,
+                                                          ),
+                                                          Expanded(
+                                                            child: OutlinedButton.icon(
+                                                              onPressed: () =>
+                                                                  _reject(
+                                                                    context,
+                                                                    doc.reference,
+                                                                    data,
+                                                                  ),
+                                                              icon: const Icon(
+                                                                Icons.close,
+                                                                size: 16,
+                                                              ),
+                                                              label: Text(
+                                                                context.tr(
+                                                                  'Reject',
+                                                                ),
+                                                              ),
+                                                              style: OutlinedButton.styleFrom(
+                                                                foregroundColor:
+                                                                    const Color(
+                                                                      0xFFC53D5D,
+                                                                    ),
+                                                                side: const BorderSide(
+                                                                  color: Color(
+                                                                    0xFFC53D5D,
+                                                                  ),
+                                                                ),
+                                                                padding:
+                                                                    const EdgeInsets.symmetric(
+                                                                      horizontal:
+                                                                          10,
+                                                                      vertical:
+                                                                          10,
+                                                                    ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ],
+                                                  ],
                                                 );
-                                                break;
-                                              case 'download':
-                                                if (videoUrl.isNotEmpty) {
-                                                  await _downloadVideo(
-                                                    videoUrl,
-                                                    (data['contestTitle'] ??
-                                                            data['title'] ??
-                                                            data['videoTitle'] ??
-                                                            'submission_${doc.id}')
-                                                        .toString(),
-                                                  );
-                                                }
-                                                break;
-                                              case 'approve':
-                                                await _approve(
-                                                  context,
-                                                  doc.reference,
-                                                  data,
-                                                );
-                                                break;
-                                              case 'reject':
-                                                await _reject(
-                                                  context,
-                                                  doc.reference,
-                                                  data,
-                                                );
-                                                break;
-                                              case 'remove':
-                                                await _removeAfterPublish(
-                                                  context,
-                                                  doc.reference,
-                                                  data,
-                                                );
-                                                break;
-                                            }
-                                          },
-                                          itemBuilder: (context) => [
-                                            if (videoUrl.isNotEmpty)
-                                              PopupMenuItem(
-                                                value: 'preview',
-                                                child: Text(
-                                                  context.tr('Watch Video'),
-                                                ),
-                                              ),
-                                            PopupMenuItem(
-                                              value: 'details',
-                                              child: Text(
-                                                context.tr('View Details'),
-                                              ),
+                                              },
                                             ),
-                                            if (videoUrl.isNotEmpty)
+                                          ),
+                                          PopupMenuButton<String>(
+                                            padding: EdgeInsets.zero,
+                                            icon: const Icon(
+                                              Icons.more_vert,
+                                              color: AppColors.textMuted,
+                                            ),
+                                            onSelected: (value) async {
+                                              switch (value) {
+                                                case 'preview':
+                                                  if (videoUrl.isNotEmpty) {
+                                                    await showDialog<void>(
+                                                      context: context,
+                                                      barrierDismissible: true,
+                                                      builder: (_) =>
+                                                          _VideoPlayerDialog(
+                                                            videoUrl: videoUrl,
+                                                          ),
+                                                    );
+                                                  }
+                                                  break;
+                                                case 'details':
+                                                  await _showDetails(
+                                                    context,
+                                                    doc.reference,
+                                                    data,
+                                                  );
+                                                  break;
+                                                case 'download':
+                                                  if (videoUrl.isNotEmpty) {
+                                                    await _downloadVideo(
+                                                      videoUrl,
+                                                      (data['contestTitle'] ??
+                                                              data['title'] ??
+                                                              data['videoTitle'] ??
+                                                              'submission_${doc.id}')
+                                                          .toString(),
+                                                    );
+                                                  }
+                                                  break;
+                                                case 'approve':
+                                                  await _approve(
+                                                    context,
+                                                    doc.reference,
+                                                    data,
+                                                  );
+                                                  break;
+                                                case 'reject':
+                                                  await _reject(
+                                                    context,
+                                                    doc.reference,
+                                                    data,
+                                                  );
+                                                  break;
+                                                case 'remove':
+                                                  await _removeAfterPublish(
+                                                    context,
+                                                    doc.reference,
+                                                    data,
+                                                  );
+                                                  break;
+                                              }
+                                            },
+                                            itemBuilder: (context) => [
+                                              if (videoUrl.isNotEmpty)
+                                                PopupMenuItem(
+                                                  value: 'preview',
+                                                  child: Text(
+                                                    context.tr('Watch Video'),
+                                                  ),
+                                                ),
                                               PopupMenuItem(
-                                                value: 'download',
+                                                value: 'details',
                                                 child: Text(
-                                                  context.tr('Download'),
+                                                  context.tr('View Details'),
                                                 ),
                                               ),
-                                            if (status == 'pending' ||
-                                                status == 'under_review')
-                                              PopupMenuItem(
-                                                value: 'approve',
-                                                child: Text(
-                                                  context.tr('Approve'),
+                                              if (videoUrl.isNotEmpty)
+                                                PopupMenuItem(
+                                                  value: 'download',
+                                                  child: Text(
+                                                    context.tr('Download'),
+                                                  ),
                                                 ),
-                                              ),
-                                            if (status == 'pending' ||
-                                                status == 'under_review')
-                                              PopupMenuItem(
-                                                value: 'reject',
-                                                child: Text(
-                                                  context.tr('Reject'),
+                                              if (status == 'pending' ||
+                                                  status == 'under_review')
+                                                PopupMenuItem(
+                                                  value: 'approve',
+                                                  child: Text(
+                                                    context.tr('Approve'),
+                                                  ),
                                                 ),
-                                              ),
-                                            if (status == 'approved' ||
-                                                status == 'under_review')
-                                              PopupMenuItem(
-                                                value: 'remove',
-                                                child: Text(
-                                                  context.tr('Remove Video'),
+                                              if (status == 'pending' ||
+                                                  status == 'under_review')
+                                                PopupMenuItem(
+                                                  value: 'reject',
+                                                  child: Text(
+                                                    context.tr('Reject'),
+                                                  ),
                                                 ),
-                                              ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    );
-                  },
+                                              if (status == 'approved' ||
+                                                  status == 'under_review')
+                                                PopupMenuItem(
+                                                  value: 'remove',
+                                                  child: Text(
+                                                    context.tr('Remove Video'),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
-              ),
             ],
           ),
         ],
@@ -1907,8 +2006,7 @@ class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
                   final videoAspect = _controller.value.aspectRatio > 0
                       ? _controller.value.aspectRatio
                       : 9 / 16;
-                  final maxHeight =
-                      MediaQuery.sizeOf(context).height * 0.6;
+                  final maxHeight = MediaQuery.sizeOf(context).height * 0.6;
                   var displayWidth = playerWidth;
                   var displayHeight = displayWidth / videoAspect;
                   if (displayHeight > maxHeight) {

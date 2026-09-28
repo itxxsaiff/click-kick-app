@@ -12,6 +12,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../firebase_options.dart';
 import '../models/enums.dart';
+import 'notification_service.dart';
 
 class AuthService {
   AuthService({FirebaseAuth? auth, FirebaseFirestore? firestore})
@@ -542,7 +543,10 @@ class AuthService {
     return credential;
   }
 
-  Future<void> signOut() => _auth.signOut();
+  Future<void> signOut() async {
+    await NotificationService.instance.removeTokenForCurrentUser();
+    await _auth.signOut();
+  }
 
   Future<void> syncCurrentUserDoc() async {
     final user = _auth.currentUser;
@@ -759,7 +763,15 @@ class AuthService {
       'displayName': (user.displayName?.trim().isNotEmpty ?? false)
           ? user.displayName!.trim()
           : (existingData['displayName'] ?? 'User').toString(),
-      'role': (existingData['role'] ?? enumToName(roleIfMissing)).toString(),
+      // Only set a role when the doc is brand new. Never rewrite `role` for
+      // an existing account here: this runs on every login, and a
+      // read-then-write of it is one stale/racy read away from silently
+      // overwriting a role an admin changed directly in Firestore (this
+      // caused a real incident — a manually-promoted super_admin got quietly
+      // reset back to 'user' on the next app launch). Firestore's merge
+      // write leaves a field untouched when it's simply not in the payload,
+      // which is what we want for every login after the first.
+      if (!snap.exists) 'role': enumToName(roleIfMissing),
       if (!snap.exists) 'createdAt': now,
       'pendingEmail': FieldValue.delete(),
       'updatedAt': now,

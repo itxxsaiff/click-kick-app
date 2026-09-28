@@ -4,14 +4,163 @@ import '../../l10n/l10n.dart';
 import '../../theme/app_colors.dart';
 import 'contest_detail_screen.dart';
 
-class ContestListScreen extends StatelessWidget {
-  const ContestListScreen({super.key});
+/// All competitions as a grid of equal-size cards. Tapping one opens
+/// [ContestDetailScreen], which shows only that competition's own submitted
+/// videos — competitions are never mixed together, so a participant always
+/// knows exactly which contest they are viewing or submitting to.
+class ContestListScreen extends StatefulWidget {
+  const ContestListScreen({
+    super.key,
+    this.embedded = false,
+    this.sharedContestId,
+  });
+
+  /// When true, renders without its own back button, so it can be hosted
+  /// inside the public feed's tab shell (the shell already draws the title).
+  final bool embedded;
+
+  /// Set when opened from a shared contest link: that contest's detail page
+  /// is opened automatically once the list has loaded.
+  final String? sharedContestId;
+
+  @override
+  State<ContestListScreen> createState() => _ContestListScreenState();
+}
+
+class _ContestListScreenState extends State<ContestListScreen> {
+  bool _openedShared = false;
+
+  void _maybeOpenShared(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    final sharedId = widget.sharedContestId;
+    if (_openedShared || sharedId == null || sharedId.isEmpty) return;
+    QueryDocumentSnapshot<Map<String, dynamic>>? match;
+    for (final doc in docs) {
+      if (doc.id == sharedId) {
+        match = doc;
+        break;
+      }
+    }
+    final matchedDoc = match;
+    if (matchedDoc == null) return;
+    _openedShared = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ContestDetailScreen(
+            contestId: matchedDoc.id,
+            data: matchedDoc.data(),
+          ),
+        ),
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final contests = FirebaseFirestore.instance
         .collection('contests')
         .orderBy('createdAt', descending: true);
+
+    final body = StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: contests.snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final docs = snapshot.data!.docs.where((doc) {
+          final data = doc.data();
+          final contestType = (data['contestType'] ?? 'video_contest')
+              .toString();
+          final status = (data['status'] ?? '').toString();
+          if (contestType == 'sponsor_contest') {
+            return status == 'live';
+          }
+          return true;
+        }).toList();
+
+        final nowSort = DateTime.now();
+        DateTime? readContestDate(dynamic value) {
+          if (value is Timestamp) return value.toDate();
+          if (value is String) return DateTime.tryParse(value);
+          return null;
+        }
+
+        docs.sort((a, b) {
+          final ad = a.data();
+          final bd = b.data();
+          final aStart = readContestDate(ad['submissionStart']);
+          final bStart = readContestDate(bd['submissionStart']);
+          final aEnd =
+              readContestDate(ad['votingEnd']) ??
+              readContestDate(ad['submissionEnd']);
+          final bEnd =
+              readContestDate(bd['votingEnd']) ??
+              readContestDate(bd['submissionEnd']);
+          final aEnded = aEnd != null && aEnd.isBefore(nowSort);
+          final bEnded = bEnd != null && bEnd.isBefore(nowSort);
+          if (aEnded != bEnded) return aEnded ? 1 : -1;
+          if (aStart == null && bStart == null) return 0;
+          if (aStart == null) return 1;
+          if (bStart == null) return -1;
+          return aStart.compareTo(bStart);
+        });
+
+        _maybeOpenShared(docs);
+
+        if (docs.isEmpty) {
+          return Center(
+            child: Text(
+              context.tr('No contests available.'),
+              style: const TextStyle(color: AppColors.textMuted),
+            ),
+          );
+        }
+        return GridView.builder(
+          padding: const EdgeInsets.all(16),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisSpacing: 14,
+            crossAxisSpacing: 14,
+            childAspectRatio: 0.82,
+          ),
+          itemCount: docs.length,
+          itemBuilder: (context, index) {
+            final doc = docs[index];
+            final data = doc.data();
+            return _CompetitionCard(
+              title: (data['title'] ?? '').toString(),
+              logoUrl: (data['logoUrl'] ?? '').toString(),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      ContestDetailScreen(contestId: doc.id, data: data),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (widget.embedded) {
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+            child: Text(
+              context.tr('Choose a competition and show your talent!'),
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+            ),
+          ),
+          Expanded(child: body),
+        ],
+      );
+    }
 
     return Scaffold(
       body: Stack(
@@ -22,197 +171,134 @@ class ContestListScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                  padding: const EdgeInsets.fromLTRB(8, 8, 20, 8),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        context.tr('Active Contests'),
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
                       IconButton(
-                        onPressed: () {},
-                        icon: const Icon(Icons.leaderboard),
+                        onPressed: () => Navigator.maybePop(context),
+                        icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                      ),
+                      Text(
+                        context.tr('Competitions'),
+                        style: Theme.of(context).textTheme.titleLarge,
                       ),
                     ],
                   ),
                 ),
-                Expanded(
-                  child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                    stream: contests.snapshots(),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      final docs = snapshot.data!.docs.where((doc) {
-                        final data = doc.data();
-                        final contestType = (data['contestType'] ?? 'video_contest')
-                            .toString();
-                        final status = (data['status'] ?? '').toString();
-                        if (contestType == 'sponsor_contest') {
-                          return status == 'live';
-                        }
-                        return true;
-                      }).toList();
-
-                      final nowSort = DateTime.now();
-                      DateTime? readContestDate(dynamic value) {
-                        if (value is Timestamp) return value.toDate();
-                        if (value is String) return DateTime.tryParse(value);
-                        return null;
-                      }
-                      docs.sort((a, b) {
-                        final ad = a.data();
-                        final bd = b.data();
-                        final aStart = readContestDate(ad['submissionStart']);
-                        final bStart = readContestDate(bd['submissionStart']);
-                        final aEnd =
-                            readContestDate(ad['votingEnd']) ??
-                            readContestDate(ad['submissionEnd']);
-                        final bEnd =
-                            readContestDate(bd['votingEnd']) ??
-                            readContestDate(bd['submissionEnd']);
-                        final aEnded = aEnd != null && aEnd.isBefore(nowSort);
-                        final bEnded = bEnd != null && bEnd.isBefore(nowSort);
-                        if (aEnded != bEnded) return aEnded ? 1 : -1;
-                        if (aStart == null && bStart == null) return 0;
-                        if (aStart == null) return 1;
-                        if (bStart == null) return -1;
-                        return aStart.compareTo(bStart);
-                      });
-
-                      if (docs.isEmpty) {
-                        return Center(
-                          child: Text(context.tr('No contests available.')),
-                        );
-                      }
-                      return ListView.separated(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: docs.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 14),
-                        itemBuilder: (context, index) {
-                          final doc = docs[index];
-                          final data = doc.data();
-                          final title = (data['title'] ?? '') as String;
-                          final desc = (data['description'] ?? '') as String;
-                          final logoUrl = (data['logoUrl'] ?? '') as String;
-                          final winnerPrize =
-                              ((data['winnerPrize'] ?? 100) as num).toDouble();
-
-                          return GestureDetector(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => ContestDetailScreen(
-                                    contestId: doc.id,
-                                    data: data,
-                                  ),
-                                ),
-                              );
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: AppColors.card,
-                                borderRadius: BorderRadius.circular(22),
-                                border: Border.all(color: AppColors.border),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Color(0x55000000),
-                                    blurRadius: 16,
-                                    offset: Offset(0, 10),
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 72,
-                                    height: 72,
-                                    decoration: BoxDecoration(
-                                      color: AppColors.cardSoft,
-                                      borderRadius: BorderRadius.circular(18),
-                                    ),
-                                    child: logoUrl.isNotEmpty
-                                        ? ClipRRect(
-                                            borderRadius: BorderRadius.circular(
-                                              16,
-                                            ),
-                                            child: Image.network(
-                                              logoUrl,
-                                              fit: BoxFit.cover,
-                                            ),
-                                          )
-                                        : const Icon(
-                                            Icons.emoji_events,
-                                            color: AppColors.hotPink,
-                                            size: 30,
-                                          ),
-                                  ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          title,
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.titleMedium,
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          desc,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.bodySmall,
-                                        ),
-                                        const SizedBox(height: 10),
-                                        Text(
-                                          '${context.tr('Winner Prize')}: \$${winnerPrize.toStringAsFixed(0)}',
-                                          style: const TextStyle(
-                                            color: AppColors.sunset,
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Row(
-                                          children: [
-                                            const Icon(
-                                              Icons.play_circle,
-                                              size: 18,
-                                              color: AppColors.hotPink,
-                                            ),
-                                            const SizedBox(width: 6),
-                                            Text(
-                                              context.tr('View Contest'),
-                                              style: const TextStyle(
-                                                color: AppColors.hotPink,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
+                Expanded(child: body),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// One equal-size competition card in the grid.
+class _CompetitionCard extends StatelessWidget {
+  const _CompetitionCard({
+    required this.title,
+    required this.logoUrl,
+    required this.onTap,
+  });
+
+  final String title;
+  final String logoUrl;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (logoUrl.isNotEmpty)
+              Image.network(
+                logoUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => const _CardPlaceholder(),
+              )
+            else
+              const _CardPlaceholder(),
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.transparent, Color(0xE0100A1E)],
+                  stops: [0.4, 1],
+                ),
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 12,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      title.isEmpty ? context.tr('Contest') : title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: AppColors.hotPink,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.arrow_forward_rounded,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CardPlaceholder extends StatelessWidget {
+  const _CardPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.cardSoft, AppColors.deepSpace],
+        ),
+      ),
+      child: const Center(
+        child: Icon(
+          Icons.emoji_events_rounded,
+          color: AppColors.hotPink,
+          size: 40,
+        ),
       ),
     );
   }
@@ -263,7 +349,7 @@ class _GlowOrb extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: RadialGradient(
-          colors: [color.withOpacity(0.55), color.withOpacity(0.0)],
+          colors: [color.withValues(alpha: 0.55), color.withValues(alpha: 0)],
         ),
       ),
     );

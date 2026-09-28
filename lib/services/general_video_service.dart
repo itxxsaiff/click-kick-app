@@ -18,6 +18,8 @@ class GeneralVideo {
     required this.likeCount,
     required this.createdAt,
     this.rejectionReason = '',
+    this.thumbnailUrl = '',
+    this.watermarkedVideoUrl = '',
   });
 
   final String id;
@@ -31,6 +33,13 @@ class GeneralVideo {
   final int likeCount;
   final DateTime createdAt;
   final String rejectionReason;
+  final String thumbnailUrl;
+  final String watermarkedVideoUrl;
+
+  /// The URL to hand to the download/save-to-gallery flow: the Click Kick
+  /// logo-stamped copy once the server has generated one, else the original.
+  String get downloadUrl =>
+      watermarkedVideoUrl.isNotEmpty ? watermarkedVideoUrl : videoUrl;
 
   bool get isApproved => status == 'approved';
 
@@ -48,6 +57,8 @@ class GeneralVideo {
       likeCount: ((data['likeCount'] ?? 0) as num).toInt(),
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime(2000),
       rejectionReason: (data['rejectionReason'] ?? '').toString(),
+      thumbnailUrl: (data['thumbnailUrl'] ?? '').toString(),
+      watermarkedVideoUrl: (data['watermarkedVideoUrl'] ?? '').toString(),
     );
   }
 }

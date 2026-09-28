@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -16,10 +18,21 @@ import 'screens/home/home_router.dart';
 import 'screens/profile/general_video_player_screen.dart';
 import 'screens/profile/user_profile_screen.dart';
 import 'screens/public/public_feed_screen.dart';
+import 'screens/shared/notifications_screen.dart';
 import 'screens/shared/short_link_screen.dart';
+import 'services/notification_service.dart';
 
 final RouteObserver<ModalRoute<void>> appRouteObserver =
     RouteObserver<ModalRoute<void>>();
+
+/// Lets a notification tap open a screen (via [onGenerateRoute]) without
+/// needing a [BuildContext] of its own.
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+
+/// Lets [NotificationService] show a foreground-notification banner without
+/// needing a [BuildContext] of its own.
+final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,6 +44,11 @@ Future<void> main() async {
   if (!kIsWeb) {
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   }
+
+  // Fire-and-forget: permission prompts / token registration should not
+  // delay first paint, and a failure here (e.g. permission denied) must not
+  // block the app from starting.
+  unawaited(NotificationService.instance.initialize());
 
   runApp(VideoContestApp(localeController: localeController));
 }
@@ -74,6 +92,8 @@ class VideoContestApp extends StatelessWidget {
           return MaterialApp(
             debugShowCheckedModeBanner: false,
             title: context.tr('Video Contest'),
+            navigatorKey: rootNavigatorKey,
+            scaffoldMessengerKey: scaffoldMessengerKey,
             navigatorObservers: [appRouteObserver],
             theme: AppTheme.darkTheme(useArabicFont: isArabic),
             locale: localeController.locale,
@@ -163,6 +183,11 @@ class VideoContestApp extends StatelessWidget {
                     builder: (_) => ShortLinkScreen(code: code),
                   );
                 }
+              }
+              if (uri.path == '/notifications') {
+                return MaterialPageRoute(
+                  builder: (_) => const NotificationsScreen(),
+                );
               }
               if (uri.path == '/profile') {
                 final userId = uri.queryParameters['userId'] ?? '';

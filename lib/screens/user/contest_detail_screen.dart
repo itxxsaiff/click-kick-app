@@ -12,6 +12,7 @@ import '../../widgets/gradient_button.dart';
 import '../../widgets/report_video_dialog.dart';
 import '../../widgets/block_participant_dialog.dart';
 import '../../widgets/blocked_users_builder.dart';
+import '../profile/general_video_player_screen.dart' show openVideoWithRetry;
 import 'video_upload_screen.dart';
 
 Rect _shareOriginForContext(BuildContext context) {
@@ -153,11 +154,21 @@ class ContestDetailScreen extends StatelessWidget {
                           votingEnd: votingEnd,
                         ),
                         const SizedBox(height: 18),
-                        _StageCard(stage: stage),
+                        _StageCard(
+                          stage: stage,
+                          submissionStart: submissionStart,
+                        ),
+                        if (stage == ContestStage.submissionOpen) ...[
+                          const SizedBox(height: 20),
+                          _SubmissionsBrowseSection(
+                            contestId: contestId,
+                            contestTitle: title,
+                          ),
+                        ],
                         const SizedBox(height: 20),
                         if (stage == ContestStage.submissionOpen)
                           GradientButton(
-                            label: 'Submit Video',
+                            label: context.tr('Join Contest'),
                             onPressed: () {
                               Navigator.push(
                                 context,
@@ -172,7 +183,7 @@ class ContestDetailScreen extends StatelessWidget {
                           )
                         else
                           GradientButton(
-                            label: 'Coming Soon',
+                            label: context.tr('Coming Soon'),
                             onPressed: () {},
                           ),
                       ],
@@ -831,6 +842,21 @@ class _VotingPage extends StatelessWidget {
                     logoUrl: logoUrl,
                     contestNumber: contestNumber,
                   ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.ondemand_video_rounded,
+                        color: AppColors.hotPink,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${docs.length} ${context.tr('Videos')}',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 14),
                   Container(
                     padding: const EdgeInsets.all(14),
@@ -893,6 +919,115 @@ class _VotingPage extends StatelessWidget {
   }
 }
 
+/// Shown while submissions are open but voting has not started: the video
+/// count so far, and a view-only grid of this contest's own approved videos
+/// (no vote button yet). Keeps videos scoped to this one contest, so a
+/// participant always knows exactly which contest they're looking at.
+class _SubmissionsBrowseSection extends StatelessWidget {
+  const _SubmissionsBrowseSection({
+    required this.contestId,
+    required this.contestTitle,
+  });
+
+  final String contestId;
+  final String contestTitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final approvedStream = FirebaseFirestore.instance
+        .collection('contests')
+        .doc(contestId)
+        .collection('submissions')
+        .where('status', isEqualTo: 'approved')
+        .snapshots();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
+    return BlockedUsersBuilder(
+      builder: (context, blockedUserIds) =>
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: approvedStream,
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final docs = snapshot.data!.docs
+                  .where(
+                    (d) => !blockedUserIds.contains(
+                      (d.data()['userId'] ?? '').toString(),
+                    ),
+                  )
+                  .toList();
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.ondemand_video_rounded,
+                        color: AppColors.hotPink,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${docs.length} ${context.tr('Videos')}',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (docs.isEmpty)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: AppColors.card,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Text(
+                        context.tr(
+                          'No videos submitted yet. Be the first to join!',
+                        ),
+                        style: const TextStyle(color: AppColors.textMuted),
+                      ),
+                    )
+                  else
+                    _VotingGrid(
+                      contestId: contestId,
+                      userId: uid,
+                      contestTitle: contestTitle,
+                      submissions: docs,
+                      allowVoting: false,
+                    ),
+                ],
+              );
+            },
+          ),
+    );
+  }
+}
+
+/// Shown in a grid tile until a real thumbnail frame is generated for that
+/// video (new uploads get one within moments of finishing; older uploads
+/// from before this feature never had one captured).
+class _ThumbnailPlaceholder extends StatelessWidget {
+  const _ThumbnailPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.cardSoft, AppColors.deepSpace],
+        ),
+      ),
+    );
+  }
+}
+
 class _VotingGrid extends StatelessWidget {
   const _VotingGrid({
     required this.contestId,
@@ -900,16 +1035,28 @@ class _VotingGrid extends StatelessWidget {
     required this.contestTitle,
     required this.submissions,
     this.focusSubmissionId,
+    this.allowVoting = true,
   });
 
   final String contestId;
-  final String userId;
+
+  /// Null for a signed-out visitor just browsing (only allowed when
+  /// [allowVoting] is false, e.g. while submissions are still open).
+  final String? userId;
   final String contestTitle;
   final List<QueryDocumentSnapshot<Map<String, dynamic>>> submissions;
   final String? focusSubmissionId;
 
+  /// False while submissions are open but voting has not started yet: shows
+  /// the videos to browse, with no vote button.
+  final bool allowVoting;
+
   @override
   Widget build(BuildContext context) {
+    final uid = userId;
+    if (!allowVoting || uid == null) {
+      return _buildGrid(context, const <String>{});
+    }
     // One user + one video = one vote: a user can vote for every video in the
     // contest, but only once for each. Vote docs carry `voterId` and
     // `submissionId` (legacy one-vote-per-contest docs do too).
@@ -917,7 +1064,7 @@ class _VotingGrid extends StatelessWidget {
         .collection('contests')
         .doc(contestId)
         .collection('votes')
-        .where('voterId', isEqualTo: userId)
+        .where('voterId', isEqualTo: uid)
         .snapshots();
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -927,264 +1074,344 @@ class _VotingGrid extends StatelessWidget {
           for (final voteDoc in voteSnapshot.data?.docs ?? const [])
             (voteDoc.data()['submissionId'] ?? '').toString(),
         };
-
-        final orderedSubmissions = submissions.toList();
-        if ((focusSubmissionId ?? '').isNotEmpty) {
-          orderedSubmissions.sort((a, b) {
-            final aMatch = a.id == focusSubmissionId;
-            final bMatch = b.id == focusSubmissionId;
-            if (aMatch == bMatch) return 0;
-            return aMatch ? -1 : 1;
-          });
-        }
-
-        final width = MediaQuery.of(context).size.width;
-        final crossAxisCount = width < 430
-            ? 1
-            : width < 900
-            ? 2
-            : 3;
-        final mainAxisExtent = width < 430
-            ? 350.0
-            : width < 900
-            ? 340.0
-            : 320.0;
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            mainAxisExtent: mainAxisExtent,
-          ),
-          itemCount: orderedSubmissions.length,
-          itemBuilder: (context, index) {
-            final doc = orderedSubmissions[index];
-            final data = doc.data();
-            final videoUrl = (data['videoUrl'] ?? '').toString();
-            final ownerUserId = (data['userId'] ?? '').toString();
-            final votes = ((data['voteCount'] ?? 0) as num).toInt();
-            final isVoted = votedSubmissionIds.contains(doc.id);
-            final isOwnVideo = ownerUserId == userId;
-            final isHighlighted = doc.id == focusSubmissionId;
-
-            return ClipRRect(
-              borderRadius: BorderRadius.circular(18),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.card,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      height: 110,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: AppColors.cardSoft,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Icon(
-                        Icons.ondemand_video,
-                        color: AppColors.hotPink,
-                        size: 42,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    _ParticipantNameLabel(
-                      ownerUserId: ownerUserId,
-                      cachedName:
-                          (data['userName'] ?? data['participantName'] ?? '')
-                              .toString(),
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.favorite,
-                          size: 16,
-                          color: AppColors.hotPink,
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            '$votes ${context.tr('votes')}',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: context.tr('Share'),
-                          onPressed: () async {
-                            String link;
-                            try {
-                              link = await ShortLinkService().contestShareLink(
-                                contestId: contestId,
-                                submissionId: doc.id,
-                              );
-                            } catch (_) {
-                              return;
-                            }
-                            if (!context.mounted) return;
-                            final text =
-                                '${context.tr('Vote for my video')}: $contestTitle\n$link';
-                            try {
-                              await doc.reference.update({
-                                'shareCount': FieldValue.increment(1),
-                                'lastSharedAt': Timestamp.fromDate(
-                                  DateTime.now(),
-                                ),
-                              });
-                            } catch (_) {}
-                            await Share.share(
-                              text,
-                              subject: contestTitle,
-                              sharePositionOrigin: _shareOriginForContext(
-                                context,
-                              ),
-                            );
-                          },
-                          icon: const Icon(
-                            Icons.share_rounded,
-                            color: AppColors.hotPink,
-                            size: 20,
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: context.tr('Report Video'),
-                          onPressed: () => showReportVideoDialog(
-                            context: context,
-                            videoType: 'participant_video',
-                            contestId: contestId,
-                            submissionId: doc.id,
-                            targetUserId: ownerUserId,
-                            contestTitle: contestTitle,
-                            participantName:
-                                (data['userName'] ??
-                                        data['participantName'] ??
-                                        '')
-                                    .toString(),
-                          ),
-                          icon: const Icon(
-                            Icons.flag_outlined,
-                            color: AppColors.hotPink,
-                            size: 20,
-                          ),
-                        ),
-                        if (!isOwnVideo)
-                          IconButton(
-                            tooltip: context.tr('Block Participant'),
-                            onPressed: () => showBlockParticipantDialog(
-                              context: context,
-                              blockedUserId: ownerUserId,
-                              contestId: contestId,
-                              submissionId: doc.id,
-                              contestTitle: contestTitle,
-                              participantName:
-                                  (data['userName'] ??
-                                          data['participantName'] ??
-                                          '')
-                                      .toString(),
-                            ),
-                            icon: const Icon(
-                              Icons.block,
-                              color: AppColors.hotPink,
-                              size: 20,
-                            ),
-                          ),
-                      ],
-                    ),
-                    const Spacer(),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.tonalIcon(
-                        onPressed: videoUrl.isEmpty
-                            ? null
-                            : () async {
-                                if (!context.mounted) return;
-                                await showDialog<void>(
-                                  context: context,
-                                  barrierDismissible: true,
-                                  builder: (_) =>
-                                      _VideoPlayerDialog(videoUrl: videoUrl),
-                                );
-                              },
-                        icon: const Icon(Icons.play_circle_fill),
-                        label: Text(context.tr('Watch')),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.cardSoft,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: isOwnVideo
-                            ? null
-                            : () => _castVote(
-                                context: context,
-                                contestId: contestId,
-                                userId: userId,
-                                submissionId: doc.id,
-                                alreadyVoted: isVoted,
-                              ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: isOwnVideo
-                              ? AppColors.cardSoft
-                              : isVoted
-                              ? const Color(0xFF2DAF6F)
-                              : AppColors.hotPink,
-                          foregroundColor: Colors.white,
-                        ),
-                        child: Text(
-                          isOwnVideo
-                              ? context.tr('Your Video')
-                              : isVoted
-                              ? context.tr('Voted')
-                              : context.tr('Vote Now'),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
+        return _buildGrid(context, votedSubmissionIds);
       },
     );
   }
 
-  Future<void> _castVote({
-    required BuildContext context,
-    required String contestId,
-    required String userId,
-    required String submissionId,
-    required bool alreadyVoted,
-  }) async {
-    if (alreadyVoted) {
+  Widget _buildGrid(BuildContext context, Set<String> votedSubmissionIds) {
+    final orderedSubmissions = submissions.toList();
+    if ((focusSubmissionId ?? '').isNotEmpty) {
+      orderedSubmissions.sort((a, b) {
+        final aMatch = a.id == focusSubmissionId;
+        final bMatch = b.id == focusSubmissionId;
+        if (aMatch == bMatch) return 0;
+        return aMatch ? -1 : 1;
+      });
+    }
+
+    final width = MediaQuery.of(context).size.width;
+    final crossAxisCount = width < 430
+        ? 2
+        : width < 900
+        ? 3
+        : 4;
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+        childAspectRatio: 0.68,
+      ),
+      itemCount: orderedSubmissions.length,
+      itemBuilder: (context, index) {
+        final doc = orderedSubmissions[index];
+        final data = doc.data();
+        final votes = ((data['voteCount'] ?? 0) as num).toInt();
+        final thumbnailUrl = (data['thumbnailUrl'] ?? '').toString();
+        final participantName =
+            (data['userName'] ?? data['participantName'] ?? '').toString();
+
+        // A simple thumbnail preview, TikTok-style: no per-tile actions.
+        // Tapping opens the full-screen video with Vote / Share / Report /
+        // Block, matching how every other video plays in this app.
+        return GestureDetector(
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => _ContestVideoScreen(
+                contestId: contestId,
+                contestTitle: contestTitle,
+                userId: userId,
+                allowVoting: allowVoting,
+                submissions: orderedSubmissions,
+                initialIndex: index,
+                votedSubmissionIds: votedSubmissionIds,
+              ),
+            ),
+          ),
+          child: Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (thumbnailUrl.isNotEmpty)
+                  Image.network(
+                    thumbnailUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => const _ThumbnailPlaceholder(),
+                  )
+                else
+                  const _ThumbnailPlaceholder(),
+                Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.transparent, Color(0xCC100A1E)],
+                      stops: [0.55, 1],
+                    ),
+                  ),
+                ),
+                const Center(
+                  child: Icon(
+                    Icons.play_arrow_rounded,
+                    color: Colors.white,
+                    size: 30,
+                    shadows: [Shadow(blurRadius: 6, color: Colors.black54)],
+                  ),
+                ),
+                Positioned(
+                  left: 6,
+                  right: 6,
+                  bottom: 6,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (participantName.isNotEmpty)
+                        Text(
+                          participantName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.favorite,
+                            size: 12,
+                            color: AppColors.hotPink,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            '$votes',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Full-screen video, TikTok-style: no modal, no card, just the video with
+/// Vote / Share / Report / Block on the right and the name at the bottom.
+/// Swipe up/down to move between this contest's other videos.
+class _ContestVideoScreen extends StatefulWidget {
+  const _ContestVideoScreen({
+    required this.contestId,
+    required this.contestTitle,
+    required this.userId,
+    required this.allowVoting,
+    required this.submissions,
+    required this.initialIndex,
+    required this.votedSubmissionIds,
+  });
+
+  final String contestId;
+  final String contestTitle;
+  final String? userId;
+  final bool allowVoting;
+  final List<QueryDocumentSnapshot<Map<String, dynamic>>> submissions;
+  final int initialIndex;
+  final Set<String> votedSubmissionIds;
+
+  @override
+  State<_ContestVideoScreen> createState() => _ContestVideoScreenState();
+}
+
+class _ContestVideoScreenState extends State<_ContestVideoScreen> {
+  late final PageController _pageController;
+  late int _index;
+  late final Set<String> _votedSubmissionIds;
+  VideoPlayerController? _controller;
+  String _currentUrl = '';
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _index = widget.initialIndex;
+    _votedSubmissionIds = Set.of(widget.votedSubmissionIds);
+    _pageController = PageController(initialPage: _index);
+    _loadVideo(widget.submissions[_index]);
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadVideo(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) async {
+    final url = (doc.data()['videoUrl'] ?? '').toString();
+    if (url.isEmpty || url == _currentUrl) return;
+    setState(() => _loading = true);
+    final previous = _controller;
+    _controller = null;
+    await previous?.dispose();
+    try {
+      final controller = await openVideoWithRetry(url);
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      await controller.setLooping(true);
+      _currentUrl = url;
+      _controller = controller;
+      await controller.play();
+    } catch (_) {
+      // Left unplayed; the page shows a loading spinner rather than a broken
+      // player, matching the rest of the app's tolerance for a bad load.
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _togglePlayback() async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    controller.value.isPlaying
+        ? await controller.pause()
+        : await controller.play();
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageController,
+            scrollDirection: Axis.vertical,
+            itemCount: widget.submissions.length,
+            onPageChanged: (i) {
+              setState(() => _index = i);
+              _loadVideo(widget.submissions[i]);
+            },
+            itemBuilder: (context, i) {
+              final doc = widget.submissions[i];
+              final isActive = i == _index;
+              final ready =
+                  isActive &&
+                  _controller != null &&
+                  _controller!.value.isInitialized;
+              return _ContestVideoPage(
+                doc: doc,
+                contestId: widget.contestId,
+                contestTitle: widget.contestTitle,
+                userId: widget.userId,
+                allowVoting: widget.allowVoting,
+                isVoted: _votedSubmissionIds.contains(doc.id),
+                controller: ready ? _controller : null,
+                isPlaying: ready && _controller!.value.isPlaying,
+                isLoading: isActive && (_loading || !ready),
+                onTapVideo: ready ? _togglePlayback : null,
+                onVoted: () => setState(() => _votedSubmissionIds.add(doc.id)),
+              );
+            },
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: IconButton(
+                onPressed: () => Navigator.maybePop(context),
+                style: IconButton.styleFrom(backgroundColor: Colors.black38),
+                icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ContestVideoPage extends StatelessWidget {
+  const _ContestVideoPage({
+    required this.doc,
+    required this.contestId,
+    required this.contestTitle,
+    required this.userId,
+    required this.allowVoting,
+    required this.isVoted,
+    required this.controller,
+    required this.isPlaying,
+    required this.isLoading,
+    required this.onVoted,
+    this.onTapVideo,
+  });
+
+  final QueryDocumentSnapshot<Map<String, dynamic>> doc;
+  final String contestId;
+  final String contestTitle;
+  final String? userId;
+  final bool allowVoting;
+  final bool isVoted;
+  final VideoPlayerController? controller;
+  final bool isPlaying;
+  final bool isLoading;
+  final VoidCallback onVoted;
+  final VoidCallback? onTapVideo;
+
+  void _snack(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
+  }
+
+  Future<void> _vote(BuildContext context) async {
+    if (userId == null) {
+      _snack(context, context.tr('Please login to vote.'));
+      return;
+    }
+    if (isVoted) {
       _snack(context, context.tr('You already voted for this video.'));
       return;
     }
-
     try {
       await AuthService().incrementContestVote(
         contestId: contestId,
-        submissionId: submissionId,
+        submissionId: doc.id,
       );
-
-      _snack(
-        context,
-        context.tr(
-          'Your vote has been counted successfully. You are now entered into the lucky draw.',
-        ),
-      );
+      onVoted();
+      if (context.mounted) {
+        _snack(
+          context,
+          context.tr(
+            'Your vote has been counted successfully. You are now entered into the lucky draw.',
+          ),
+        );
+      }
     } catch (e) {
+      if (!context.mounted) return;
       if (e is FirebaseFunctionsException) {
         if (e.code == 'already-exists') {
           _snack(context, context.tr('You already voted for this video.'));
@@ -1219,14 +1446,243 @@ class _VotingGrid extends StatelessWidget {
     }
   }
 
-  void _snack(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: const TextStyle(color: Colors.white)),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: const Color(0xFF2B1B44),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+  Future<void> _share(BuildContext context, String participantName) async {
+    if (FirebaseAuth.instance.currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr('Please login to share.'))),
+      );
+      return;
+    }
+    String link;
+    try {
+      link = await ShortLinkService().contestShareLink(
+        contestId: contestId,
+        submissionId: doc.id,
+      );
+    } catch (_) {
+      link =
+          '${ShortLinkService.shareBaseUrl}/contest?contestId=$contestId&submissionId=${doc.id}';
+    }
+    if (!context.mounted) return;
+    try {
+      await doc.reference.update({
+        'shareCount': FieldValue.increment(1),
+        'lastSharedAt': Timestamp.fromDate(DateTime.now()),
+      });
+    } catch (_) {}
+    await Share.share(
+      '${context.tr('Vote for my video')}: $contestTitle\n$link',
+      subject: contestTitle,
+      sharePositionOrigin: _shareOriginForContext(context),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final data = doc.data();
+    final ownerUserId = (data['userId'] ?? '').toString();
+    final participantName = (data['userName'] ?? data['participantName'] ?? '')
+        .toString();
+    final votes = ((data['voteCount'] ?? 0) as num).toInt();
+    final shares = ((data['shareCount'] ?? 0) as num).toInt();
+    final isOwnVideo = userId != null && ownerUserId == userId;
+
+    return GestureDetector(
+      onTap: onTapVideo,
+      behavior: HitTestBehavior.opaque,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (controller != null)
+            FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: controller!.value.size.width,
+                height: controller!.value.size.height,
+                child: VideoPlayer(controller!),
+              ),
+            )
+          else if (isLoading)
+            const Center(
+              child: CircularProgressIndicator(color: AppColors.hotPink),
+            )
+          else
+            const SizedBox.shrink(),
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.transparent, Color(0xD0100A1E)],
+                stops: [0.5, 1],
+              ),
+            ),
+          ),
+          if (controller != null)
+            IgnorePointer(
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                opacity: (isPlaying || isLoading) ? 0 : 1,
+                child: const Center(
+                  child: Icon(
+                    Icons.play_arrow_rounded,
+                    color: AppColors.hotPink,
+                    size: 72,
+                  ),
+                ),
+              ),
+            ),
+          Positioned(
+            right: 14,
+            bottom: 120,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (allowVoting)
+                  _ContestVideoAction(
+                    icon: Icons.how_to_vote_rounded,
+                    iconColor: isVoted ? const Color(0xFF2DAF6F) : Colors.white,
+                    value: '$votes',
+                    label: context.tr('Vote'),
+                    onTap: isOwnVideo ? null : () => _vote(context),
+                  ),
+                const SizedBox(height: 18),
+                _ContestVideoAction(
+                  icon: Icons.share_outlined,
+                  value: '$shares',
+                  label: context.tr('Shares'),
+                  onTap: () => _share(context, participantName),
+                ),
+                const SizedBox(height: 18),
+                _ContestVideoAction(
+                  icon: Icons.flag_outlined,
+                  label: context.tr('Report'),
+                  onTap: () => showReportVideoDialog(
+                    context: context,
+                    videoType: 'participant_video',
+                    contestId: contestId,
+                    submissionId: doc.id,
+                    targetUserId: ownerUserId,
+                    contestTitle: contestTitle,
+                    participantName: participantName,
+                  ),
+                ),
+                if (!isOwnVideo) ...[
+                  const SizedBox(height: 18),
+                  _ContestVideoAction(
+                    icon: Icons.block,
+                    label: context.tr('Block'),
+                    onTap: () => showBlockParticipantDialog(
+                      context: context,
+                      blockedUserId: ownerUserId,
+                      contestId: contestId,
+                      submissionId: doc.id,
+                      contestTitle: contestTitle,
+                      participantName: participantName,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Positioned(
+            left: 18,
+            right: 90,
+            bottom: 24,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '🏆 $contestTitle',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.hotPink,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                _ParticipantNameLabel(
+                  ownerUserId: ownerUserId,
+                  cachedName: participantName,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$votes ${context.tr('votes')}',
+                  style: const TextStyle(
+                    color: AppColors.textLight,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ContestVideoAction extends StatelessWidget {
+  const _ContestVideoAction({
+    required this.icon,
+    required this.label,
+    this.value,
+    this.iconColor = Colors.white,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String? value;
+  final Color iconColor;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Column(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.28),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+            ),
+            child: Icon(icon, color: iconColor, size: 24),
+          ),
+          const SizedBox(height: 4),
+          if (value != null)
+            Text(
+              value!,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          SizedBox(
+            width: 58,
+            child: Text(
+              label,
+              maxLines: 1,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1655,9 +2111,14 @@ class _TimelineCard extends StatelessWidget {
 }
 
 class _StageCard extends StatelessWidget {
-  const _StageCard({required this.stage});
+  const _StageCard({required this.stage, this.submissionStart});
 
   final ContestStage stage;
+  final DateTime? submissionStart;
+
+  String _formatDate(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1682,9 +2143,11 @@ class _StageCard extends StatelessWidget {
         accent = AppColors.sunset;
         break;
       case ContestStage.upcoming:
-      default:
-        title = context.tr('Upcoming');
-        subtitle = context.tr('Contest starts soon. Stay tuned.');
+        title = context.tr('Submissions have not started yet');
+        final start = submissionStart;
+        subtitle = start == null
+            ? context.tr('Check back soon for the opening date.')
+            : '${context.tr('Submissions open on')} ${_formatDate(start)}.';
         accent = AppColors.textMuted;
     }
 

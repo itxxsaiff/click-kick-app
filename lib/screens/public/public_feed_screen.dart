@@ -25,8 +25,10 @@ import '../../widgets/follow_widgets.dart';
 import '../../widgets/password_change_layout.dart';
 import '../../main.dart';
 import '../shared/click_kick_star_page.dart';
+import '../shared/notifications_screen.dart';
 import 'search_videos_screen.dart';
 import '../user/contest_detail_screen.dart';
+import '../user/contest_list_screen.dart';
 import '../profile/general_video_player_screen.dart'
     show formatCount, openVideoWithRetry;
 import '../profile/user_profile_screen.dart';
@@ -126,8 +128,8 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
           sharedAdminVideoId: widget.sharedAdminVideoId,
           onOpenSearch: () => setState(() => _tabIndex = 2),
         ),
-        _PublicContestsTab(
-          isVisible: _tabIndex == 1,
+        ContestListScreen(
+          embedded: true,
           sharedContestId: widget.sharedContestId,
         ),
         const SearchVideosScreen(embedded: true),
@@ -159,7 +161,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
     required List<Widget> pages,
   }) {
     final safeIndex = _tabIndex.clamp(0, labels.length - 1);
-    final isImmersiveFeed = safeIndex == 0 || labels[safeIndex] == 'Contests';
+    final isImmersiveFeed = safeIndex == 0;
     final showTitleCard = !isImmersiveFeed && labels[safeIndex] != 'Profile';
     if (_tabIndex != safeIndex) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -756,38 +758,22 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
                 }).toList();
                 return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                   stream: FirebaseFirestore.instance
-                      .collectionGroup('submissions')
+                      .collection('general_videos')
                       .where('status', isEqualTo: 'approved')
                       .snapshots(),
-                  builder: (context, submissionsSnapshot) {
-                    final submissionDocs =
-                        submissionsSnapshot.data?.docs ??
+                  builder: (context, generalSnapshot) {
+                    final generalDocs =
+                        generalSnapshot.data?.docs ??
                         const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-                    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                      stream: FirebaseFirestore.instance
-                          .collection('general_videos')
-                          .where('status', isEqualTo: 'approved')
-                          .snapshots(),
-                      builder: (context, generalSnapshot) {
-                        final generalDocs =
-                            generalSnapshot.data?.docs ??
-                            const <
-                              QueryDocumentSnapshot<Map<String, dynamic>>
-                            >[];
-                        final feedItems = _buildFeedItems(
-                          newsDocs,
-                          adminVideoDocs,
-                          contestDocs,
-                          submissionDocs,
-                          generalDocs,
-                        );
-                        return _buildPager(
-                          feedItems,
-                          emptyText: context.tr(
-                            'No updates available right now.',
-                          ),
-                        );
-                      },
+                    final feedItems = _buildFeedItems(
+                      newsDocs,
+                      adminVideoDocs,
+                      contestDocs,
+                      generalDocs,
+                    );
+                    return _buildPager(
+                      feedItems,
+                      emptyText: context.tr('No updates available right now.'),
                     );
                   },
                 );
@@ -1085,6 +1071,7 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
             shadows: [Shadow(blurRadius: 6, color: Colors.black54)],
           ),
         ),
+        const _NotificationBellButton(),
         Expanded(
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1123,7 +1110,6 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
     List<QueryDocumentSnapshot<Map<String, dynamic>>> newsDocs,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> adminVideoDocs,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> contestDocs,
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> submissionDocs,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> generalDocs,
   ) {
     final newsItems = newsDocs.map(_FeedItem.fromNews).toList()
@@ -1152,37 +1138,29 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
             return b.createdAt.compareTo(a.createdAt);
           });
 
-    // Group approved participant videos by contest, hiding blocked participants.
-    final participantsByContest = <String, List<_FeedItem>>{};
-    for (final doc in submissionDocs) {
-      final data = doc.data();
-      final videoUrl = (data['videoUrl'] ?? '').toString().trim();
-      final userId = (data['userId'] ?? '').toString();
-      final contestId = (data['contestId'] ?? '').toString();
-      if (videoUrl.isEmpty || contestId.isEmpty) continue;
-      if (_blockedUserIds.contains(userId)) continue;
-      if (_failedAdminVideoUrls.contains(videoUrl)) continue;
-      (participantsByContest[contestId] ??= <_FeedItem>[]).add(
-        _FeedItem.fromParticipant(doc),
-      );
-    }
-    // Each contest's participant videos are ordered by upload time (earliest
-    // first), as requested by the client.
-    for (final list in participantsByContest.values) {
-      list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-    }
-
-    // Contests ordered by start date, still-joinable ones first.
-    final contestItems = contestDocs
-        .map(_FeedItem.fromContest)
-        .where((item) => !_failedAdminVideoUrls.contains(item.videoUrl))
-        .toList();
+    // Home shows only the competition announcement itself, never its
+    // participant videos (those live on the Competitions tab / contest page).
     final now = DateTime.now();
     DateTime? readDate(dynamic value) {
       if (value is Timestamp) return value.toDate();
       if (value is String) return DateTime.tryParse(value);
       return null;
     }
+
+    // A competition (and its participant videos) only appears on Home for its
+    // first week — after that it still lives on the Competitions tab, just
+    // not duplicated here too. General/admin videos and news are unaffected
+    // and keep showing by recency as before.
+    const homeFeedContestAge = Duration(days: 7);
+    final contestItems = contestDocs
+        .map(_FeedItem.fromContest)
+        .where((item) => !_failedAdminVideoUrls.contains(item.videoUrl))
+        .where((item) {
+          final createdAt = readDate(item.contestData['createdAt']);
+          if (createdAt == null) return true;
+          return now.difference(createdAt) <= homeFeedContestAge;
+        })
+        .toList();
 
     contestItems.sort((a, b) {
       final aStart = readDate(a.contestData['submissionStart']);
@@ -1224,360 +1202,16 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
     final grouped = <_FeedItem>[];
     for (final contest in contestItems) {
       grouped.add(contest);
-      final participants = participantsByContest[contest.contestId];
-      if (participants != null) grouped.addAll(participants);
-      // Slot up to two general videos in after each complete competition, so a
-      // competition is never split from its own participant videos.
+      // Slot up to two general videos in after each competition announcement.
       for (var i = 0; i < 2 && nextGeneral < generalItems.length; i++) {
         grouped.add(generalItems[nextGeneral++]);
       }
     }
     grouped.addAll(generalItems.skip(nextGeneral));
 
-    // Competitions + their participant videos first, then any promotional admin
-    // videos, then news.
+    // Competition announcements first, then general videos, then any
+    // promotional admin videos, then news. No participant videos on Home.
     return <_FeedItem>[...grouped, ...adminVideoItems, ...newsItems];
-  }
-}
-
-class _PublicContestsTab extends StatefulWidget {
-  const _PublicContestsTab({required this.isVisible, this.sharedContestId});
-
-  final bool isVisible;
-  final String? sharedContestId;
-
-  @override
-  State<_PublicContestsTab> createState() => _PublicContestsTabState();
-}
-
-class _PublicContestsTabState extends State<_PublicContestsTab>
-    with RouteAware {
-  final _pageController = PageController();
-  int _activeIndex = 0;
-  VideoPlayerController? _videoController;
-  String _currentVideoUrl = '';
-  String? _pendingVideoUrl;
-  bool _isVideoLoading = false;
-  int _videoRequestId = 0;
-  bool _appliedSharedTarget = false;
-  String? _lastTrackedContestId;
-
-  @override
-  void initState() {
-    super.initState();
-    _feedStopHandlers.add(_clearActiveVideo);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final route = ModalRoute.of(context);
-    if (route is PageRoute) {
-      appRouteObserver.unsubscribe(this);
-      appRouteObserver.subscribe(this, route);
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant _PublicContestsTab oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.isVisible != widget.isVisible) {
-      _handleVisibilityChange();
-    }
-  }
-
-  @override
-  void dispose() {
-    appRouteObserver.unsubscribe(this);
-    _feedStopHandlers.remove(_clearActiveVideo);
-    _videoController?.dispose();
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  @override
-  void didPushNext() {
-    _clearActiveVideo();
-  }
-
-  @override
-  void didPopNext() {
-    unlockFeedPlayback();
-    _handleVisibilityChange();
-  }
-
-  Future<void> _handleVisibilityChange() async {
-    if (!widget.isVisible) {
-      await _clearActiveVideo();
-      return;
-    }
-    unlockFeedPlayback();
-    if (!mounted) return;
-    setState(() {});
-  }
-
-  Future<void> _setActiveVideo(String url) async {
-    if (url.isEmpty) return;
-    if (url == _currentVideoUrl &&
-        _videoController == null &&
-        _isVideoLoading) {
-      return;
-    }
-    final requestId = ++_videoRequestId;
-    if (mounted) {
-      setState(() => _isVideoLoading = true);
-    }
-    if (url == _currentVideoUrl && _videoController != null) {
-      final controller = _videoController!;
-      await controller.setVolume(1);
-      await controller.play();
-      if (mounted && requestId == _videoRequestId) {
-        setState(() => _isVideoLoading = false);
-      }
-      return;
-    }
-
-    final previous = _videoController;
-    _videoController = null;
-    _currentVideoUrl = url;
-    await previous?.pause();
-    await previous?.dispose();
-
-    VideoPlayerController? controller;
-    try {
-      // Retries transient load failures (see openVideoWithRetry) so a good
-      // video is not hidden from the feed after one hiccup.
-      final opened = await openVideoWithRetry(url);
-      controller = opened;
-      await opened.setLooping(true);
-      await opened.setVolume(1);
-      opened.addListener(() {
-        if (!mounted || _currentVideoUrl != url || opened != _videoController) {
-          return;
-        }
-        setState(() {});
-      });
-      if (requestId != _videoRequestId || !mounted) {
-        await opened.pause();
-        await opened.dispose();
-        return;
-      }
-      if (mounted) {
-        setState(() {
-          _videoController = controller;
-        });
-      } else {
-        _videoController = controller;
-      }
-      await controller.play();
-    } catch (_) {
-      await controller?.dispose();
-      if (mounted) {
-        setState(() {
-          _currentVideoUrl = '';
-          _isVideoLoading = false;
-        });
-      } else {
-        _currentVideoUrl = '';
-      }
-      return;
-    }
-    if (!mounted) return;
-    setState(() {
-      _isVideoLoading = false;
-    });
-  }
-
-  Future<void> _clearActiveVideo() async {
-    _videoRequestId++;
-    _currentVideoUrl = '';
-    _pendingVideoUrl = null;
-    final controller = _videoController;
-    _videoController = null;
-    try {
-      await controller?.setVolume(0);
-    } catch (_) {}
-    await controller?.pause();
-    await controller?.dispose();
-    if (mounted) {
-      setState(() => _isVideoLoading = false);
-    }
-  }
-
-  void _scheduleActiveVideoSync(_ContestFeedItem item) {
-    if (_feedPlaybackLocked) return;
-    final desiredUrl = item.videoUrl;
-    if (_pendingVideoUrl == desiredUrl) return;
-    _pendingVideoUrl = desiredUrl;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
-      final url = _pendingVideoUrl ?? '';
-      _pendingVideoUrl = null;
-      if (url.isEmpty) {
-        await _clearActiveVideo();
-        return;
-      }
-      if (url == _currentVideoUrl &&
-          _videoController == null &&
-          _isVideoLoading) {
-        return;
-      }
-      if (url == _currentVideoUrl &&
-          _videoController != null &&
-          _videoController!.value.isInitialized) {
-        return;
-      }
-      await _setActiveVideo(url);
-    });
-  }
-
-  Future<void> _togglePlayback() async {
-    final controller = _videoController;
-    if (controller == null || !controller.value.isInitialized) return;
-    if (controller.value.isPlaying) {
-      await controller.pause();
-    } else {
-      await controller.play();
-    }
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _trackContestView(_ContestFeedItem item) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    if (_lastTrackedContestId == item.id) return;
-    _lastTrackedContestId = item.id;
-    try {
-      await AuthService().incrementContestView(item.id);
-    } catch (_) {}
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final stream = FirebaseFirestore.instance
-        .collection('contests')
-        .orderBy('createdAt', descending: true)
-        .snapshots();
-
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: stream,
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final docs = snapshot.data!.docs.where((doc) {
-          final data = doc.data();
-          final contestType = (data['contestType'] ?? 'video_contest')
-              .toString();
-          final status = (data['status'] ?? '').toString();
-          final videoUrl = (data['contestVideoUrl'] ?? '').toString();
-          if (videoUrl.isEmpty) return false;
-          if (contestType == 'sponsor_contest') {
-            return status == 'live';
-          }
-          return true;
-        }).toList();
-
-        if (docs.isEmpty) {
-          return Center(
-            child: Text(
-              context.tr('No contests available right now.'),
-              style: const TextStyle(color: AppColors.textMuted),
-            ),
-          );
-        }
-
-        final items = docs.map(_ContestFeedItem.fromDoc).toList();
-
-        // Order competitions by their start date so the one that starts first
-        // appears first. Still-joinable competitions (not ended) are shown
-        // before ended ones so users can actually find and join active ones.
-        final nowSort = DateTime.now();
-        DateTime? readContestDate(dynamic value) {
-          if (value is Timestamp) return value.toDate();
-          if (value is String) return DateTime.tryParse(value);
-          return null;
-        }
-
-        items.sort((a, b) {
-          final aStart = readContestDate(a.data['submissionStart']);
-          final bStart = readContestDate(b.data['submissionStart']);
-          final aEnd =
-              readContestDate(a.data['votingEnd']) ??
-              readContestDate(a.data['submissionEnd']);
-          final bEnd =
-              readContestDate(b.data['votingEnd']) ??
-              readContestDate(b.data['submissionEnd']);
-          final aEnded = aEnd != null && aEnd.isBefore(nowSort);
-          final bEnded = bEnd != null && bEnd.isBefore(nowSort);
-          if (aEnded != bEnded) return aEnded ? 1 : -1;
-          if (aStart == null && bStart == null) return 0;
-          if (aStart == null) return 1;
-          if (bStart == null) return -1;
-          return aStart.compareTo(bStart);
-        });
-
-        if (!_appliedSharedTarget &&
-            widget.sharedContestId != null &&
-            widget.sharedContestId!.isNotEmpty) {
-          final targetIndex = items.indexWhere(
-            (item) => item.id == widget.sharedContestId,
-          );
-          if (targetIndex >= 0) {
-            _appliedSharedTarget = true;
-            _activeIndex = targetIndex;
-            WidgetsBinding.instance.addPostFrameCallback((_) async {
-              if (!mounted || !_pageController.hasClients) return;
-              _pageController.jumpToPage(targetIndex);
-              if (widget.isVisible) {
-                await _setActiveVideo(items[targetIndex].videoUrl);
-              }
-            });
-          }
-        }
-
-        final safeIndex = _activeIndex.clamp(0, items.length - 1);
-        final activeItem = items[safeIndex];
-        if (widget.isVisible) {
-          _scheduleActiveVideoSync(activeItem);
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _trackContestView(activeItem);
-          });
-        }
-
-        return PageView.builder(
-          scrollDirection: Axis.vertical,
-          controller: _pageController,
-          itemCount: items.length,
-          onPageChanged: (index) async {
-            setState(() => _activeIndex = index);
-            if (!widget.isVisible || _feedPlaybackLocked) return;
-            await _setActiveVideo(items[index].videoUrl);
-          },
-          itemBuilder: (context, index) {
-            final item = items[index];
-            final isActive = index == safeIndex;
-            final isShowingActiveVideo =
-                isActive &&
-                _videoController != null &&
-                _videoController!.value.isInitialized &&
-                _currentVideoUrl == item.videoUrl;
-            final shouldShowLoading =
-                isActive && (_isVideoLoading || !isShowingActiveVideo);
-            final isPlaying =
-                isShowingActiveVideo && _videoController!.value.isPlaying;
-            return _ContestFeedCard(
-              item: item,
-              controller: isShowingActiveVideo ? _videoController : null,
-              isShowingActiveVideo: isShowingActiveVideo,
-              isPlaying: isPlaying,
-              isLoading: shouldShowLoading,
-              onTapVideo: isShowingActiveVideo ? _togglePlayback : null,
-            );
-          },
-        );
-      },
-    );
   }
 }
 
@@ -1603,23 +1237,6 @@ class _ContestFeedItem {
   final String sponsorId;
   final double winnerPrize;
   final Map<String, dynamic> data;
-
-  factory _ContestFeedItem.fromDoc(
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-  ) {
-    final data = doc.data();
-    return _ContestFeedItem(
-      id: doc.id,
-      title: (data['title'] ?? '').toString(),
-      description: (data['description'] ?? '').toString(),
-      videoUrl: (data['contestVideoUrl'] ?? '').toString(),
-      logoUrl: (data['logoUrl'] ?? '').toString(),
-      contestType: (data['contestType'] ?? 'video_contest').toString(),
-      sponsorId: (data['sponsorId'] ?? '').toString(),
-      winnerPrize: ((data['winnerPrize'] ?? 100) as num).toDouble(),
-      data: Map<String, dynamic>.from(data),
-    );
-  }
 }
 
 class _ContestFeedCard extends StatelessWidget {
@@ -2193,25 +1810,6 @@ class _FeedItem {
   bool get hasVideo =>
       isAdminVideo || isContest || isParticipantVideo || isGeneralVideo;
 
-  factory _FeedItem.fromParticipant(
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-  ) {
-    final data = doc.data();
-    return _FeedItem(
-      type: 'participant_video',
-      title: (data['participantName'] ?? data['userName'] ?? 'Participant')
-          .toString(),
-      description: (data['contestTitle'] ?? '').toString(),
-      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime(2000),
-      videoUrl: (data['videoUrl'] ?? '').toString(),
-      contestId: (data['contestId'] ?? '').toString(),
-      submissionId: doc.id,
-      participantUserId: (data['userId'] ?? '').toString(),
-      voteCount: ((data['voteCount'] ?? 0) as num).toInt(),
-      shareCount: ((data['shareCount'] ?? 0) as num).toInt(),
-    );
-  }
-
   factory _FeedItem.fromGeneralVideo(
     QueryDocumentSnapshot<Map<String, dynamic>> doc,
   ) {
@@ -2519,6 +2117,77 @@ class _AdminVideoFeedCard extends StatelessWidget {
 }
 
 /// Centered message with an optional action, for empty / signed-out feeds.
+/// Bell icon with a small unread-count dot, opening the in-app notification
+/// list. Self-contained so it can sit in the feed header without needing
+/// anything from the enclosing state.
+class _NotificationBellButton extends StatelessWidget {
+  const _NotificationBellButton();
+
+  Stream<int> _unreadCountStream() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return Stream<int>.value(0);
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('notifications')
+        .where('read', isEqualTo: false)
+        .snapshots()
+        .map((snap) => snap.size);
+  }
+
+  Future<void> _open(BuildContext context) async {
+    if (FirebaseAuth.instance.currentUser == null) {
+      await _promptLoginDialog(context);
+      return;
+    }
+    await stopAllFeedPlayback();
+    if (!context.mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+    );
+    unlockFeedPlayback();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<int>(
+      stream: _unreadCountStream(),
+      builder: (context, snapshot) {
+        final unread = snapshot.data ?? 0;
+        return IconButton(
+          tooltip: context.tr('Notifications'),
+          onPressed: () => _open(context),
+          icon: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              const Icon(
+                Icons.notifications_outlined,
+                color: Colors.white,
+                size: 26,
+                shadows: [Shadow(blurRadius: 6, color: Colors.black54)],
+              ),
+              if (unread > 0)
+                Positioned(
+                  right: -2,
+                  top: -2,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      color: AppColors.hotPink,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _FeedMessage extends StatelessWidget {
   const _FeedMessage({required this.text, this.actionLabel, this.onAction});
 
@@ -2672,7 +2341,7 @@ class _GeneralVideoFeedCard extends StatelessWidget {
     }
     if (!context.mounted) return;
     await Share.share(
-      '$authorName\nClick Kick\n$link',
+      '${context.tr('Watch my video on Click Kick')}: $authorName\n$link',
       subject: authorName,
       sharePositionOrigin: _shareOriginForContext(context),
     );

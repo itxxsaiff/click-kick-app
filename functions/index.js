@@ -1,9 +1,16 @@
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {onRequest} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
+const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {onObjectFinalized} = require("firebase-functions/v2/storage");
 const admin = require("firebase-admin");
 const Stripe = require("stripe");
 const crypto = require("crypto");
+const path = require("path");
+const os = require("os");
+const fs = require("fs");
+const {execFile} = require("child_process");
+const ffmpegPath = require("ffmpeg-static");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -847,6 +854,85 @@ function shuffle(values) {
 }
 
 /**
+ * Builds the in-app deep-link route for a contest, matching the
+ * `/contest-share` route the app already understands.
+ * @param {string} contestId
+ * @return {string}
+ */
+function contestRoute(contestId) {
+  return `/contest-share?contestId=${contestId}`;
+}
+
+/**
+ * Writes a `users/{uid}/notifications` doc for each user in [userIds]. The
+ * Firestore trigger below turns each one into a real push, so callers never
+ * need to touch FCM directly.
+ * @param {Array<string>} userIds
+ * @param {{title: string, message: string, route: string}} content
+ * @return {Promise<void>}
+ */
+async function notifyUsers(userIds, {title, message, route}) {
+  const uniqueIds = [...new Set(userIds.filter(Boolean))];
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  for (let i = 0; i < uniqueIds.length; i += 400) {
+    const batch = db.batch();
+    for (const uid of uniqueIds.slice(i, i + 400)) {
+      const ref = db
+          .collection("users")
+          .doc(uid)
+          .collection("notifications")
+          .doc();
+      batch.set(ref, {title, message, route, read: false, createdAt: now});
+    }
+    await batch.commit().catch(() => null);
+  }
+}
+
+/**
+ * Ids of the users with an approved entry in a contest (i.e. its
+ * participants), deduplicated.
+ * @param {FirebaseFirestore.DocumentReference} contestRef
+ * @return {Promise<Array<string>>}
+ */
+async function getApprovedParticipantUserIds(contestRef) {
+  const snap = await contestRef
+      .collection("submissions")
+      .where("status", "==", "approved")
+      .get();
+  return [
+    ...new Set(
+        snap.docs.map((doc) => (doc.data().userId || "").toString()),
+    ),
+  ].filter(Boolean);
+}
+
+/**
+ * Notifies a contest's participants once voting opens, at most once per
+ * contest (guarded by `votingStartNotified`).
+ * @param {FirebaseFirestore.QueryDocumentSnapshot<
+ *   FirebaseFirestore.DocumentData
+ * >} contestDoc
+ * @return {Promise<void>}
+ */
+async function notifyVotingStartedForContest(contestDoc) {
+  const data = contestDoc.data() || {};
+  if (data.votingStartNotified === true) return;
+  const votingStart = parseDate(data.votingStart);
+  if (!votingStart || votingStart.getTime() > Date.now()) return;
+
+  const userIds = await getApprovedParticipantUserIds(contestDoc.ref);
+  const title = (data.title || "This contest").toString();
+  await notifyUsers(userIds, {
+    title: "Voting has started!",
+    message: `Voting is now open for "${title}". Go vote for your favorites!`,
+    route: contestRoute(contestDoc.id),
+  });
+  await contestDoc.ref
+      .set({votingStartNotified: true}, {merge: true})
+      .catch(() => null);
+}
+
+/**
  * Selects lucky draw winners for a single contest.
  * @param {FirebaseFirestore.QueryDocumentSnapshot<
  *   FirebaseFirestore.DocumentData
@@ -910,6 +996,14 @@ async function runLuckyDrawForContest(contestDoc) {
   );
 
   await batch.commit();
+
+  const participantIds = await getApprovedParticipantUserIds(contestDoc.ref);
+  await notifyUsers(participantIds, {
+    title: "Results are in!",
+    message: `Voting has ended for "${(data.title || "your contest")
+        .toString()}". Check out the winners.`,
+    route: contestRoute(contestDoc.id),
+  });
 }
 
 /**
@@ -1596,7 +1690,409 @@ exports.runContestLuckyDraws = onSchedule(
     async () => {
       const contestsSnap = await db.collection("contests").get();
       for (const contestDoc of contestsSnap.docs) {
+        await notifyVotingStartedForContest(contestDoc);
         await runLuckyDrawForContest(contestDoc);
       }
     },
 );
+
+/**
+ * Turns every `users/{uid}/notifications` write into a real push. This is
+ * the single place that talks to FCM, so every existing and future writer of
+ * that collection (admin approve/reject, sponsor reports, the functions
+ * above, ...) gets a push for free with no changes on their part.
+ */
+exports.sendUserNotificationPush = onDocumentCreated(
+    "users/{uid}/notifications/{notifId}",
+    async (event) => {
+      const data = event.data && event.data.data();
+      if (!data) return;
+
+      const uid = event.params.uid;
+      const userSnap = await db.collection("users").doc(uid).get();
+      const tokens = (userSnap.data() || {}).fcmTokens;
+      if (!Array.isArray(tokens) || tokens.length === 0) return;
+
+      const title = (data.title || "Click Kick").toString();
+      const body = (data.message || "").toString();
+      // Prefer an explicit route; otherwise infer one the same way existing
+      // writers (which predate this field) already shape their data:
+      // a submissionId alongside a contestId is a contest entry, a bare
+      // submissionId is a general video.
+      let route = (data.route || "").toString();
+      if (!route) {
+        const contestId = (data.contestId || "").toString();
+        const submissionId = (data.submissionId || "").toString();
+        if (contestId && submissionId) {
+          route = `/contest-share?contestId=${contestId}` +
+            `&submissionId=${submissionId}`;
+        } else if (submissionId) {
+          route = `/general-video?videoId=${submissionId}`;
+        }
+      }
+
+      let response;
+      try {
+        response = await admin.messaging().sendEachForMulticast({
+          tokens,
+          notification: {title, body},
+          data: route ? {route} : {},
+        });
+      } catch (error) {
+        console.error("sendUserNotificationPush failed", error);
+        return;
+      }
+
+      const staleTokens = [];
+      response.responses.forEach((r, i) => {
+        const code = r.error && r.error.code;
+        if (
+          code === "messaging/registration-token-not-registered" ||
+        code === "messaging/invalid-argument"
+        ) {
+          staleTokens.push(tokens[i]);
+        }
+      });
+      if (staleTokens.length > 0) {
+        await db
+            .collection("users")
+            .doc(uid)
+            .set(
+                {fcmTokens: admin.firestore.FieldValue.arrayRemove(
+                    ...staleTokens,
+                )},
+                {merge: true},
+            )
+            .catch(() => null);
+      }
+    },
+);
+
+/**
+ * Broadcasts a new contest to every device via FCM topic messaging, so it is
+ * one send regardless of how many users the app has (rather than writing a
+ * notification document per user).
+ */
+exports.notifyNewContest = onDocumentCreated(
+    "contests/{contestId}",
+    async (event) => {
+      const data = event.data && event.data.data();
+      if (!data) return;
+      const title = (data.title || "A new contest").toString();
+      try {
+        await admin.messaging().send({
+          topic: "all_users",
+          notification: {
+            title: "New contest is live!",
+            body: `"${title}" just opened — submit your video now.`,
+          },
+          data: {route: contestRoute(event.params.contestId)},
+        });
+      } catch (error) {
+        console.error("notifyNewContest failed", error);
+      }
+    },
+);
+
+/**
+ * Works out which Firestore doc a video's thumbnail belongs to, from its
+ * Storage path (`general_videos/{uid}/{videoId}.mp4` or
+ * `videos/{uid}/{contestId}/{submissionId}.mp4`) — or null when the upload
+ * is something else entirely (profile photo, invoice PDF, ...).
+ * @param {string} filePath
+ * @return {FirebaseFirestore.DocumentReference|null}
+ */
+function thumbnailTargetDoc(filePath) {
+  const parts = filePath.split("/");
+  if (parts[0] === "general_videos" && parts.length === 3) {
+    const videoId = path.basename(parts[2], path.extname(parts[2]));
+    return db.collection("general_videos").doc(videoId);
+  }
+  if (parts[0] === "videos" && parts.length === 4) {
+    const contestId = parts[2];
+    const submissionId = path.basename(parts[3], path.extname(parts[3]));
+    return db
+        .collection("contests")
+        .doc(contestId)
+        .collection("submissions")
+        .doc(submissionId);
+  }
+  return null;
+}
+
+/**
+ * Extracts a single frame from a video with ffmpeg.
+ * @param {string} inputPath
+ * @param {string} outputPath
+ * @return {Promise<void>}
+ */
+function extractThumbnailFrame(inputPath, outputPath) {
+  return new Promise((resolve, reject) => {
+    execFile(
+        ffmpegPath,
+        [
+          "-y",
+          "-i", inputPath,
+          "-ss", "00:00:01",
+          "-frames:v", "1",
+          "-update", "1",
+          "-vf", "scale=480:-2",
+          outputPath,
+        ],
+        (error) => (error ? reject(error) : resolve()),
+    );
+  });
+}
+
+/**
+ * Generates a thumbnail for every General Video / contest submission upload
+ * (a real preview frame, not a blank placeholder) and saves its URL back to
+ * the matching Firestore doc. Runs on every file upload to the bucket but
+ * exits immediately for anything that isn't one of those two video paths.
+ */
+exports.generateVideoThumbnail = onObjectFinalized(
+    {memory: "512MiB", timeoutSeconds: 120},
+    async (event) => {
+      const object = event.data;
+      const filePath = object.name || "";
+      const contentType = object.contentType || "";
+      if (!contentType.startsWith("video/")) return;
+
+      const docRef = thumbnailTargetDoc(filePath);
+      if (!docRef) return;
+
+      const tmpVideo = path.join(
+          os.tmpdir(),
+          `in-${Date.now()}${path.extname(filePath) || ".mp4"}`,
+      );
+      const tmpThumb = path.join(os.tmpdir(), `out-${Date.now()}.jpg`);
+      const bucket = admin.storage().bucket(object.bucket);
+
+      try {
+        await bucket.file(filePath).download({destination: tmpVideo});
+        await extractThumbnailFrame(tmpVideo, tmpThumb);
+
+        const thumbPath = `${path.dirname(filePath)}/` +
+          `${path.basename(filePath, path.extname(filePath))}_thumb.jpg`;
+        await bucket.upload(tmpThumb, {
+          destination: thumbPath,
+          metadata: {
+            contentType: "image/jpeg",
+            cacheControl: "public, max-age=31536000",
+          },
+        });
+        // The bucket already allows public read of the video at this same
+        // path (see storage.rules), so the thumbnail next to it needs no
+        // signed URL or download token — just the plain public REST URL.
+        const thumbnailUrl =
+          `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/` +
+          `${encodeURIComponent(thumbPath)}?alt=media`;
+        await docRef.set({thumbnailUrl}, {merge: true});
+      } catch (error) {
+        console.error("generateVideoThumbnail failed", filePath, error);
+      } finally {
+        fs.unlink(tmpVideo, () => null);
+        fs.unlink(tmpThumb, () => null);
+      }
+    },
+);
+
+/**
+ * Overlays the Click Kick logo onto a video with ffmpeg, bottom-right corner.
+ * @param {string} inputPath
+ * @param {string} outputPath
+ * @return {Promise<void>}
+ */
+function watermarkVideo(inputPath, outputPath) {
+  return new Promise((resolve, reject) => {
+    execFile(
+        ffmpegPath,
+        [
+          "-y",
+          "-i", inputPath,
+          "-i", path.join(__dirname, "assets", "watermark_logo.png"),
+          "-filter_complex",
+          // Cap the output at 1280px wide: keeps ffmpeg's memory/CPU use
+          // bounded regardless of how large the source upload is (a 4K phone
+          // video was blowing past a 2GB function memory limit on its own),
+          // and nothing on a phone screen needs a bigger download anyway.
+          "[0:v]scale='min(1280,iw)':-2[base];" +
+            "[1:v]scale=iw*0.15:-1[wm];" +
+            "[base][wm]overlay=W-w-16:H-h-16:format=auto",
+          "-c:v", "libx264",
+          "-preset", "veryfast",
+          "-crf", "23",
+          "-c:a", "copy",
+          outputPath,
+        ],
+        (error) => (error ? reject(error) : resolve()),
+    );
+  });
+}
+
+/**
+ * Generates a watermarked copy of every General Video / contest submission
+ * upload (Click Kick logo, bottom-right) and saves its URL back to the
+ * matching Firestore doc as `watermarkedVideoUrl`, so downloads can offer a
+ * branded copy the same way TikTok/Instagram stamp their logo on saves.
+ * Runs on every file upload to the bucket but exits immediately for anything
+ * that isn't one of those two video paths.
+ */
+exports.generateWatermarkedVideo = onObjectFinalized(
+    {memory: "4GiB", cpu: 2, timeoutSeconds: 300},
+    async (event) => {
+      const object = event.data;
+      const filePath = object.name || "";
+      const contentType = object.contentType || "";
+      if (!contentType.startsWith("video/")) return;
+      // Ignore the watermarked copies this function itself uploads, so it
+      // doesn't try to watermark an already-watermarked file forever.
+      if (path.basename(filePath).includes("_watermarked")) return;
+
+      const docRef = thumbnailTargetDoc(filePath);
+      if (!docRef) return;
+
+      const tmpVideo = path.join(
+          os.tmpdir(),
+          `wmin-${Date.now()}${path.extname(filePath) || ".mp4"}`,
+      );
+      const tmpOut = path.join(
+          os.tmpdir(),
+          `wmout-${Date.now()}${path.extname(filePath) || ".mp4"}`,
+      );
+      const bucket = admin.storage().bucket(object.bucket);
+
+      try {
+        await bucket.file(filePath).download({destination: tmpVideo});
+        await watermarkVideo(tmpVideo, tmpOut);
+
+        const watermarkedPath = `${path.dirname(filePath)}/` +
+          `${path.basename(filePath, path.extname(filePath))}` +
+          `_watermarked${path.extname(filePath)}`;
+        await bucket.upload(tmpOut, {
+          destination: watermarkedPath,
+          metadata: {
+            contentType,
+            cacheControl: "public, max-age=31536000",
+          },
+        });
+        // Same public-read Storage rule as the source video covers this path.
+        const watermarkedVideoUrl =
+          `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/` +
+          `${encodeURIComponent(watermarkedPath)}?alt=media`;
+        await docRef.set({watermarkedVideoUrl}, {merge: true});
+      } catch (error) {
+        console.error("generateWatermarkedVideo failed", filePath, error);
+      } finally {
+        fs.unlink(tmpVideo, () => null);
+        fs.unlink(tmpOut, () => null);
+      }
+    },
+);
+
+/**
+ * Extracts the Storage object path from one of this project's own public
+ * download URLs (`.../o/<encoded-path>?alt=media...`).
+ * @param {string} url
+ * @return {string|null}
+ */
+function storagePathFromDownloadUrl(url) {
+  const match = /\/o\/([^?]+)/.exec(url || "");
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+/**
+ * Watermarks one existing video already in Storage and writes the result
+ * back onto its Firestore doc. Used by the one-time admin backfill below.
+ * @param {FirebaseFirestore.DocumentReference} docRef
+ * @param {string} videoUrl
+ * @return {Promise<boolean>} whether a watermark was generated.
+ */
+async function backfillOneWatermark(docRef, videoUrl) {
+  const filePath = storagePathFromDownloadUrl(videoUrl);
+  if (!filePath) return false;
+
+  const bucket = admin.storage().bucket();
+  const tmpVideo = path.join(
+      os.tmpdir(),
+      `bfwmin-${Date.now()}${path.extname(filePath) || ".mp4"}`,
+  );
+  const tmpOut = path.join(
+      os.tmpdir(),
+      `bfwmout-${Date.now()}${path.extname(filePath) || ".mp4"}`,
+  );
+  try {
+    await bucket.file(filePath).download({destination: tmpVideo});
+    await watermarkVideo(tmpVideo, tmpOut);
+
+    const watermarkedPath = `${path.dirname(filePath)}/` +
+      `${path.basename(filePath, path.extname(filePath))}` +
+      `_watermarked${path.extname(filePath)}`;
+    await bucket.upload(tmpOut, {
+      destination: watermarkedPath,
+      metadata: {
+        contentType: "video/mp4",
+        cacheControl: "public, max-age=31536000",
+      },
+    });
+    const watermarkedVideoUrl =
+      `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/` +
+      `${encodeURIComponent(watermarkedPath)}?alt=media`;
+    await docRef.set({watermarkedVideoUrl}, {merge: true});
+    return true;
+  } finally {
+    fs.unlink(tmpVideo, () => null);
+    fs.unlink(tmpOut, () => null);
+  }
+}
+
+/**
+ * One-time admin tool: generates the Click Kick watermark for every existing
+ * General Video / contest submission uploaded *before*
+ * `generateWatermarkedVideo` existed, so old videos get the same logo on
+ * download as new ones. Remove this (and its admin-panel button) once it
+ * has been run against everything.
+ */
+exports.backfillVideoWatermarks = onCall(
+    {memory: "4GiB", cpu: 2, timeoutSeconds: 540},
+    async (request) => {
+      await requireAdminUser(request);
+
+      let processed = 0;
+      let failed = 0;
+
+      // Firestore can't query "field missing" directly, so this (small,
+      // one-time-only) backfill just scans every doc and filters in memory.
+      const generalSnap = await db.collection("general_videos").get();
+      const submissionsSnap = await db.collectionGroup("submissions").get();
+
+      const targets = [
+        ...generalSnap.docs.map((d) => ({ref: d.ref, data: d.data()})),
+        ...submissionsSnap.docs.map((d) => ({ref: d.ref, data: d.data()})),
+      ].filter((t) => {
+        const videoUrl = (t.data.videoUrl || "").toString().trim();
+        const already = (t.data.watermarkedVideoUrl || "").toString().trim();
+        return videoUrl && !already;
+      });
+
+      for (const target of targets) {
+        try {
+          const ok = await backfillOneWatermark(
+              target.ref,
+              (target.data.videoUrl || "").toString(),
+          );
+          if (ok) processed++; else failed++;
+        } catch (error) {
+          console.error("backfillOneWatermark failed", target.ref.path, error);
+          failed++;
+        }
+      }
+
+      return {processed, failed, total: targets.length};
+    },
+);
+
+// The one-time `backfillVideoThumbnails` admin tool (used once to generate
+// thumbnails for videos uploaded before automatic generation existed) has
+// been removed now that every existing video has one — new uploads get a
+// thumbnail automatically via `generateVideoThumbnail` above.

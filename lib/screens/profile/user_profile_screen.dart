@@ -49,6 +49,8 @@ class _CompetitionVideo {
     required this.videoUrl,
     required this.createdAt,
     required this.rejectionReason,
+    this.thumbnailUrl = '',
+    this.watermarkedVideoUrl = '',
   });
 
   final String id;
@@ -60,6 +62,11 @@ class _CompetitionVideo {
   final String videoUrl;
   final DateTime createdAt;
   final String rejectionReason;
+  final String thumbnailUrl;
+  final String watermarkedVideoUrl;
+
+  String get downloadUrl =>
+      watermarkedVideoUrl.isNotEmpty ? watermarkedVideoUrl : videoUrl;
 }
 
 class _ProfileData {
@@ -193,6 +200,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         createdAt:
             (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime(2000),
         rejectionReason: (data['rejectionReason'] ?? '').toString(),
+        thumbnailUrl: (data['thumbnailUrl'] ?? '').toString(),
+        watermarkedVideoUrl: (data['watermarkedVideoUrl'] ?? '').toString(),
       );
     }).toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return _isOwner ? _markWinners(videos) : videos;
@@ -249,6 +258,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 videoUrl: v.videoUrl,
                 createdAt: v.createdAt,
                 rejectionReason: v.rejectionReason,
+                thumbnailUrl: v.thumbnailUrl,
+                watermarkedVideoUrl: v.watermarkedVideoUrl,
               )
             : v,
     ];
@@ -354,7 +365,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           '${GeneralVideoService.shareBaseUrl}/profile?userId=${widget.userId}';
     }
     if (!mounted) return;
-    await Share.share('$name\nClick Kick\n$link', subject: name);
+    await Share.share(
+      '${context.tr('Check out my Click Kick profile')}: $name\n$link',
+      subject: name,
+    );
   }
 
   Future<void> _openSettings() async {
@@ -832,8 +846,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   /// Downloads [videoUrl] to the device (web: opens it for the browser's own
-  /// download; mobile: saves to the gallery). No watermark is added — that is
-  /// a separate, not-yet-built feature.
+  /// download; mobile: saves to the gallery). Callers pass the Click Kick
+  /// watermarked copy when one exists (see `GeneralVideo.downloadUrl` /
+  /// `_CompetitionVideo.downloadUrl`).
   Future<void> _download(String videoUrl, String fileName) async {
     final result = await VideoDownloadService.saveVideo(
       videoUrl: videoUrl,
@@ -855,6 +870,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   ) {
     return _VideoTile(
       views: video.viewCount,
+      thumbnailUrl: video.thumbnailUrl,
       statusBadge: video.isApproved
           ? null
           : _statusBadge(context, video.status),
@@ -874,7 +890,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           if (value == 'delete') {
             _deleteVideo(video);
           } else if (value == 'download') {
-            _download(video.videoUrl, 'clickkick_${video.id}');
+            _download(video.downloadUrl, 'clickkick_${video.id}');
           } else if (value == 'report') {
             showReportVideoDialog(
               context: context,
@@ -906,6 +922,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       title: video.contestTitle,
       note: video.status == 'rejected' ? video.rejectionReason : '',
       votes: video.votes,
+      thumbnailUrl: video.thumbnailUrl,
       onTap: video.videoUrl.isEmpty
           ? null
           : () => Navigator.push(
@@ -923,7 +940,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               padding: EdgeInsets.zero,
               icon: const Icon(Icons.more_vert, color: Colors.white, size: 20),
               onSelected: (_) =>
-                  _download(video.videoUrl, 'clickkick_${video.id}'),
+                  _download(video.downloadUrl, 'clickkick_${video.id}'),
               itemBuilder: (context) => [
                 PopupMenuItem(
                   value: 'download',
@@ -1020,6 +1037,7 @@ class _VideoTile extends StatelessWidget {
     this.votes,
     this.title = '',
     this.note = '',
+    this.thumbnailUrl = '',
     this.statusBadge,
     this.menu,
     this.onTap,
@@ -1029,6 +1047,7 @@ class _VideoTile extends StatelessWidget {
   final int? votes;
   final String title;
   final String note;
+  final String thumbnailUrl;
   final Widget? statusBadge;
   final Widget? menu;
   final VoidCallback? onTap;
@@ -1047,13 +1066,31 @@ class _VideoTile extends StatelessWidget {
             colors: [AppColors.cardSoft, AppColors.card],
           ),
         ),
+        clipBehavior: Clip.antiAlias,
         child: Stack(
+          fit: StackFit.expand,
           children: [
+            if (thumbnailUrl.isNotEmpty)
+              Image.network(
+                thumbnailUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => const SizedBox.shrink(),
+              ),
             const Center(
               child: Icon(
                 Icons.play_circle_fill_rounded,
                 color: AppColors.hotPink,
                 size: 38,
+              ),
+            ),
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.transparent, Color(0xB3100A1E)],
+                  stops: [0.55, 1],
+                ),
               ),
             ),
             if (statusBadge != null)

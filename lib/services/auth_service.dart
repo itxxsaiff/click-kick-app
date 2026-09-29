@@ -445,6 +445,47 @@ class AuthService {
     await _auth.sendPasswordResetEmail(email: normalizedEmail);
   }
 
+  Future<Map<String, dynamic>> sendPasswordResetOtp({
+    required String email,
+  }) async {
+    final callable = FirebaseFunctions.instance.httpsCallable(
+      'sendPasswordResetOtp',
+    );
+    final result = await callable.call<Map<String, dynamic>>({
+      'email': _normalizeEmail(email),
+    });
+    return Map<String, dynamic>.from(result.data);
+  }
+
+  Future<String> verifyPasswordResetOtp({
+    required String email,
+    required String code,
+  }) async {
+    final callable = FirebaseFunctions.instance.httpsCallable(
+      'verifyPasswordResetOtp',
+    );
+    final result = await callable.call<Map<String, dynamic>>({
+      'email': _normalizeEmail(email),
+      'code': code,
+    });
+    return Map<String, dynamic>.from(result.data)['resetToken'].toString();
+  }
+
+  Future<void> resetPasswordWithOtp({
+    required String email,
+    required String resetToken,
+    required String newPassword,
+  }) async {
+    final callable = FirebaseFunctions.instance.httpsCallable(
+      'resetPasswordWithOtp',
+    );
+    await callable.call<Map<String, dynamic>>({
+      'email': _normalizeEmail(email),
+      'resetToken': resetToken,
+      'newPassword': newPassword,
+    });
+  }
+
   Future<void> incrementContestView(String contestId) async {
     final callable = FirebaseFunctions.instance.httpsCallable(
       'incrementContestView',

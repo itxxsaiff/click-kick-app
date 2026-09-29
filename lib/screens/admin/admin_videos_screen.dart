@@ -122,44 +122,43 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
     );
   }
 
-  /// One-time tool: generates the Click Kick watermark for every video
-  /// uploaded before automatic watermarking existed. Remove this button once
-  /// it has been run against everything (same as the earlier thumbnail
-  /// backfill tool).
   Future<void> _backfillWatermarks() async {
     setState(() => _backfillingWatermarks = true);
+    final messenger = ScaffoldMessenger.of(context);
+    var index = 0;
+    var total = 0;
+    var failed = 0;
     try {
-      final result = await FirebaseFunctions.instance
-          .httpsCallable(
-            'backfillVideoWatermarks',
-            options: HttpsCallableOptions(timeout: const Duration(minutes: 9)),
-          )
-          .call();
-      if (!mounted) return;
-      final data = Map<String, dynamic>.from(result.data as Map);
-      ScaffoldMessenger.of(context).showSnackBar(
+      while (true) {
+        final result = await FirebaseFunctions.instance
+            .httpsCallable(
+              'backfillVideoWatermarks',
+              options: HttpsCallableOptions(
+                timeout: const Duration(minutes: 9),
+              ),
+            )
+            .call({'index': index});
+        final data = Map<String, dynamic>.from(result.data as Map);
+        total = (data['total'] as num).toInt();
+        if (data['done'] == true) break;
+        if (data['ok'] != true) failed++;
+        index++;
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
+          SnackBar(content: Text('Watermarks: $index / $total')),
+        );
+      }
+      messenger.showSnackBar(
         SnackBar(
-          content: Text(
-            '${context.tr('Watermarks generated')}: '
-            '${data['processed']} / ${data['total']}'
-            '${(data['failed'] ?? 0) > 0 ? ' (${data['failed']} ${context.tr('failed')})' : ''}',
-          ),
-          behavior: SnackBarBehavior.floating,
+          content: Text('Done: ${total - failed} / $total, failed $failed'),
         ),
       );
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            context.tr('Could not generate watermarks. Please try again.'),
-          ),
-          behavior: SnackBarBehavior.floating,
-        ),
+      messenger.showSnackBar(
+        SnackBar(content: Text('Stopped at video ${index + 1} / $total: $e')),
       );
-    } finally {
-      if (mounted) setState(() => _backfillingWatermarks = false);
     }
+    if (mounted) setState(() => _backfillingWatermarks = false);
   }
 
   @override
@@ -188,29 +187,16 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
         ),
         backgroundColor: AppColors.deepSpace,
         actions: [
-          FutureBuilder<String>(
-            future: _roleFuture,
-            builder: (context, snapshot) {
-              final role = snapshot.data ?? '';
-              if (!const {
-                'admin',
-                'super_admin',
-                'superadmin',
-              }.contains(role)) {
-                return const SizedBox.shrink();
-              }
-              return IconButton(
-                tooltip: context.tr('Generate watermarks for old videos'),
-                onPressed: _backfillingWatermarks ? null : _backfillWatermarks,
-                icon: _backfillingWatermarks
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.branding_watermark_outlined),
-              );
-            },
+          IconButton(
+            tooltip: context.tr('Generate watermarks for old videos'),
+            onPressed: _backfillingWatermarks ? null : _backfillWatermarks,
+            icon: _backfillingWatermarks
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.branding_watermark_outlined),
           ),
         ],
       ),
@@ -1142,8 +1128,14 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                                                   break;
                                                 case 'download':
                                                   if (videoUrl.isNotEmpty) {
+                                                    final watermarked =
+                                                        (data['watermarkedVideoUrl'] ??
+                                                                '')
+                                                            .toString();
                                                     await _downloadVideo(
-                                                      videoUrl,
+                                                      watermarked.isNotEmpty
+                                                          ? watermarked
+                                                          : videoUrl,
                                                       (data['contestTitle'] ??
                                                               data['title'] ??
                                                               data['videoTitle'] ??

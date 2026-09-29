@@ -35,6 +35,7 @@ import '../profile/user_profile_screen.dart';
 import '../user/video_capture_screen.dart';
 import '../../services/general_video_service.dart';
 import '../../services/short_link_service.dart';
+import '../../services/video_download_service.dart';
 
 final Set<Future<void> Function()> _feedStopHandlers =
     <Future<void> Function()>{};
@@ -66,6 +67,24 @@ Rect _shareOriginForContext(BuildContext context) {
   final width = size.width <= 0 ? 1.0 : size.width;
   final height = size.height <= 0 ? 1.0 : size.height;
   return Rect.fromLTWH(offset.dx, offset.dy, width, height);
+}
+
+Future<void> _downloadFeedVideo(
+  BuildContext context, {
+  required String videoUrl,
+  required String fileName,
+}) async {
+  final result = await VideoDownloadService.saveVideo(
+    videoUrl: videoUrl,
+    fileName: fileName,
+  );
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(context.tr(result.messageKey)),
+      behavior: SnackBarBehavior.floating,
+    ),
+  );
 }
 
 class PublicFeedScreen extends StatefulWidget {
@@ -1778,6 +1797,7 @@ class _FeedItem {
     this.generalVideoId = '',
     this.authorId = '',
     this.likeCount = 0,
+    this.watermarkedVideoUrl = '',
   });
 
   final String type;
@@ -1801,6 +1821,10 @@ class _FeedItem {
   final String generalVideoId;
   final String authorId;
   final int likeCount;
+  final String watermarkedVideoUrl;
+
+  String get downloadUrl =>
+      watermarkedVideoUrl.isNotEmpty ? watermarkedVideoUrl : videoUrl;
 
   bool get isNews => type == 'news';
   bool get isAdminVideo => type == 'admin_video';
@@ -1825,6 +1849,7 @@ class _FeedItem {
       viewCount: ((data['viewCount'] ?? 0) as num).toInt(),
       shareCount: ((data['shareCount'] ?? 0) as num).toInt(),
       likeCount: ((data['likeCount'] ?? 0) as num).toInt(),
+      watermarkedVideoUrl: (data['watermarkedVideoUrl'] ?? '').toString(),
     );
   }
 
@@ -1854,6 +1879,7 @@ class _FeedItem {
       displayOrder: (data['displayOrder'] as num?)?.toInt(),
       viewCount: ((data['views'] ?? data['viewCount'] ?? 0) as num).toInt(),
       shareCount: ((data['shareCount'] ?? 0) as num).toInt(),
+      watermarkedVideoUrl: (data['watermarkedVideoUrl'] ?? '').toString(),
     );
   }
 
@@ -2075,6 +2101,16 @@ class _AdminVideoFeedCard extends StatelessWidget {
                       sharePositionOrigin: _shareOriginForContext(context),
                     );
                   },
+                ),
+                const SizedBox(height: 14),
+                _FeedActionButton(
+                  icon: Icons.download_outlined,
+                  label: context.tr('Save'),
+                  onTap: () => _downloadFeedVideo(
+                    context,
+                    videoUrl: item.downloadUrl,
+                    fileName: 'clickkick_${item.adminVideoId}',
+                  ),
                 ),
                 const SizedBox(height: 14),
                 _FeedActionButton(
@@ -2508,6 +2544,17 @@ class _GeneralVideoFeedCard extends StatelessWidget {
                       value: formatCount(item.shareCount),
                       label: context.tr('Share'),
                       onTap: () => _share(context, name),
+                    ),
+                    const SizedBox(height: 18),
+                    _GeneralRailItem(
+                      icon: Icons.download_outlined,
+                      value: '',
+                      label: context.tr('Save'),
+                      onTap: () => _downloadFeedVideo(
+                        context,
+                        videoUrl: item.downloadUrl,
+                        fileName: 'clickkick_${item.generalVideoId}',
+                      ),
                     ),
                     if (!_isOwn)
                       PopupMenuButton<String>(

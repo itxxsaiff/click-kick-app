@@ -194,6 +194,10 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /password_reset_otps/{userId} {
+      allow read, write: if false;
+    }
+
     match /support_threads/{threadId} {
       allow create: if isStaff() || (signedIn() && request.auth.uid == threadId);
       allow read: if isStaff() || (signedIn() && request.auth.uid == threadId);

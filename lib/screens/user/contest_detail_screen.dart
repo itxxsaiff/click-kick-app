@@ -7,6 +7,7 @@ import 'package:video_player/video_player.dart';
 import '../../l10n/l10n.dart';
 import '../../services/auth_service.dart';
 import '../../services/short_link_service.dart';
+import '../../services/video_download_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/gradient_button.dart';
 import '../../widgets/report_video_dialog.dart';
@@ -1477,6 +1478,17 @@ class _ContestVideoPage extends StatelessWidget {
     );
   }
 
+  Future<void> _download(BuildContext context, String downloadUrl) async {
+    final result = await VideoDownloadService.saveVideo(
+      videoUrl: downloadUrl,
+      fileName: 'clickkick_${doc.id}',
+    );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(context.tr(result.messageKey))),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final data = doc.data();
@@ -1486,6 +1498,11 @@ class _ContestVideoPage extends StatelessWidget {
     final votes = ((data['voteCount'] ?? 0) as num).toInt();
     final shares = ((data['shareCount'] ?? 0) as num).toInt();
     final isOwnVideo = userId != null && ownerUserId == userId;
+    final rawVideoUrl = (data['videoUrl'] ?? '').toString();
+    final watermarkedVideoUrl = (data['watermarkedVideoUrl'] ?? '').toString();
+    final downloadUrl = watermarkedVideoUrl.isNotEmpty
+        ? watermarkedVideoUrl
+        : rawVideoUrl;
 
     return GestureDetector(
       onTap: onTapVideo,
@@ -1552,6 +1569,12 @@ class _ContestVideoPage extends StatelessWidget {
                   value: '$shares',
                   label: context.tr('Shares'),
                   onTap: () => _share(context, participantName),
+                ),
+                const SizedBox(height: 18),
+                _ContestVideoAction(
+                  icon: Icons.download_outlined,
+                  label: context.tr('Save'),
+                  onTap: () => _download(context, downloadUrl),
                 ),
                 const SizedBox(height: 18),
                 _ContestVideoAction(

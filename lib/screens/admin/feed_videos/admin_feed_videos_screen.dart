@@ -1042,8 +1042,10 @@ class _ImprovedFeedClipCard extends StatelessWidget {
                     if (value == 'watch' && videoUrl.isNotEmpty) {
                       await onPreview(videoUrl);
                     } else if (value == 'download' && videoUrl.isNotEmpty) {
+                      final watermarked =
+                          (data['watermarkedVideoUrl'] ?? '').toString();
                       await onDownload(
-                        videoUrl,
+                        watermarked.isNotEmpty ? watermarked : videoUrl,
                         caption.isNotEmpty ? caption : adminName,
                       );
                     } else if (value == 'details') {

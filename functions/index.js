@@ -11,6 +11,7 @@ const os = require("os");
 const fs = require("fs");
 const {execFile} = require("child_process");
 const ffmpegPath = require("ffmpeg-static");
+const nodemailer = require("nodemailer");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -20,6 +21,11 @@ const LOGIN_OTP_DIGITS = 6;
 const LOGIN_OTP_EXPIRY_MINUTES = 10;
 const LOGIN_OTP_RESEND_SECONDS = 60;
 const LOGIN_OTP_MAX_ATTEMPTS = 5;
+const RESET_OTP_DIGITS = 6;
+const RESET_OTP_EXPIRY_MINUTES = 10;
+const RESET_OTP_RESEND_SECONDS = 60;
+const RESET_OTP_MAX_ATTEMPTS = 5;
+const RESET_TOKEN_EXPIRY_MINUTES = 10;
 
 /**
  * Creates Stripe client.
@@ -1505,6 +1511,233 @@ exports.verifyLoginOtp = onCall(
     },
 );
 
+/**
+ * Hashes a password-reset OTP code for storage (never store the raw code).
+ * @param {string} uid
+ * @param {string} code
+ * @return {string}
+ */
+function resetOtpHash(uid, code) {
+  return crypto
+      .createHash("sha256")
+      .update(`reset:${uid}:${code}`)
+      .digest("hex");
+}
+
+/**
+ * Sends the password-reset OTP code by email via Gmail SMTP.
+ * @param {{toEmail: string, code: string}} args
+ * @return {Promise<void>}
+ */
+async function sendPasswordResetOtpEmail({toEmail, code}) {
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.GMAIL_USER,
+      pass: process.env.GMAIL_APP_PASSWORD,
+    },
+  });
+  await transporter.sendMail({
+    from: `"Click Kick" <${process.env.GMAIL_USER}>`,
+    to: toEmail,
+    subject: `Your Click Kick password reset code: ${code}`,
+    text: `Your password reset code is ${code}. It expires in ` +
+      `${RESET_OTP_EXPIRY_MINUTES} minutes. If you didn't request this, ` +
+      `you can ignore this email.`,
+    html: `<p>Your Click Kick password reset code is:</p>` +
+      `<p style="font-size:28px;font-weight:700;letter-spacing:4px;">` +
+      `${code}</p>` +
+      `<p>It expires in ${RESET_OTP_EXPIRY_MINUTES} minutes. If you ` +
+      `didn't request this, you can ignore this email.</p>`,
+  });
+}
+
+/**
+ * Step 1 of the in-app forgot-password flow: emails a 6-digit code. Not
+ * authenticated (the caller isn't logged in yet) — rate-limited instead.
+ */
+exports.sendPasswordResetOtp = onCall(
+    {secrets: ["GMAIL_USER", "GMAIL_APP_PASSWORD"]},
+    async (request) => {
+      const email = String((request.data && request.data.email) || "")
+          .trim()
+          .toLowerCase();
+      if (!email || !email.includes("@")) {
+        throw new HttpsError("invalid-argument", "Enter a valid email.");
+      }
+
+      let userRecord;
+      try {
+        userRecord = await admin.auth().getUserByEmail(email);
+      } catch (error) {
+        throw new HttpsError("not-found", "No user found for that email.");
+      }
+      const uid = userRecord.uid;
+
+      const otpRef = db.collection("password_reset_otps").doc(uid);
+      const otpSnap = await otpRef.get();
+      const previous = otpSnap.data() || {};
+      const lastSentAt = parseDate(previous.lastSentAt);
+      if (
+        lastSentAt &&
+      Date.now() - lastSentAt.getTime() < RESET_OTP_RESEND_SECONDS * 1000
+      ) {
+        const waitSeconds = Math.ceil(
+            (RESET_OTP_RESEND_SECONDS * 1000 -
+          (Date.now() - lastSentAt.getTime())) /
+          1000,
+        );
+        throw new HttpsError(
+            "failed-precondition",
+            `Please wait ${waitSeconds}s before requesting another OTP.`,
+        );
+      }
+
+      const min = 10 ** (RESET_OTP_DIGITS - 1);
+      const max = 10 ** RESET_OTP_DIGITS;
+      const code = String(crypto.randomInt(min, max));
+      const now = admin.firestore.Timestamp.now();
+      const expiresAt = admin.firestore.Timestamp.fromMillis(
+          Date.now() + RESET_OTP_EXPIRY_MINUTES * 60 * 1000,
+      );
+
+      await sendPasswordResetOtpEmail({toEmail: email, code});
+
+      await otpRef.set({
+        uid,
+        email,
+        codeHash: resetOtpHash(uid, code),
+        attempts: 0,
+        verifiedAt: null,
+        resetToken: null,
+        resetTokenExpiresAt: null,
+        createdAt: now,
+        lastSentAt: now,
+        expiresAt,
+      });
+
+      return {
+        sent: true,
+        digits: RESET_OTP_DIGITS,
+        resendAfterSeconds: RESET_OTP_RESEND_SECONDS,
+        maskedEmail: email.replace(
+            /^(.{1,2}).*(@.*)$/,
+            (m, a, b) => `${a}***${b}`,
+        ),
+      };
+    },
+);
+
+/**
+ * Step 2: verifies the code and issues a short-lived token authorizing the
+ * password change in step 3 (so step 3 can't be called by skipping step 2).
+ */
+exports.verifyPasswordResetOtp = onCall(async (request) => {
+  const email = String((request.data && request.data.email) || "")
+      .trim()
+      .toLowerCase();
+  const code = String((request.data && request.data.code) || "").trim();
+  if (!/^\d{6}$/.test(code)) {
+    throw new HttpsError("invalid-argument", "Enter the 6 digit code.");
+  }
+
+  let uid;
+  try {
+    uid = (await admin.auth().getUserByEmail(email)).uid;
+  } catch (error) {
+    throw new HttpsError("not-found", "No user found for that email.");
+  }
+
+  const otpRef = db.collection("password_reset_otps").doc(uid);
+  const otpSnap = await otpRef.get();
+  if (!otpSnap.exists) {
+    throw new HttpsError("not-found", "Please request a new code.");
+  }
+
+  const data = otpSnap.data() || {};
+  const expiresAt = parseDate(data.expiresAt);
+  if (!expiresAt || expiresAt.getTime() < Date.now()) {
+    throw new HttpsError("deadline-exceeded", "Code expired.");
+  }
+
+  const attempts = Number(data.attempts || 0);
+  if (attempts >= RESET_OTP_MAX_ATTEMPTS) {
+    throw new HttpsError(
+        "resource-exhausted",
+        "Too many attempts. Please request a new code.",
+    );
+  }
+
+  if (data.codeHash !== resetOtpHash(uid, code)) {
+    await otpRef.set(
+        {attempts: admin.firestore.FieldValue.increment(1)},
+        {merge: true},
+    );
+    throw new HttpsError("permission-denied", "Invalid code.");
+  }
+
+  const resetToken = crypto.randomBytes(24).toString("hex");
+  const resetTokenExpiresAt = admin.firestore.Timestamp.fromMillis(
+      Date.now() + RESET_TOKEN_EXPIRY_MINUTES * 60 * 1000,
+  );
+  await otpRef.set(
+      {
+        verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+        resetToken,
+        resetTokenExpiresAt,
+      },
+      {merge: true},
+  );
+
+  return {verified: true, resetToken};
+});
+
+/**
+ * Step 3: sets the new password, only if a valid, unexpired token from step
+ * 2 is presented.
+ */
+exports.resetPasswordWithOtp = onCall(async (request) => {
+  const email = String((request.data && request.data.email) || "")
+      .trim()
+      .toLowerCase();
+  const resetToken = String((request.data && request.data.resetToken) || "");
+  const newPassword = String((request.data && request.data.newPassword) || "");
+  if (newPassword.length < 6) {
+    throw new HttpsError(
+        "invalid-argument",
+        "Password must be at least 6 characters.",
+    );
+  }
+
+  let uid;
+  try {
+    uid = (await admin.auth().getUserByEmail(email)).uid;
+  } catch (error) {
+    throw new HttpsError("not-found", "No user found for that email.");
+  }
+
+  const otpRef = db.collection("password_reset_otps").doc(uid);
+  const otpSnap = await otpRef.get();
+  const data = otpSnap.data() || {};
+  const tokenExpiresAt = parseDate(data.resetTokenExpiresAt);
+  if (
+    !data.resetToken ||
+    data.resetToken !== resetToken ||
+    !tokenExpiresAt ||
+    tokenExpiresAt.getTime() < Date.now()
+  ) {
+    throw new HttpsError(
+        "permission-denied",
+        "Please verify the code again.",
+    );
+  }
+
+  await admin.auth().updateUser(uid, {password: newPassword});
+  await otpRef.delete();
+
+  return {success: true};
+});
+
 exports.createSponsorshipPaymentIntent = onCall(
     {secrets: ["STRIPE_SECRET"]},
     async (request) => {
@@ -1817,6 +2050,10 @@ function thumbnailTargetDoc(filePath) {
         .collection("submissions")
         .doc(submissionId);
   }
+  if (parts[0] === "admin_videos" && parts.length === 3) {
+    const docId = parts[1];
+    return db.collection("admin_videos").doc(docId);
+  }
   return null;
 }
 
@@ -1918,11 +2155,18 @@ function watermarkVideo(inputPath, outputPath) {
           // and nothing on a phone screen needs a bigger download anyway.
           "[0:v]scale='min(1280,iw)':-2[base];" +
             "[1:v]scale=iw*0.15:-1[wm];" +
-            "[base][wm]overlay=W-w-16:H-h-16:format=auto",
+            "[base][wm]overlay=W-w-16:H-h-16:format=auto,format=yuv420p",
+          // yuv420p + AAC + faststart: anything else (e.g. the 4:4:4 the
+          // overlay produces by default) plays as a black screen in Android
+          // gallery apps.
           "-c:v", "libx264",
+          "-profile:v", "high",
+          "-pix_fmt", "yuv420p",
           "-preset", "veryfast",
           "-crf", "23",
-          "-c:a", "copy",
+          "-c:a", "aac",
+          "-b:a", "128k",
+          "-movflags", "+faststart",
           outputPath,
         ],
         (error) => (error ? reject(error) : resolve()),
@@ -1991,8 +2235,6 @@ exports.generateWatermarkedVideo = onObjectFinalized(
 );
 
 /**
- * Extracts the Storage object path from one of this project's own public
- * download URLs (`.../o/<encoded-path>?alt=media...`).
  * @param {string} url
  * @return {string|null}
  */
@@ -2002,42 +2244,29 @@ function storagePathFromDownloadUrl(url) {
 }
 
 /**
- * Watermarks one existing video already in Storage and writes the result
- * back onto its Firestore doc. Used by the one-time admin backfill below.
  * @param {FirebaseFirestore.DocumentReference} docRef
  * @param {string} videoUrl
- * @return {Promise<boolean>} whether a watermark was generated.
+ * @return {Promise<boolean>}
  */
 async function backfillOneWatermark(docRef, videoUrl) {
   const filePath = storagePathFromDownloadUrl(videoUrl);
   if (!filePath) return false;
-
   const bucket = admin.storage().bucket();
-  const tmpVideo = path.join(
-      os.tmpdir(),
-      `bfwmin-${Date.now()}${path.extname(filePath) || ".mp4"}`,
-  );
-  const tmpOut = path.join(
-      os.tmpdir(),
-      `bfwmout-${Date.now()}${path.extname(filePath) || ".mp4"}`,
-  );
+  const ext = path.extname(filePath) || ".mp4";
+  const tmpVideo = path.join(os.tmpdir(), `bfwmin-${Date.now()}${ext}`);
+  const tmpOut = path.join(os.tmpdir(), `bfwmout-${Date.now()}${ext}`);
   try {
     await bucket.file(filePath).download({destination: tmpVideo});
     await watermarkVideo(tmpVideo, tmpOut);
-
     const watermarkedPath = `${path.dirname(filePath)}/` +
-      `${path.basename(filePath, path.extname(filePath))}` +
-      `_watermarked${path.extname(filePath)}`;
+      `${path.basename(filePath, ext)}_watermarked${ext}`;
     await bucket.upload(tmpOut, {
       destination: watermarkedPath,
-      metadata: {
-        contentType: "video/mp4",
-        cacheControl: "public, max-age=31536000",
-      },
+      metadata: {contentType: "video/mp4", cacheControl: "no-cache"},
     });
     const watermarkedVideoUrl =
       `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/` +
-      `${encodeURIComponent(watermarkedPath)}?alt=media`;
+      `${encodeURIComponent(watermarkedPath)}?alt=media&v=${Date.now()}`;
     await docRef.set({watermarkedVideoUrl}, {merge: true});
     return true;
   } finally {
@@ -2047,50 +2276,45 @@ async function backfillOneWatermark(docRef, videoUrl) {
 }
 
 /**
- * One-time admin tool: generates the Click Kick watermark for every existing
- * General Video / contest submission uploaded *before*
- * `generateWatermarkedVideo` existed, so old videos get the same logo on
- * download as new ones. Remove this (and its admin-panel button) once it
- * has been run against everything.
+ * Temporary: regenerates the watermark for EVERY existing video (overwrites
+ * the earlier broken copies). Remove after one run.
  */
 exports.backfillVideoWatermarks = onCall(
     {memory: "4GiB", cpu: 2, timeoutSeconds: 540},
     async (request) => {
       await requireAdminUser(request);
-
-      let processed = 0;
-      let failed = 0;
-
-      // Firestore can't query "field missing" directly, so this (small,
-      // one-time-only) backfill just scans every doc and filters in memory.
+      const index = Number((request.data || {}).index || 0);
       const generalSnap = await db.collection("general_videos").get();
-      const submissionsSnap = await db.collectionGroup("submissions").get();
-
-      const targets = [
-        ...generalSnap.docs.map((d) => ({ref: d.ref, data: d.data()})),
-        ...submissionsSnap.docs.map((d) => ({ref: d.ref, data: d.data()})),
-      ].filter((t) => {
-        const videoUrl = (t.data.videoUrl || "").toString().trim();
-        const already = (t.data.watermarkedVideoUrl || "").toString().trim();
-        return videoUrl && !already;
-      });
-
-      for (const target of targets) {
-        try {
-          const ok = await backfillOneWatermark(
-              target.ref,
-              (target.data.videoUrl || "").toString(),
-          );
-          if (ok) processed++; else failed++;
-        } catch (error) {
-          console.error("backfillOneWatermark failed", target.ref.path, error);
-          failed++;
-        }
+      const subSnap = await db.collectionGroup("submissions").get();
+      const adminSnap = await db.collection("admin_videos").get();
+      const targets = [...generalSnap.docs, ...subSnap.docs, ...adminSnap.docs]
+          .filter((d) => {
+            const data = d.data();
+            const hasVideo = (data.videoUrl || "").toString().trim();
+            const alreadyDone = (data.watermarkedVideoUrl || "")
+                .toString()
+                .trim();
+            return hasVideo && !alreadyDone;
+          })
+          .sort((x, y) => x.ref.path.localeCompare(y.ref.path));
+      if (index >= targets.length) {
+        return {total: targets.length, index, done: true, ok: true};
       }
-
-      return {processed, failed, total: targets.length};
+      const d = targets[index];
+      let ok = false;
+      try {
+        ok = await backfillOneWatermark(
+            d.ref, (d.data().videoUrl || "").toString());
+      } catch (error) {
+        console.error("backfillOneWatermark failed", d.ref.path, error);
+      }
+      return {total: targets.length, index, done: false, ok};
     },
 );
+
+// The one-time `backfillVideoWatermarks` admin tool (used once to watermark
+// videos uploaded before automatic watermarking existed) has been removed —
+// new uploads are watermarked automatically by `generateWatermarkedVideo`.
 
 // The one-time `backfillVideoThumbnails` admin tool (used once to generate
 // thumbnails for videos uploaded before automatic generation existed) has

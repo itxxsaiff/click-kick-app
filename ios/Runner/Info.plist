@@ -8,12 +8,6 @@
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
 	<string>Click Kick</string>
-	<key>FacebookAppID</key>
-	<string>1016336394254792</string>
-	<key>FacebookClientToken</key>
-	<string>cd765e2e4cf66f2ec1d8b0f8777e2b00</string>
-	<key>FacebookDisplayName</key>
-	<string>Click Kick</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -28,10 +22,6 @@
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
-	<key>CFBundleVersion</key>
-	<string>$(FLUTTER_BUILD_NUMBER)</string>
-	<key>LSRequiresIPhoneOS</key>
-	<true/>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -41,6 +31,16 @@
 			</array>
 		</dict>
 	</array>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>FacebookAppID</key>
+	<string>1016336394254792</string>
+	<key>FacebookClientToken</key>
+	<string>cd765e2e4cf66f2ec1d8b0f8777e2b00</string>
+	<key>FacebookDisplayName</key>
+	<string>Click Kick</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Click Kick needs access to the camera so users can record and upload contest videos.</string>
 	<key>NSMicrophoneUsageDescription</key>
@@ -51,6 +51,10 @@
 	<string>Click Kick needs access to the photo library so users can select and upload contest videos.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

@@ -33,9 +33,11 @@ import '../profile/general_video_player_screen.dart'
     show formatCount, openVideoWithRetry;
 import '../profile/user_profile_screen.dart';
 import '../user/video_capture_screen.dart';
+import '../../services/chat_service.dart';
 import '../../services/general_video_service.dart';
 import '../../services/short_link_service.dart';
 import '../../services/video_download_service.dart';
+import '../chat/inbox_screen.dart';
 
 final Set<Future<void> Function()> _feedStopHandlers =
     <Future<void> Function()>{};
@@ -1091,6 +1093,7 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
           ),
         ),
         const _NotificationBellButton(),
+        const _ChatInboxButton(),
         Expanded(
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1199,23 +1202,46 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
       return aStart.compareTo(bStart);
     });
 
-    // Build the grouped feed: each competition, then its participant videos
-    // directly below it, then the next competition, and so on.
-    // General (non-competition) videos, newest first, hiding blocked users.
-    final generalItems =
-        generalDocs
-            .where((doc) {
-              final data = doc.data();
-              final videoUrl = (data['videoUrl'] ?? '').toString().trim();
-              return videoUrl.isNotEmpty &&
-                  !_blockedUserIds.contains(
-                    (data['userId'] ?? '').toString(),
-                  ) &&
-                  !_failedAdminVideoUrls.contains(videoUrl);
-            })
-            .map(_FeedItem.fromGeneralVideo)
-            .toList()
-          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    // General (non-competition) videos, hiding blocked users. Sorted newest
+    // first within each uploader, then interleaved round-robin across
+    // uploaders (one video per user per pass) so a user who posted many
+    // videos in a row can't dominate a stretch of the feed — otherwise a
+    // prolific uploader's videos would have to be scrolled through in full
+    // before anyone else's showed up, which isn't how a real feed behaves.
+    final generalByUser = <String, List<_FeedItem>>{};
+    for (final doc in generalDocs) {
+      final data = doc.data();
+      final videoUrl = (data['videoUrl'] ?? '').toString().trim();
+      if (videoUrl.isEmpty ||
+          _blockedUserIds.contains((data['userId'] ?? '').toString()) ||
+          _failedAdminVideoUrls.contains(videoUrl)) {
+        continue;
+      }
+      final item = _FeedItem.fromGeneralVideo(doc);
+      (generalByUser[item.authorId] ??= <_FeedItem>[]).add(item);
+    }
+    for (final list in generalByUser.values) {
+      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    }
+    // Users ordered by their own most recent upload, newest first.
+    final userOrder = generalByUser.keys.toList()
+      ..sort(
+        (a, b) => generalByUser[b]!.first.createdAt.compareTo(
+          generalByUser[a]!.first.createdAt,
+        ),
+      );
+    final generalItems = <_FeedItem>[];
+    var anyLeft = true;
+    while (anyLeft) {
+      anyLeft = false;
+      for (final uid in userOrder) {
+        final list = generalByUser[uid]!;
+        if (list.isNotEmpty) {
+          generalItems.add(list.removeAt(0));
+          anyLeft = true;
+        }
+      }
+    }
     var nextGeneral = 0;
 
     final grouped = <_FeedItem>[];
@@ -2156,10 +2182,22 @@ class _AdminVideoFeedCard extends StatelessWidget {
 /// Bell icon with a small unread-count dot, opening the in-app notification
 /// list. Self-contained so it can sit in the feed header without needing
 /// anything from the enclosing state.
-class _NotificationBellButton extends StatelessWidget {
+class _NotificationBellButton extends StatefulWidget {
   const _NotificationBellButton();
 
-  Stream<int> _unreadCountStream() {
+  @override
+  State<_NotificationBellButton> createState() =>
+      _NotificationBellButtonState();
+}
+
+class _NotificationBellButtonState extends State<_NotificationBellButton> {
+  // Created once and reused: a fresh `.snapshots()` stream on every rebuild
+  // (e.g. every page scroll, since this button lives in the same widget
+  // tree as the feed's PageView) means tearing down and re-subscribing a
+  // Firestore listener constantly, which is real, avoidable jank.
+  late final Stream<int> _unreadCountStream = _buildStream();
+
+  Stream<int> _buildStream() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return Stream<int>.value(0);
     return FirebaseFirestore.instance
@@ -2188,7 +2226,7 @@ class _NotificationBellButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<int>(
-      stream: _unreadCountStream(),
+      stream: _unreadCountStream,
       builder: (context, snapshot) {
         final unread = snapshot.data ?? 0;
         return IconButton(
@@ -2201,6 +2239,73 @@ class _NotificationBellButton extends StatelessWidget {
                 Icons.notifications_outlined,
                 color: Colors.white,
                 size: 26,
+                shadows: [Shadow(blurRadius: 6, color: Colors.black54)],
+              ),
+              if (unread > 0)
+                Positioned(
+                  right: -2,
+                  top: -2,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      color: AppColors.hotPink,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Chat bubble icon with an unread-count badge, opening the direct message
+/// inbox. Self-contained, same pattern as [_NotificationBellButton].
+class _ChatInboxButton extends StatefulWidget {
+  const _ChatInboxButton();
+
+  @override
+  State<_ChatInboxButton> createState() => _ChatInboxButtonState();
+}
+
+class _ChatInboxButtonState extends State<_ChatInboxButton> {
+  // See the matching comment on _NotificationBellButtonState: created once
+  // so scrolling the feed doesn't keep re-subscribing this listener.
+  late final Stream<int> _unreadStream = ChatService().totalUnreadStream();
+
+  Future<void> _open(BuildContext context) async {
+    if (FirebaseAuth.instance.currentUser == null) {
+      await _promptLoginDialog(context);
+      return;
+    }
+    await stopAllFeedPlayback();
+    if (!context.mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const InboxScreen()),
+    );
+    unlockFeedPlayback();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<int>(
+      stream: _unreadStream,
+      builder: (context, snapshot) {
+        final unread = snapshot.data ?? 0;
+        return IconButton(
+          tooltip: context.tr('Messages'),
+          onPressed: () => _open(context),
+          icon: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              const Icon(
+                Icons.chat_bubble_outline_rounded,
+                color: Colors.white,
+                size: 24,
                 shadows: [Shadow(blurRadius: 6, color: Colors.black54)],
               ),
               if (unread > 0)

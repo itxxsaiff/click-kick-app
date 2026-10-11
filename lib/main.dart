@@ -16,6 +16,7 @@ import 'screens/auth/auth_action_screen.dart';
 import 'screens/auth/register_screen.dart';
 import 'screens/home/home_router.dart';
 import 'screens/profile/general_video_player_screen.dart';
+import 'screens/chat/chat_screen.dart';
 import 'screens/profile/user_profile_screen.dart';
 import 'screens/public/public_feed_screen.dart';
 import 'screens/shared/notifications_screen.dart';
@@ -194,6 +195,14 @@ class VideoContestApp extends StatelessWidget {
                 if (userId.isNotEmpty) {
                   return MaterialPageRoute(
                     builder: (_) => UserProfileScreen(userId: userId),
+                  );
+                }
+              }
+              if (uri.path == '/chat') {
+                final userId = uri.queryParameters['userId'] ?? '';
+                if (userId.isNotEmpty) {
+                  return MaterialPageRoute(
+                    builder: (_) => ChatRouteLoader(userId: userId),
                   );
                 }
               }

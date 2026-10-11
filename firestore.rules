@@ -29,6 +29,15 @@ service cloud.firestore {
         get(/databases/$(database)/documents/contests/$(contestId)).data.sponsorId == request.auth.uid;
     }
 
+    // Safe, non-sensitive mirror of a user doc (name/photo/country only —
+    // see `syncPublicProfile` in functions/index.js) so profile browsing and
+    // follower lists work signed-out too, without exposing phone/email/role
+    // from the full `users` doc below.
+    match /public_profiles/{userId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     match /users/{userId} {
       allow create: if isOwner(userId) || isStaff();
       allow read: if signedIn();
@@ -155,7 +164,9 @@ service cloud.firestore {
 
     // Follow graph. Doc id is `{followerId}_{followingId}`.
     match /follows/{followId} {
-      allow read: if signedIn();
+      // Just two user ids + a timestamp, no personal data — readable
+      // signed-out so profile/follower browsing works without an account.
+      allow read: if true;
       allow create: if signedIn()
         && request.resource.data.followerId == request.auth.uid
         && request.resource.data.followingId is string
@@ -196,6 +207,39 @@ service cloud.firestore {
 
     match /password_reset_otps/{userId} {
       allow read, write: if false;
+    }
+
+    // 1-on-1 direct messages. chatId is the two participant uids, sorted and
+    // joined with "_", so both sides always resolve the same doc.
+    match /chats/{chatId} {
+      // `resource == null` covers the very first message to someone new:
+      // the client does a get() to check whether the chat doc already
+      // exists before creating it, and `resource.data` on a non-existent
+      // doc throws a rules-evaluation error (treated as permission-denied)
+      // unless the missing case is handled explicitly here.
+      allow read: if signedIn() &&
+        (resource == null || request.auth.uid in resource.data.participants);
+      allow create: if signedIn()
+        && request.auth.uid in request.resource.data.participants
+        && request.resource.data.participants.size() == 2;
+      // Only touching own-read-state / last-message bookkeeping, never
+      // removing the other participant.
+      allow update: if signedIn()
+        && request.auth.uid in resource.data.participants
+        && request.resource.data.participants == resource.data.participants;
+
+      match /messages/{messageId} {
+        allow read: if signedIn()
+          && request.auth.uid in get(
+              /databases/$(database)/documents/chats/$(chatId)
+            ).data.participants;
+        allow create: if signedIn()
+          && request.resource.data.senderId == request.auth.uid
+          && request.auth.uid in get(
+              /databases/$(database)/documents/chats/$(chatId)
+            ).data.participants;
+        allow update, delete: if false;
+      }
     }
 
     match /support_threads/{threadId} {

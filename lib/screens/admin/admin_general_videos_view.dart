@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../l10n/l10n.dart';
 import '../../services/general_video_service.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/block_participant_dialog.dart';
 import '../profile/general_video_player_screen.dart';
 
 /// Moderation list for General Videos, shown inside the admin "Video
@@ -224,15 +225,98 @@ class _GeneralVideoAdminCard extends StatelessWidget {
     await GeneralVideoService().delete(GeneralVideo.fromDoc(doc));
   }
 
+  Future<void> _block(BuildContext context, String name) async {
+    final userId = (doc.data()['userId'] ?? '').toString();
+    if (userId.isEmpty) return;
+    await showBlockParticipantDialog(
+      context: context,
+      blockedUserId: userId,
+      submissionId: doc.id,
+      participantName: name,
+    );
+  }
+
+  void _watch(BuildContext context, String videoUrl, String title) {
+    if (videoUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.tr('Video unavailable.')),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            SimpleVideoPlayerScreen(videoUrl: videoUrl, title: title),
+      ),
+    );
+  }
+
+  Future<void> _showDetails(
+    BuildContext context,
+    String name,
+    String statusLabel,
+    Color statusColor,
+  ) async {
+    final data = doc.data();
+    final caption = (data['caption'] ?? '').toString();
+    final reason = (data['rejectionReason'] ?? '').toString();
+    final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.card,
+        title: Text(name, style: const TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _line(
+              dialogContext.tr('Type'),
+              dialogContext.tr('General'),
+              const Color(0xFF4DA3FF),
+            ),
+            _line(dialogContext.tr('Status'), statusLabel, statusColor),
+            if (createdAt != null)
+              _line(
+                dialogContext.tr('Date'),
+                '${createdAt.year}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')}',
+                AppColors.textMuted,
+              ),
+            if (caption.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(caption, style: const TextStyle(color: AppColors.textMuted)),
+            ],
+            if (reason.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                '${dialogContext.tr('Reason')}: $reason',
+                style: const TextStyle(color: Color(0xFFFF7A93)),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(dialogContext.tr('Close')),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final data = doc.data();
     final status = (data['status'] ?? 'pending').toString();
     final videoUrl = (data['videoUrl'] ?? '').toString();
-    final userName = (data['userName'] ?? '').toString();
-    final caption = (data['caption'] ?? '').toString();
-    final reason = (data['rejectionReason'] ?? '').toString();
-    final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
+    final thumbnailUrl = (data['thumbnailUrl'] ?? '').toString();
+    final storedUserName = (data['userName'] ?? '').toString();
+    final userId = (data['userId'] ?? '').toString();
 
     final (statusColor, statusLabel) = switch (status) {
       'approved' => (const Color(0xFF2DAF6F), context.tr('Approved')),
@@ -241,134 +325,163 @@ class _GeneralVideoAdminCard extends StatelessWidget {
     };
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.border),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              InkWell(
+          InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => _watch(context, videoUrl, storedUserName),
+            child: Container(
+              width: 64,
+              height: 84,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(14),
-                onTap: videoUrl.isEmpty
-                    ? null
-                    : () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => SimpleVideoPlayerScreen(
-                            videoUrl: videoUrl,
-                            title: userName,
-                          ),
-                        ),
+                gradient: thumbnailUrl.isEmpty
+                    ? const LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [AppColors.cardSoft, AppColors.deepSpace],
+                      )
+                    : null,
+              ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (thumbnailUrl.isNotEmpty)
+                    Image.network(
+                      thumbnailUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) =>
+                          const ColoredBox(color: AppColors.cardSoft),
+                    ),
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.35),
+                        ],
                       ),
-                child: Container(
-                  width: 92,
-                  height: 118,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
-                    gradient: const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [AppColors.cardSoft, AppColors.deepSpace],
                     ),
                   ),
-                  child: const Center(
+                  const Center(
                     child: Icon(
                       Icons.play_circle_fill_rounded,
                       color: AppColors.hotPink,
-                      size: 40,
+                      size: 32,
                     ),
                   ),
-                ),
+                ],
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _line(context.tr('User'), userName, Colors.white),
-                    _line(
-                      context.tr('Type'),
-                      context.tr('General'),
-                      const Color(0xFF4DA3FF),
-                    ),
-                    _line(context.tr('Status'), statusLabel, statusColor),
-                    if (createdAt != null)
-                      _line(
-                        context.tr('Date'),
-                        '${createdAt.year}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')}',
-                        AppColors.textMuted,
-                      ),
-                    if (caption.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          caption,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.textMuted,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    if (status == 'rejected' && reason.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          '${context.tr('Reason')}: $reason',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFFFF7A93),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              if (status != 'approved')
-                Expanded(
-                  child: FilledButton(
-                    onPressed: () => _approve(context),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF12B76A),
+          const SizedBox(width: 12),
+          Expanded(
+            child: storedUserName.isNotEmpty
+                ? Text(
+                    storedUserName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
                     ),
-                    child: Text(context.tr('Approve')),
-                  ),
-                ),
-              if (status != 'approved' && status != 'rejected')
-                const SizedBox(width: 10),
-              if (status != 'rejected')
-                Expanded(
-                  child: FilledButton(
-                    onPressed: () => _reject(context),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFFF04466),
+                  )
+                : userId.isNotEmpty
+                ? FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                    future: FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(userId)
+                        .get(),
+                    builder: (context, userSnap) {
+                      final liveName =
+                          (userSnap.data?.data()?['displayName'] ?? '')
+                              .toString();
+                      return Text(
+                        liveName.isNotEmpty
+                            ? liveName
+                            : context.tr('Unknown User'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      );
+                    },
+                  )
+                : Text(
+                    context.tr('Unknown User'),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
                     ),
-                    child: Text(context.tr('Reject')),
                   ),
+          ),
+          PopupMenuButton<String>(
+            color: AppColors.card,
+            icon: const Icon(Icons.more_vert, color: AppColors.textMuted),
+            onSelected: (value) {
+              switch (value) {
+                case 'watch':
+                  _watch(context, videoUrl, storedUserName);
+                  break;
+                case 'details':
+                  _showDetails(
+                    context,
+                    storedUserName,
+                    statusLabel,
+                    statusColor,
+                  );
+                  break;
+                case 'approve':
+                  _approve(context);
+                  break;
+                case 'reject':
+                  _reject(context);
+                  break;
+                case 'block':
+                  _block(context, storedUserName);
+                  break;
+                case 'delete':
+                  _delete(context);
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              if (videoUrl.isNotEmpty)
+                PopupMenuItem(
+                  value: 'watch',
+                  child: Text(context.tr('Watch Video')),
                 ),
-              const SizedBox(width: 6),
-              IconButton(
-                tooltip: context.tr('Delete'),
-                onPressed: () => _delete(context),
-                icon: const Icon(
-                  Icons.delete_outline_rounded,
-                  color: AppColors.textMuted,
-                ),
+              PopupMenuItem(
+                value: 'details',
+                child: Text(context.tr('View Details')),
               ),
+              if (status != 'approved')
+                PopupMenuItem(
+                  value: 'approve',
+                  child: Text(context.tr('Approve')),
+                ),
+              if (status != 'rejected')
+                PopupMenuItem(
+                  value: 'reject',
+                  child: Text(context.tr('Reject')),
+                ),
+              PopupMenuItem(value: 'block', child: Text(context.tr('Block'))),
+              PopupMenuItem(value: 'delete', child: Text(context.tr('Delete'))),
             ],
           ),
         ],

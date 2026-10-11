@@ -1199,5 +1199,21 @@
   "Unable to verify code. Please try again.": "تعذر التحقق من الرمز. يرجى المحاولة مرة أخرى.",
   "Please wait before requesting another code.": "يرجى الانتظار قبل طلب رمز آخر.",
   "Please verify the code again.": "يرجى التحقق من الرمز مرة أخرى.",
-  "Save": "حفظ"
+  "Save": "حفظ",
+  "Video unavailable.": "الفيديو غير متوفر.",
+  "Could not open chat.": "تعذر فتح المحادثة.",
+  "Could not send photo.": "تعذر إرسال الصورة.",
+  "Could not send video.": "تعذر إرسال الفيديو.",
+  "Could not send voice message.": "تعذر إرسال الرسالة الصوتية.",
+  "Message failed to send.": "فشل إرسال الرسالة.",
+  "Message...": "رسالة...",
+  "Messages": "الرسائل",
+  "Microphone permission needed.": "يلزم إذن الميكروفون.",
+  "Photo": "صورة",
+  "Please login to send a message.": "يرجى تسجيل الدخول لإرسال رسالة.",
+  "Say hi 👋": "قل مرحباً 👋",
+  "Voice message": "رسالة صوتية",
+  "Voice messages need the mobile app.": "الرسائل الصوتية تحتاج إلى تطبيق الجوال.",
+  "Message": "رسالة",
+  "Unable to load messages.": "تعذر تحميل الرسائل."
 }

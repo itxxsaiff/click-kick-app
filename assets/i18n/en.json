@@ -1199,5 +1199,21 @@
   "Unable to verify code. Please try again.": "Unable to verify code. Please try again.",
   "Please wait before requesting another code.": "Please wait before requesting another code.",
   "Please verify the code again.": "Please verify the code again.",
-  "Save": "Save"
+  "Save": "Save",
+  "Video unavailable.": "Video unavailable.",
+  "Could not open chat.": "Could not open chat.",
+  "Could not send photo.": "Could not send photo.",
+  "Could not send video.": "Could not send video.",
+  "Could not send voice message.": "Could not send voice message.",
+  "Message failed to send.": "Message failed to send.",
+  "Message...": "Message...",
+  "Messages": "Messages",
+  "Microphone permission needed.": "Microphone permission needed.",
+  "Photo": "Photo",
+  "Please login to send a message.": "Please login to send a message.",
+  "Say hi 👋": "Say hi 👋",
+  "Voice message": "Voice message",
+  "Voice messages need the mobile app.": "Voice messages need the mobile app.",
+  "Message": "Message",
+  "Unable to load messages.": "Unable to load messages."
 }

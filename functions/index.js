@@ -1,7 +1,10 @@
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {onRequest} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
-const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {
+  onDocumentCreated,
+  onDocumentWritten,
+} = require("firebase-functions/v2/firestore");
 const {onObjectFinalized} = require("firebase-functions/v2/storage");
 const admin = require("firebase-admin");
 const Stripe = require("stripe");
@@ -2234,89 +2237,126 @@ exports.generateWatermarkedVideo = onObjectFinalized(
     },
 );
 
-/**
- * @param {string} url
- * @return {string|null}
- */
-function storagePathFromDownloadUrl(url) {
-  const match = /\/o\/([^?]+)/.exec(url || "");
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
-/**
- * @param {FirebaseFirestore.DocumentReference} docRef
- * @param {string} videoUrl
- * @return {Promise<boolean>}
- */
-async function backfillOneWatermark(docRef, videoUrl) {
-  const filePath = storagePathFromDownloadUrl(videoUrl);
-  if (!filePath) return false;
-  const bucket = admin.storage().bucket();
-  const ext = path.extname(filePath) || ".mp4";
-  const tmpVideo = path.join(os.tmpdir(), `bfwmin-${Date.now()}${ext}`);
-  const tmpOut = path.join(os.tmpdir(), `bfwmout-${Date.now()}${ext}`);
-  try {
-    await bucket.file(filePath).download({destination: tmpVideo});
-    await watermarkVideo(tmpVideo, tmpOut);
-    const watermarkedPath = `${path.dirname(filePath)}/` +
-      `${path.basename(filePath, ext)}_watermarked${ext}`;
-    await bucket.upload(tmpOut, {
-      destination: watermarkedPath,
-      metadata: {contentType: "video/mp4", cacheControl: "no-cache"},
-    });
-    const watermarkedVideoUrl =
-      `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/` +
-      `${encodeURIComponent(watermarkedPath)}?alt=media&v=${Date.now()}`;
-    await docRef.set({watermarkedVideoUrl}, {merge: true});
-    return true;
-  } finally {
-    fs.unlink(tmpVideo, () => null);
-    fs.unlink(tmpOut, () => null);
-  }
-}
-
-/**
- * Temporary: regenerates the watermark for EVERY existing video (overwrites
- * the earlier broken copies). Remove after one run.
- */
-exports.backfillVideoWatermarks = onCall(
-    {memory: "4GiB", cpu: 2, timeoutSeconds: 540},
-    async (request) => {
-      await requireAdminUser(request);
-      const index = Number((request.data || {}).index || 0);
-      const generalSnap = await db.collection("general_videos").get();
-      const subSnap = await db.collectionGroup("submissions").get();
-      const adminSnap = await db.collection("admin_videos").get();
-      const targets = [...generalSnap.docs, ...subSnap.docs, ...adminSnap.docs]
-          .filter((d) => {
-            const data = d.data();
-            const hasVideo = (data.videoUrl || "").toString().trim();
-            const alreadyDone = (data.watermarkedVideoUrl || "")
-                .toString()
-                .trim();
-            return hasVideo && !alreadyDone;
-          })
-          .sort((x, y) => x.ref.path.localeCompare(y.ref.path));
-      if (index >= targets.length) {
-        return {total: targets.length, index, done: true, ok: true};
-      }
-      const d = targets[index];
-      let ok = false;
-      try {
-        ok = await backfillOneWatermark(
-            d.ref, (d.data().videoUrl || "").toString());
-      } catch (error) {
-        console.error("backfillOneWatermark failed", d.ref.path, error);
-      }
-      return {total: targets.length, index, done: false, ok};
-    },
-);
-
-// The one-time `backfillVideoWatermarks` admin tool (used once to watermark
-// videos uploaded before automatic watermarking existed) has been removed —
-// new uploads are watermarked automatically by `generateWatermarkedVideo`.
+// The one-time `backfillVideoWatermarks` admin tool (used to watermark
+// videos uploaded before automatic watermarking existed, including a second
+// pass that added admin promotional videos to its coverage) has been
+// removed now that every existing video has been watermarked — new uploads
+// are watermarked automatically by `generateWatermarkedVideo` above.
 
 // The one-time `backfillVideoThumbnails` admin tool (used once to generate
 // thumbnails for videos uploaded before automatic generation existed) has
 // been removed now that every existing video has one — new uploads get a
 // thumbnail automatically via `generateVideoThumbnail` above.
+
+/**
+ * The non-sensitive subset of a user doc that's safe to expose to anyone,
+ * including signed-out visitors (profile browsing, follower lists). Never
+ * includes phone/email/fcmTokens/role/etc.
+ * @param {Object} data
+ * @return {Object}
+ */
+function publicProfileFields(data) {
+  return {
+    displayName: (data.displayName || "").toString(),
+    photoUrl: (data.photoUrl || "").toString(),
+    country: (data.country || "").toString(),
+  };
+}
+
+/**
+ * Keeps `public_profiles/{uid}` (readable by anyone, no sensitive fields) in
+ * sync with `users/{uid}` (login-required read, has phone/email/etc.), so
+ * profile browsing can work signed-out without exposing private data.
+ */
+exports.syncPublicProfile = onDocumentWritten("users/{uid}", async (event) => {
+  const uid = event.params.uid;
+  const after = event.data && event.data.after;
+  if (!after || !after.exists) {
+    await db.collection("public_profiles").doc(uid).delete().catch(() => null);
+    return;
+  }
+  await db
+      .collection("public_profiles")
+      .doc(uid)
+      .set(publicProfileFields(after.data() || {}), {merge: true});
+});
+
+// The one-time `backfillPublicProfiles` admin tool (used once to fill
+// `public_profiles` for every account that existed before `syncPublicProfile`
+// did) has been removed now that every existing account has been synced —
+// new/updated accounts are kept in sync automatically by `syncPublicProfile`
+// above.
+
+/**
+ * One-line preview text for a chat message notification/inbox row.
+ * @param {Object} data
+ * @return {string}
+ */
+function chatMessagePreview(data) {
+  const type = (data.type || "text").toString();
+  if (type === "image") return "📷 Photo";
+  if (type === "video") return "🎬 Video";
+  if (type === "audio") return "🎤 Voice message";
+  return (data.text || "").toString().slice(0, 120);
+}
+
+/**
+ * Updates the chat's last-message bookkeeping and bumps the recipient's
+ * unread count whenever a new message is created, then pushes a
+ * notification through the existing `users/{uid}/notifications` pipeline
+ * (see `sendUserNotificationPush` above).
+ */
+exports.onChatMessageCreated = onDocumentCreated(
+    "chats/{chatId}/messages/{messageId}",
+    async (event) => {
+      const data = event.data && event.data.data();
+      if (!data) return;
+      const chatId = event.params.chatId;
+      const senderId = (data.senderId || "").toString();
+      if (!senderId) return;
+
+      const chatRef = db.collection("chats").doc(chatId);
+      const chatSnap = await chatRef.get();
+      const chatData = chatSnap.data() || {};
+      const participants = Array.isArray(chatData.participants) ?
+        chatData.participants : [];
+      const recipientId = participants.find((id) => id !== senderId);
+      if (!recipientId) return;
+
+      const preview = chatMessagePreview(data);
+      const now = admin.firestore.Timestamp.now();
+      await chatRef.set(
+          {
+            lastMessageText: preview,
+            lastMessageType: (data.type || "text").toString(),
+            lastMessageAt: now,
+            lastSenderId: senderId,
+            [`unreadCounts.${recipientId}`]:
+              admin.firestore.FieldValue.increment(1),
+          },
+          {merge: true},
+      );
+
+      const senderSnap = await db
+          .collection("public_profiles")
+          .doc(senderId)
+          .get();
+      const senderName =
+        (senderSnap.data() || {}).displayName || "Someone";
+
+      await db
+          .collection("users")
+          .doc(recipientId)
+          .collection("notifications")
+          .add({
+            title: senderName,
+            message: preview,
+            route: `/chat?userId=${senderId}`,
+            type: "chat_message",
+            chatId,
+            senderId,
+            createdAt: now,
+            read: false,
+          });
+    },
+);

@@ -15,6 +15,7 @@ import '../../widgets/block_participant_dialog.dart';
 import '../../widgets/follow_widgets.dart';
 import '../../services/video_download_service.dart';
 import '../../widgets/report_video_dialog.dart';
+import '../chat/chat_screen.dart';
 import 'follow_list_screen.dart';
 import 'general_video_player_screen.dart';
 import 'settings_screen.dart';
@@ -111,7 +112,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Future<UserBrief> _loadUser() async {
     try {
       final snap = await FirebaseFirestore.instance
-          .collection('users')
+          .collection('public_profiles')
           .doc(widget.userId)
           .get();
       final brief = UserBrief.fromMap(widget.userId, snap.data());
@@ -392,6 +393,25 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     if (mounted) await _reload();
   }
 
+  Future<void> _openChat(String name, String photoUrl) async {
+    if (FirebaseAuth.instance.currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr('Please login to send a message.'))),
+      );
+      return;
+    }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          otherUserId: widget.userId,
+          otherUserName: name,
+          otherUserPhotoUrl: photoUrl,
+        ),
+      ),
+    );
+  }
+
   Future<void> _deleteVideo(GeneralVideo video) async {
     final failMsg = context.tr('Could not delete the video. Please try again.');
     final confirmed = await showDialog<bool>(
@@ -616,11 +636,30 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           ),
           if (!_isOwner) ...[
             const SizedBox(height: 14),
-            FollowButton(
-              targetUserId: widget.userId,
-              width: double.infinity,
-              height: 42,
-              onChanged: (_) => _reload(),
+            Row(
+              children: [
+                Expanded(
+                  child: FollowButton(
+                    targetUserId: widget.userId,
+                    width: double.infinity,
+                    height: 42,
+                    onChanged: (_) => _reload(),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _openChat(name, data.user.photoUrl),
+                    icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                    label: Text(context.tr('Message')),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: AppColors.border),
+                      minimumSize: const Size.fromHeight(42),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ],

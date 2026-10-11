@@ -13,7 +13,9 @@ import '../../widgets/gradient_button.dart';
 import '../../widgets/report_video_dialog.dart';
 import '../../widgets/block_participant_dialog.dart';
 import '../../widgets/blocked_users_builder.dart';
+import '../../widgets/follow_widgets.dart';
 import '../profile/general_video_player_screen.dart' show openVideoWithRetry;
+import '../profile/user_profile_screen.dart';
 import 'video_upload_screen.dart';
 
 Rect _shareOriginForContext(BuildContext context) {
@@ -1478,6 +1480,24 @@ class _ContestVideoPage extends StatelessWidget {
     );
   }
 
+  Future<void> _openProfile(BuildContext context, String ownerUserId) async {
+    if (ownerUserId.isEmpty) return;
+    final wasPlaying = controller?.value.isPlaying ?? false;
+    try {
+      await controller?.pause();
+    } catch (_) {}
+    if (!context.mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => UserProfileScreen(userId: ownerUserId)),
+    );
+    if (wasPlaying) {
+      try {
+        await controller?.play();
+      } catch (_) {}
+    }
+  }
+
   Future<void> _download(BuildContext context, String downloadUrl) async {
     final result = await VideoDownloadService.saveVideo(
       videoUrl: downloadUrl,
@@ -1627,9 +1647,29 @@ class _ContestVideoPage extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                _ParticipantNameLabel(
-                  ownerUserId: ownerUserId,
-                  cachedName: participantName,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: GestureDetector(
+                        onTap: ownerUserId.isEmpty
+                            ? null
+                            : () => _openProfile(context, ownerUserId),
+                        child: _ParticipantNameLabel(
+                          ownerUserId: ownerUserId,
+                          cachedName: participantName,
+                        ),
+                      ),
+                    ),
+                    if (!isOwnVideo && ownerUserId.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      FollowButton(
+                        targetUserId: ownerUserId,
+                        width: 84,
+                        height: 28,
+                      ),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -1736,7 +1776,7 @@ class _ParticipantNameLabel extends StatelessWidget {
 
     return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       future: FirebaseFirestore.instance
-          .collection('users')
+          .collection('public_profiles')
           .doc(ownerUserId)
           .get(),
       builder: (context, snap) {

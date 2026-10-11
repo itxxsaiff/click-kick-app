@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
@@ -25,7 +24,6 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
   String _sortBy = 'newest';
   // 'competition' (default, the existing list) or 'general'.
   String _videoType = 'competition';
-  bool _backfillingWatermarks = false;
   late final Future<String> _roleFuture = _loadRole();
 
   Future<String> _loadRole() async {
@@ -122,45 +120,6 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
     );
   }
 
-  Future<void> _backfillWatermarks() async {
-    setState(() => _backfillingWatermarks = true);
-    final messenger = ScaffoldMessenger.of(context);
-    var index = 0;
-    var total = 0;
-    var failed = 0;
-    try {
-      while (true) {
-        final result = await FirebaseFunctions.instance
-            .httpsCallable(
-              'backfillVideoWatermarks',
-              options: HttpsCallableOptions(
-                timeout: const Duration(minutes: 9),
-              ),
-            )
-            .call({'index': index});
-        final data = Map<String, dynamic>.from(result.data as Map);
-        total = (data['total'] as num).toInt();
-        if (data['done'] == true) break;
-        if (data['ok'] != true) failed++;
-        index++;
-        messenger.hideCurrentSnackBar();
-        messenger.showSnackBar(
-          SnackBar(content: Text('Watermarks: $index / $total')),
-        );
-      }
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text('Done: ${total - failed} / $total, failed $failed'),
-        ),
-      );
-    } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Stopped at video ${index + 1} / $total: $e')),
-      );
-    }
-    if (mounted) setState(() => _backfillingWatermarks = false);
-  }
-
   @override
   Widget build(BuildContext context) {
     final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
@@ -186,19 +145,6 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
           ],
         ),
         backgroundColor: AppColors.deepSpace,
-        actions: [
-          IconButton(
-            tooltip: context.tr('Generate watermarks for old videos'),
-            onPressed: _backfillingWatermarks ? null : _backfillWatermarks,
-            icon: _backfillingWatermarks
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.branding_watermark_outlined),
-          ),
-        ],
       ),
       body: Stack(
         children: [

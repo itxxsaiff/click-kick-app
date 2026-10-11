@@ -517,6 +517,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                           ),
                                           footer:
                                               '${stats.activeUsers} ${context.tr('active')}',
+                                          onTap: () => Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  const AdminParticipantsScreen(),
+                                            ),
+                                          ),
                                         );
                                       case 1:
                                         return _DashboardStatCard(
@@ -530,6 +537,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                           ),
                                           footer:
                                               '${stats.totalSponsors} ${context.tr('sponsors')}',
+                                          onTap: () => Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  const AdminEmployeesScreen(),
+                                            ),
+                                          ),
                                         );
                                       case 2:
                                         return _DashboardStatCard(
@@ -540,6 +554,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                           hint: context.tr('Created contests'),
                                           footer:
                                               '${stats.activeContests} ${context.tr('live')}',
+                                          onTap: () => Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  const AdminContestsScreen(),
+                                            ),
+                                          ),
                                         );
                                       default:
                                         return _DashboardStatCard(
@@ -550,6 +571,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                           hint: context.tr('Need attention'),
                                           footer:
                                               '\$${stats.revenue.toStringAsFixed(0)} ${context.tr('revenue')}',
+                                          onTap: () => Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  const AdminSupportScreen(),
+                                            ),
+                                          ),
                                         );
                                     }
                                   },
@@ -846,6 +874,7 @@ class _DashboardStatCard extends StatelessWidget {
     required this.label,
     required this.hint,
     this.footer,
+    this.onTap,
   });
 
   final IconData icon;
@@ -854,77 +883,82 @@ class _DashboardStatCard extends StatelessWidget {
   final String label;
   final String hint;
   final String? footer;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.card.withOpacity(0.96),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.start,
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: accent.withOpacity(0.16),
-              borderRadius: BorderRadius.circular(12),
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.card.withOpacity(0.96),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: accent.withOpacity(0.16),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: accent, size: 20),
             ),
-            child: Icon(icon, color: accent, size: 20),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: accent,
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            hint,
-            maxLines: 2,
-            overflow: TextOverflow.fade,
-            style: const TextStyle(
-              color: AppColors.textMuted,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              height: 1.2,
-            ),
-          ),
-          if ((footer ?? '').isNotEmpty) ...[
-            const Spacer(),
+            const SizedBox(height: 10),
             Text(
-              footer!,
+              value,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: accent.withOpacity(0.95),
-                fontSize: 11,
+                color: accent,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
             ),
+            const SizedBox(height: 4),
+            Text(
+              hint,
+              maxLines: 2,
+              overflow: TextOverflow.fade,
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                height: 1.2,
+              ),
+            ),
+            if ((footer ?? '').isNotEmpty) ...[
+              const Spacer(),
+              Text(
+                footer!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: accent.withOpacity(0.95),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

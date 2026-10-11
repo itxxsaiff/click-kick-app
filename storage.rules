@@ -72,6 +72,14 @@ service firebase.storage {
       allow write: if signedIn() && request.auth.uid == userId;
     }
 
+    // Chat photos/videos/voice notes: only the two people in that chat.
+    match /chat_media/{chatId}/{allPaths=**} {
+      allow read, write: if signedIn() && request.auth.uid in
+        firestore.get(
+          /databases/(default)/documents/chats/$(chatId)
+        ).data.participants;
+    }
+
     match /sponsorship/{allPaths=**} {
       allow read, write: if isStaff();
     }

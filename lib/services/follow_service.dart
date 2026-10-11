@@ -108,7 +108,7 @@ class UserDirectory {
     return _cache.putIfAbsent(userId, () async {
       try {
         final snap = await FirebaseFirestore.instance
-            .collection('users')
+            .collection('public_profiles')
             .doc(userId)
             .get();
         return UserBrief.fromMap(userId, snap.data());
@@ -142,7 +142,7 @@ class UserDirectory {
       );
       try {
         final snap = await FirebaseFirestore.instance
-            .collection('users')
+            .collection('public_profiles')
             .where(FieldPath.documentId, whereIn: chunk)
             .get();
         for (final doc in snap.docs) {

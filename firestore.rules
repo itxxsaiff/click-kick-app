@@ -238,7 +238,33 @@ service cloud.firestore {
           && request.auth.uid in get(
               /databases/$(database)/documents/chats/$(chatId)
             ).data.participants;
-        allow update, delete: if false;
+        // Two distinct, narrow update shapes only: a participant marking a
+        // message hidden in their own view ("delete for me"), or the
+        // original sender replacing it with a placeholder for both sides
+        // ("delete for everyone"). The message content itself can never be
+        // altered by either.
+        allow update: if signedIn()
+          && request.auth.uid in get(
+              /databases/$(database)/documents/chats/$(chatId)
+            ).data.participants
+          && request.resource.data.senderId == resource.data.senderId
+          && request.resource.data.type == resource.data.type
+          // .get(key, default) rather than direct field access: a text
+          // message never has `mediaUrl` and a media message never has
+          // `text` (see sendText/sendMedia) — reading an absent field
+          // directly throws and denies the whole write, which is exactly
+          // why delete-for-everyone was failing on every message.
+          && request.resource.data.get('text', null) ==
+            resource.data.get('text', null)
+          && request.resource.data.get('mediaUrl', null) ==
+            resource.data.get('mediaUrl', null)
+          && (
+            (resource.data.senderId == request.auth.uid
+              && request.resource.data.deletedForEveryone == true)
+            || (request.resource.data.deletedFor is list
+              && request.auth.uid in request.resource.data.deletedFor)
+          );
+        allow delete: if false;
       }
     }
 

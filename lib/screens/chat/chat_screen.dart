@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -56,11 +57,21 @@ class _ChatScreenState extends State<ChatScreen> {
   Duration _recordDuration = Duration.zero;
   Timer? _recordTimer;
   String? _playingMessageId;
+  ChatMessage? _replyingTo;
 
   @override
   void initState() {
     super.initState();
     _init();
+  }
+
+  /// `blocked-by-recipient` gets its own clear message everywhere a send
+  /// can fail for that reason; anything else falls back to [fallback].
+  String _errorMessage(Object e, String fallback) {
+    if (e.toString().contains('blocked-by-recipient')) {
+      return context.tr('You can\'t message this user.');
+    }
+    return context.tr(fallback);
   }
 
   Future<void> _init() async {
@@ -72,7 +83,7 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr('Could not open chat.'))),
+        SnackBar(content: Text(_errorMessage(e, 'Could not open chat.'))),
       );
     }
   }
@@ -91,13 +102,15 @@ class _ChatScreenState extends State<ChatScreen> {
     final chatId = _chatId;
     final text = _textController.text.trim();
     if (chatId == null || text.isEmpty) return;
+    final replyTo = _replyingTo;
     _textController.clear();
+    setState(() => _replyingTo = null);
     try {
-      await _service.sendText(chatId, text);
-    } catch (_) {
+      await _service.sendText(chatId, text, replyTo: replyTo);
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.tr('Message failed to send.'))),
+        SnackBar(content: Text(_errorMessage(e, 'Message failed to send.'))),
       );
     }
   }
@@ -110,7 +123,11 @@ class _ChatScreenState extends State<ChatScreen> {
       imageQuality: 85,
     );
     if (picked == null) return;
-    setState(() => _sendingMedia = true);
+    final replyTo = _replyingTo;
+    setState(() {
+      _sendingMedia = true;
+      _replyingTo = null;
+    });
     try {
       if (kIsWeb) {
         final bytes = await picked.readAsBytes();
@@ -119,6 +136,7 @@ class _ChatScreenState extends State<ChatScreen> {
           type: 'image',
           bytes: bytes,
           extension: 'jpg',
+          replyTo: replyTo,
         );
       } else {
         await _service.sendMedia(
@@ -126,12 +144,13 @@ class _ChatScreenState extends State<ChatScreen> {
           type: 'image',
           file: File(picked.path),
           extension: 'jpg',
+          replyTo: replyTo,
         );
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr('Could not send photo.'))),
+          SnackBar(content: Text(_errorMessage(e, 'Could not send photo.'))),
         );
       }
     }
@@ -143,7 +162,11 @@ class _ChatScreenState extends State<ChatScreen> {
     if (chatId == null) return;
     final picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
     if (picked == null) return;
-    setState(() => _sendingMedia = true);
+    final replyTo = _replyingTo;
+    setState(() {
+      _sendingMedia = true;
+      _replyingTo = null;
+    });
     try {
       if (kIsWeb) {
         final bytes = await picked.readAsBytes();
@@ -152,6 +175,7 @@ class _ChatScreenState extends State<ChatScreen> {
           type: 'video',
           bytes: bytes,
           extension: 'mp4',
+          replyTo: replyTo,
         );
       } else {
         await _service.sendMedia(
@@ -159,12 +183,13 @@ class _ChatScreenState extends State<ChatScreen> {
           type: 'video',
           file: File(picked.path),
           extension: 'mp4',
+          replyTo: replyTo,
         );
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr('Could not send video.'))),
+          SnackBar(content: Text(_errorMessage(e, 'Could not send video.'))),
         );
       }
     }
@@ -219,7 +244,11 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!send || path == null) return;
     final chatId = _chatId;
     if (chatId == null) return;
-    setState(() => _sendingMedia = true);
+    final replyTo = _replyingTo;
+    setState(() {
+      _sendingMedia = true;
+      _replyingTo = null;
+    });
     try {
       await _service.sendMedia(
         chatId,
@@ -227,11 +256,14 @@ class _ChatScreenState extends State<ChatScreen> {
         file: File(path),
         extension: 'm4a',
         durationMs: duration.inMilliseconds,
+        replyTo: replyTo,
       );
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr('Could not send voice message.'))),
+          SnackBar(
+            content: Text(_errorMessage(e, 'Could not send voice message.')),
+          ),
         );
       }
     }
@@ -255,6 +287,128 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     } catch (_) {
       if (mounted) setState(() => _playingMessageId = null);
+    }
+  }
+
+  Future<void> _showMessageActions(ChatMessage message) async {
+    final chatId = _chatId;
+    if (chatId == null) return;
+    final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final isMine = message.senderId == myUid;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.card,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.reply_rounded, color: Colors.white),
+              title: Text(
+                sheetContext.tr('Reply'),
+                style: const TextStyle(color: Colors.white),
+              ),
+              onTap: () => Navigator.pop(sheetContext, 'reply'),
+            ),
+            if (message.type == 'text')
+              ListTile(
+                leading: const Icon(Icons.copy_rounded, color: Colors.white),
+                title: Text(
+                  sheetContext.tr('Copy'),
+                  style: const TextStyle(color: Colors.white),
+                ),
+                onTap: () => Navigator.pop(sheetContext, 'copy'),
+              ),
+            ListTile(
+              leading: const Icon(Icons.forward_rounded, color: Colors.white),
+              title: Text(
+                sheetContext.tr('Forward'),
+                style: const TextStyle(color: Colors.white),
+              ),
+              onTap: () => Navigator.pop(sheetContext, 'forward'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.white),
+              title: Text(
+                sheetContext.tr('Delete for me'),
+                style: const TextStyle(color: Colors.white),
+              ),
+              onTap: () => Navigator.pop(sheetContext, 'delete_me'),
+            ),
+            if (isMine)
+              ListTile(
+                leading: const Icon(
+                  Icons.delete_forever,
+                  color: Colors.redAccent,
+                ),
+                title: Text(
+                  sheetContext.tr('Delete for everyone'),
+                  style: const TextStyle(color: Colors.redAccent),
+                ),
+                onTap: () => Navigator.pop(sheetContext, 'delete_everyone'),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'reply':
+        setState(() => _replyingTo = message);
+        break;
+      case 'copy':
+        await Clipboard.setData(ClipboardData(text: message.text));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.tr('Copied to clipboard.'))),
+          );
+        }
+        break;
+      case 'forward':
+        await _forwardMessage(message);
+        break;
+      case 'delete_me':
+        try {
+          await _service.deleteForMe(chatId, message.id);
+        } catch (_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(context.tr('Could not delete message.'))),
+            );
+          }
+        }
+        break;
+      case 'delete_everyone':
+        try {
+          await _service.deleteForEveryone(chatId, message.id);
+        } catch (_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(context.tr('Could not delete message.'))),
+            );
+          }
+        }
+        break;
+    }
+  }
+
+  Future<void> _forwardMessage(ChatMessage message) async {
+    final targetChatId = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const _ForwardPickerScreen()),
+    );
+    if (targetChatId == null || !mounted) return;
+    try {
+      await _service.forwardMessage(targetChatId, message);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(context.tr('Message forwarded.'))));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_errorMessage(e, 'Could not forward message.'))),
+      );
     }
   }
 
@@ -286,8 +440,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                 ),
                               );
                             }
-                            final messages =
-                                snapshot.data ?? const <ChatMessage>[];
+                            final messages = (snapshot.data ?? const [])
+                                .where((m) => !m.deletedFor.contains(myUid))
+                                .toList();
                             if (!snapshot.hasData) {
                               return const Center(
                                 child: CircularProgressIndicator(),
@@ -316,6 +471,8 @@ class _ChatScreenState extends State<ChatScreen> {
                               itemBuilder: (context, i) => _MessageBubble(
                                 message: messages[i],
                                 isMine: messages[i].senderId == myUid,
+                                myUid: myUid,
+                                otherUserName: widget.otherUserName,
                                 isPlayingAudio:
                                     _playingMessageId == messages[i].id,
                                 onToggleAudio: () =>
@@ -334,6 +491,8 @@ class _ChatScreenState extends State<ChatScreen> {
                                         SimpleVideoPlayerScreen(videoUrl: url),
                                   ),
                                 ),
+                                onShowActions: () =>
+                                    _showMessageActions(messages[i]),
                               ),
                             );
                           },
@@ -344,6 +503,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     padding: EdgeInsets.only(bottom: 6),
                     child: LinearProgressIndicator(minHeight: 2),
                   ),
+                if (_replyingTo != null) _buildReplyPreview(context),
                 _buildInputBar(context),
                 if (_showEmoji)
                   SizedBox(
@@ -398,6 +558,62 @@ class _ChatScreenState extends State<ChatScreen> {
                 ],
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReplyPreview(BuildContext context) {
+    final replying = _replyingTo!;
+    final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final senderLabel = replying.senderId == myUid
+        ? context.tr('You')
+        : widget.otherUserName;
+    final preview = switch (replying.type) {
+      'image' => '📷 ${context.tr('Photo')}',
+      'video' => '🎬 ${context.tr('Video')}',
+      'audio' => '🎤 ${context.tr('Voice message')}',
+      _ => replying.text,
+    };
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(14),
+        border: const Border(
+          left: BorderSide(color: AppColors.hotPink, width: 3),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  senderLabel,
+                  style: const TextStyle(
+                    color: AppColors.hotPink,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+                Text(
+                  preview,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: AppColors.textMuted),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            onPressed: () => setState(() => _replyingTo = null),
+            icon: const Icon(Icons.close, size: 18, color: AppColors.textMuted),
           ),
         ],
       ),
@@ -511,7 +727,15 @@ class _ChatScreenState extends State<ChatScreen> {
                 decoration: InputDecoration(
                   hintText: context.tr('Message...'),
                   hintStyle: const TextStyle(color: AppColors.textMuted),
+                  // The app's global input theme fills every TextField and
+                  // outlines it by default; without overriding all three of
+                  // these (not just `border`) that theme shows through
+                  // *inside* this pill container, looking like a box nested
+                  // inside another box.
+                  filled: false,
                   border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
                   isCollapsed: true,
                   contentPadding: const EdgeInsets.symmetric(vertical: 12),
                 ),
@@ -549,6 +773,9 @@ class _MessageBubble extends StatelessWidget {
     required this.onToggleAudio,
     required this.onOpenImage,
     required this.onOpenVideo,
+    required this.onShowActions,
+    required this.otherUserName,
+    required this.myUid,
   });
 
   final ChatMessage message;
@@ -557,6 +784,9 @@ class _MessageBubble extends StatelessWidget {
   final VoidCallback onToggleAudio;
   final ValueChanged<String> onOpenImage;
   final ValueChanged<String> onOpenVideo;
+  final VoidCallback onShowActions;
+  final String otherUserName;
+  final String myUid;
 
   String _formatTime(DateTime? dt) {
     if (dt == null) return '';
@@ -568,14 +798,29 @@ class _MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bubbleColor = isMine ? AppColors.hotPink : AppColors.card;
-    return Align(
-      alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+    // A visible "..." button next to the bubble, not just long-press: on
+    // web, long-press means click-and-hold the mouse for ~500ms without
+    // moving, which almost nobody discovers on their own.
+    final moreButton = message.deletedForEveryone
+        ? null
+        : IconButton(
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            onPressed: onShowActions,
+            icon: Icon(
+              Icons.more_vert,
+              size: 18,
+              color: AppColors.textMuted.withValues(alpha: 0.9),
+            ),
+          );
+    final bubble = GestureDetector(
+      onLongPress: message.deletedForEveryone ? null : onShowActions,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.72,
+          maxWidth: MediaQuery.of(context).size.width * 0.6,
         ),
-        padding: message.type == 'text'
+        padding: message.type == 'text' || message.deletedForEveryone
             ? const EdgeInsets.symmetric(horizontal: 14, vertical: 10)
             : const EdgeInsets.all(6),
         decoration: BoxDecoration(
@@ -591,6 +836,7 @@ class _MessageBubble extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.end,
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (message.isReply) _buildReplyQuote(context),
             _buildContent(context),
             const SizedBox(height: 2),
             Text(
@@ -604,9 +850,75 @@ class _MessageBubble extends StatelessWidget {
         ),
       ),
     );
+
+    return Row(
+      mainAxisAlignment: isMine
+          ? MainAxisAlignment.end
+          : MainAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: isMine ? [?moreButton, bubble] : [bubble, ?moreButton],
+    );
+  }
+
+  Widget _buildReplyQuote(BuildContext context) {
+    final senderLabel = message.replyToSenderId == myUid
+        ? context.tr('You')
+        : otherUserName;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(10),
+        border: const Border(left: BorderSide(color: Colors.white, width: 2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            senderLabel,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+          Text(
+            message.replyToText,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.85),
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildContent(BuildContext context) {
+    if (message.deletedForEveryone) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.block,
+            size: 15,
+            color: Colors.white.withValues(alpha: 0.7),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            context.tr('This message was deleted'),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.7),
+              fontStyle: FontStyle.italic,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      );
+    }
     switch (message.type) {
       case 'image':
         return GestureDetector(
@@ -726,6 +1038,101 @@ class ChatRouteLoader extends StatelessWidget {
           otherUserPhotoUrl: user.photoUrl,
         );
       },
+    );
+  }
+}
+
+/// Pick one of the current user's existing conversations to forward a
+/// message into. Pops with the chosen chat id, or null if cancelled.
+class _ForwardPickerScreen extends StatelessWidget {
+  const _ForwardPickerScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    final service = ChatService();
+    return Scaffold(
+      body: Stack(
+        children: [
+          const AppBackground(),
+          SafeArea(
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 8, 12, 4),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close, color: Colors.white),
+                      ),
+                      Text(
+                        context.tr('Forward to...'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: StreamBuilder<List<ChatSummary>>(
+                    stream: service.chatsStream(),
+                    builder: (context, snapshot) {
+                      final chats = snapshot.data ?? const <ChatSummary>[];
+                      if (chats.isEmpty) {
+                        return Center(
+                          child: Text(
+                            context.tr('No messages yet.'),
+                            style: const TextStyle(color: AppColors.textMuted),
+                          ),
+                        );
+                      }
+                      return ListView.builder(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 4,
+                        ),
+                        itemCount: chats.length,
+                        itemBuilder: (context, i) {
+                          final chat = chats[i];
+                          if (chat.otherUserId.isEmpty) {
+                            return const SizedBox.shrink();
+                          }
+                          return FutureBuilder<UserBrief>(
+                            future: UserDirectory.get(chat.otherUserId),
+                            builder: (context, userSnap) {
+                              final user =
+                                  userSnap.data ??
+                                  UserBrief.empty(chat.otherUserId);
+                              final name = user.name.isNotEmpty
+                                  ? user.name
+                                  : context.tr('Unknown User');
+                              return ListTile(
+                                leading: UserAvatar(
+                                  photoUrl: user.photoUrl,
+                                  size: 44,
+                                ),
+                                title: Text(
+                                  name,
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                                onTap: () =>
+                                    Navigator.pop(context, chat.chatId),
+                              );
+                            },
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

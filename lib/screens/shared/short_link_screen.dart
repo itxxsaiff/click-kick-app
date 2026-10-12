@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../l10n/l10n.dart';
 import '../../services/short_link_service.dart';
-import '../profile/general_video_player_screen.dart';
 import '../profile/user_profile_screen.dart';
 import '../public/public_feed_screen.dart';
 
@@ -42,7 +41,10 @@ class ShortLinkScreen extends StatelessWidget {
           case 'general_video':
             final videoId = params['videoId'] ?? '';
             if (videoId.isEmpty) break;
-            return GeneralVideoLinkScreen(videoId: videoId);
+            return PublicFeedScreen(
+              initialTabIndex: 0,
+              sharedGeneralVideoId: videoId,
+            );
           case 'feed_video':
             final videoId = params['videoId'] ?? '';
             if (videoId.isEmpty) break;

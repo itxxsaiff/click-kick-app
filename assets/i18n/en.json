@@ -1215,5 +1215,20 @@
   "Voice message": "Voice message",
   "Voice messages need the mobile app.": "Voice messages need the mobile app.",
   "Message": "Message",
-  "Unable to load messages.": "Unable to load messages."
+  "Unable to load messages.": "Unable to load messages.",
+  "You can't message this user.": "You can't message this user.",
+  "Forward": "Forward",
+  "Delete for me": "Delete for me",
+  "Delete for everyone": "Delete for everyone",
+  "This message was deleted": "This message was deleted",
+  "Could not delete message.": "Could not delete message.",
+  "Forward to...": "Forward to...",
+  "Message forwarded.": "Message forwarded.",
+  "Could not forward message.": "Could not forward message.",
+  "Clear all": "Clear all",
+  "Clear all notifications?": "Clear all notifications?",
+  "Reply": "Reply",
+  "Copy": "Copy",
+  "Copied to clipboard.": "Copied to clipboard.",
+  "You": "You"
 }

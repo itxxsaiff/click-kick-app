@@ -447,38 +447,6 @@ class _Metric extends StatelessWidget {
   }
 }
 
-/// Opened from a shared link (`/general-video?videoId=...`): loads the video
-/// and shows it in the player.
-class GeneralVideoLinkScreen extends StatelessWidget {
-  const GeneralVideoLinkScreen({super.key, required this.videoId});
-
-  final String videoId;
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<GeneralVideo?>(
-      future: GeneralVideoService().loadById(videoId).catchError((_) => null),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-        final video = snapshot.data;
-        if (video == null) {
-          return Scaffold(
-            appBar: AppBar(),
-            body: Center(
-              child: Text(context.tr('This video is not available.')),
-            ),
-          );
-        }
-        return GeneralVideoPlayerScreen(video: video);
-      },
-    );
-  }
-}
-
 /// Minimal full-screen player (used for competition entries on a profile).
 class SimpleVideoPlayerScreen extends StatefulWidget {
   const SimpleVideoPlayerScreen({

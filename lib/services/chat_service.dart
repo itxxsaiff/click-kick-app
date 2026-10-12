@@ -16,16 +16,39 @@ class ChatMessage {
     required this.mediaUrl,
     required this.durationMs,
     required this.createdAt,
+    this.deletedFor = const [],
+    this.deletedForEveryone = false,
+    this.replyToId = '',
+    this.replyToSenderId = '',
+    this.replyToType = '',
+    this.replyToText = '',
   });
 
   final String id;
   final String senderId;
+
   /// 'text' | 'image' | 'video' | 'audio'.
   final String type;
   final String text;
   final String mediaUrl;
   final int durationMs;
   final DateTime? createdAt;
+
+  /// Uids who chose "delete for me" — hidden only in their own view.
+  final List<String> deletedFor;
+
+  /// The sender chose "delete for everyone" — shown as a placeholder to
+  /// both sides instead of the real content.
+  final bool deletedForEveryone;
+
+  /// A quoted-reply preview, denormalized onto the reply itself so showing
+  /// it never needs a second read. Empty `replyToId` means not a reply.
+  final String replyToId;
+  final String replyToSenderId;
+  final String replyToType;
+  final String replyToText;
+
+  bool get isReply => replyToId.isNotEmpty;
 
   factory ChatMessage.fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();
@@ -37,6 +60,14 @@ class ChatMessage {
       mediaUrl: (data['mediaUrl'] ?? '').toString(),
       durationMs: ((data['durationMs'] ?? 0) as num).toInt(),
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
+      replyToId: (data['replyToId'] ?? '').toString(),
+      replyToSenderId: (data['replyToSenderId'] ?? '').toString(),
+      replyToType: (data['replyToType'] ?? '').toString(),
+      replyToText: (data['replyToText'] ?? '').toString(),
+      deletedFor: (data['deletedFor'] as List? ?? const [])
+          .map((e) => e.toString())
+          .toList(),
+      deletedForEveryone: data['deletedForEveryone'] == true,
     );
   }
 }
@@ -111,12 +142,27 @@ class ChatService {
   CollectionReference<Map<String, dynamic>> get _chats =>
       _firestore.collection('chats');
 
-  /// Throws `login-required` when signed out, `cannot-chat-self`.
+  /// Whether [otherUserId] has blocked the current user (so they shouldn't
+  /// be able to message them). Same `users/{uid}.blockedUserIds` list the
+  /// rest of the app already uses for blocking video content.
+  Future<bool> _blockedByRecipient(String otherUserId) async {
+    final me = currentUserId;
+    if (me == null) return false;
+    final snap = await _firestore.collection('users').doc(otherUserId).get();
+    final blocked = (snap.data()?['blockedUserIds'] as List?) ?? const [];
+    return blocked.map((e) => e.toString()).contains(me);
+  }
+
+  /// Throws `login-required` when signed out, `cannot-chat-self`, or
+  /// `blocked-by-recipient` when the other user has blocked this account.
   Future<String> getOrCreateChat(String otherUserId) async {
     final me = currentUserId;
     if (me == null) throw Exception('login-required');
     if (otherUserId.isEmpty || otherUserId == me) {
       throw Exception('cannot-chat-self');
+    }
+    if (await _blockedByRecipient(otherUserId)) {
+      throw Exception('blocked-by-recipient');
     }
     final chatId = chatIdFor(me, otherUserId);
     final ref = _chats.doc(chatId);
@@ -145,8 +191,7 @@ class ChatService {
         .orderBy('lastMessageAt', descending: true)
         .snapshots()
         .map(
-          (snap) =>
-              snap.docs.map((d) => ChatSummary.fromDoc(d, me)).toList(),
+          (snap) => snap.docs.map((d) => ChatSummary.fromDoc(d, me)).toList(),
         );
   }
 
@@ -168,16 +213,53 @@ class ChatService {
         .map((snap) => snap.docs.map(ChatMessage.fromDoc).toList());
   }
 
-  Future<void> sendText(String chatId, String text) async {
+  /// The other participant in [chatId], or null if the chat doc is missing.
+  Future<String?> _otherParticipant(String chatId) async {
+    final me = currentUserId;
+    if (me == null) return null;
+    final snap = await _chats.doc(chatId).get();
+    final participants = (snap.data()?['participants'] as List? ?? const [])
+        .map((e) => e.toString());
+    return participants.firstWhere((id) => id != me, orElse: () => '');
+  }
+
+  /// Denormalized quoted-reply fields for a new message, or `{}` when not
+  /// replying to anything.
+  Map<String, dynamic> _replyFields(ChatMessage? replyTo) {
+    if (replyTo == null) return const {};
+    final preview = switch (replyTo.type) {
+      'image' => '📷 Photo',
+      'video' => '🎬 Video',
+      'audio' => '🎤 Voice message',
+      _ => replyTo.text,
+    };
+    return {
+      'replyToId': replyTo.id,
+      'replyToSenderId': replyTo.senderId,
+      'replyToType': replyTo.type,
+      'replyToText': preview,
+    };
+  }
+
+  Future<void> sendText(
+    String chatId,
+    String text, {
+    ChatMessage? replyTo,
+  }) async {
     final me = currentUserId;
     if (me == null) throw Exception('login-required');
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
+    final other = await _otherParticipant(chatId);
+    if (other != null && other.isNotEmpty && await _blockedByRecipient(other)) {
+      throw Exception('blocked-by-recipient');
+    }
     await _chats.doc(chatId).collection('messages').add({
       'senderId': me,
       'type': 'text',
       'text': trimmed,
       'createdAt': FieldValue.serverTimestamp(),
+      ..._replyFields(replyTo),
     });
   }
 
@@ -191,9 +273,14 @@ class ChatService {
     Uint8List? bytes,
     required String extension,
     int durationMs = 0,
+    ChatMessage? replyTo,
   }) async {
     final me = currentUserId;
     if (me == null) throw Exception('login-required');
+    final other = await _otherParticipant(chatId);
+    if (other != null && other.isNotEmpty && await _blockedByRecipient(other)) {
+      throw Exception('blocked-by-recipient');
+    }
     final path =
         'chat_media/$chatId/${DateTime.now().millisecondsSinceEpoch}.$extension';
     final ref = _storage.ref().child(path);
@@ -219,6 +306,7 @@ class ChatService {
       'mediaUrl': url,
       if (durationMs > 0) 'durationMs': durationMs,
       'createdAt': FieldValue.serverTimestamp(),
+      ..._replyFields(replyTo),
     });
   }
 
@@ -230,5 +318,45 @@ class ChatService {
     await _chats.doc(chatId).set({
       'unreadCounts': {me: 0},
     }, SetOptions(merge: true));
+  }
+
+  /// Hides a message in the current user's own view only — the other
+  /// participant still sees it.
+  Future<void> deleteForMe(String chatId, String messageId) async {
+    final me = currentUserId;
+    if (me == null) throw Exception('login-required');
+    await _chats.doc(chatId).collection('messages').doc(messageId).update({
+      'deletedFor': FieldValue.arrayUnion([me]),
+    });
+  }
+
+  /// Replaces a message with a "deleted" placeholder for both sides.
+  /// Only the original sender can do this (enforced by Firestore rules too).
+  Future<void> deleteForEveryone(String chatId, String messageId) async {
+    final me = currentUserId;
+    if (me == null) throw Exception('login-required');
+    await _chats.doc(chatId).collection('messages').doc(messageId).update({
+      'deletedForEveryone': true,
+    });
+  }
+
+  /// Re-sends [message]'s content (text, or the same media URL — no
+  /// re-upload) as a new message in [targetChatId].
+  Future<void> forwardMessage(String targetChatId, ChatMessage message) async {
+    final me = currentUserId;
+    if (me == null) throw Exception('login-required');
+    final other = await _otherParticipant(targetChatId);
+    if (other != null && other.isNotEmpty && await _blockedByRecipient(other)) {
+      throw Exception('blocked-by-recipient');
+    }
+    await _chats.doc(targetChatId).collection('messages').add({
+      'senderId': me,
+      'type': message.type,
+      'text': message.text,
+      'mediaUrl': message.mediaUrl,
+      if (message.durationMs > 0) 'durationMs': message.durationMs,
+      'createdAt': FieldValue.serverTimestamp(),
+      'forwarded': true,
+    });
   }
 }

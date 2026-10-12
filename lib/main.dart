@@ -15,7 +15,6 @@ import 'screens/auth/forgot_password_screen.dart';
 import 'screens/auth/auth_action_screen.dart';
 import 'screens/auth/register_screen.dart';
 import 'screens/home/home_router.dart';
-import 'screens/profile/general_video_player_screen.dart';
 import 'screens/chat/chat_screen.dart';
 import 'screens/profile/user_profile_screen.dart';
 import 'screens/public/public_feed_screen.dart';
@@ -173,7 +172,10 @@ class VideoContestApp extends StatelessWidget {
                 final videoId = uri.queryParameters['videoId'] ?? '';
                 if (videoId.isNotEmpty) {
                   return MaterialPageRoute(
-                    builder: (_) => GeneralVideoLinkScreen(videoId: videoId),
+                    builder: (_) => PublicFeedScreen(
+                      initialTabIndex: 0,
+                      sharedGeneralVideoId: videoId,
+                    ),
                   );
                 }
               }

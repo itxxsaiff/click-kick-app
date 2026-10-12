@@ -95,11 +95,13 @@ class PublicFeedScreen extends StatefulWidget {
     this.initialTabIndex = 0,
     this.sharedContestId,
     this.sharedAdminVideoId,
+    this.sharedGeneralVideoId,
   });
 
   final int initialTabIndex;
   final String? sharedContestId;
   final String? sharedAdminVideoId;
+  final String? sharedGeneralVideoId;
 
   @override
   State<PublicFeedScreen> createState() => _PublicFeedScreenState();
@@ -131,11 +133,14 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
     return _buildShell(
       context: context,
       labels: const <String>['Home', 'Contests', 'Search', 'Profile'],
+      // Filled in both states (not just when selected) to match Home and
+      // Messages, which are always filled — keeps the whole bar consistent
+      // instead of some icons looking "heavier" than others.
       icons: const <IconData>[
-        Icons.home_outlined,
-        Icons.emoji_events_outlined,
-        Icons.search_outlined,
-        Icons.person_outline,
+        Icons.home,
+        Icons.emoji_events,
+        Icons.search,
+        Icons.person,
       ],
       activeIcons: const <IconData>[
         Icons.home,
@@ -147,6 +152,7 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
         _HomeFeedTab(
           isVisible: _tabIndex == 0,
           sharedAdminVideoId: widget.sharedAdminVideoId,
+          sharedGeneralVideoId: widget.sharedGeneralVideoId,
           onOpenSearch: () => setState(() => _tabIndex = 2),
         ),
         ContestListScreen(
@@ -271,13 +277,10 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
                     onTap: () => setState(() => _tabIndex = 1),
                   ),
                   _NavBarUploadButton(onTap: _openUpload),
-                  _NavBarItem(
-                    icon: icons[2],
-                    activeIcon: activeIcons[2],
-                    label: context.tr(labels[2]),
-                    selected: safeIndex == 2,
-                    onTap: () => setState(() => _tabIndex = 2),
-                  ),
+                  // Search already has its own icon at the top-left of Home
+                  // (see onOpenSearch below); this bottom-nav slot shows
+                  // Messages instead, per the client's request.
+                  const _MessagesNavBarItem(),
                   _NavBarItem(
                     icon: icons[3],
                     activeIcon: activeIcons[3],
@@ -341,6 +344,85 @@ class _NavBarItem extends StatelessWidget {
   }
 }
 
+/// The "Messages" bottom-nav slot: opens the chat inbox (a push, not a tab
+/// switch, since it isn't one of the IndexedStack pages), with an
+/// unread-count dot matching the other icon badges in the app.
+class _MessagesNavBarItem extends StatefulWidget {
+  const _MessagesNavBarItem();
+
+  @override
+  State<_MessagesNavBarItem> createState() => _MessagesNavBarItemState();
+}
+
+class _MessagesNavBarItemState extends State<_MessagesNavBarItem> {
+  late final Stream<int> _unreadStream = ChatService().totalUnreadStream();
+
+  Future<void> _open(BuildContext context) async {
+    if (FirebaseAuth.instance.currentUser == null) {
+      await _promptLoginDialog(context);
+      return;
+    }
+    await stopAllFeedPlayback();
+    if (!context.mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const InboxScreen()),
+    );
+    unlockFeedPlayback();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = AppColors.textMuted.withValues(alpha: 0.95);
+    return Expanded(
+      child: InkWell(
+        onTap: () => _open(context),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            StreamBuilder<int>(
+              stream: _unreadStream,
+              builder: (context, snapshot) {
+                final unread = snapshot.data ?? 0;
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Icon(Icons.chat_bubble_rounded, color: color, size: 24),
+                    if (unread > 0)
+                      Positioned(
+                        right: -2,
+                        top: -2,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: AppColors.hotPink,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 3),
+            Text(
+              context.tr('Messages'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// The raised pink "+" button at the center of the bottom bar (Upload).
 class _NavBarUploadButton extends StatelessWidget {
   const _NavBarUploadButton({required this.onTap});
@@ -382,11 +464,13 @@ class _HomeFeedTab extends StatefulWidget {
   const _HomeFeedTab({
     required this.isVisible,
     this.sharedAdminVideoId,
+    this.sharedGeneralVideoId,
     this.onOpenSearch,
   });
 
   final bool isVisible;
   final String? sharedAdminVideoId;
+  final String? sharedGeneralVideoId;
 
   /// Opens the Search tab (the magnifier in the For You / Following header).
   final VoidCallback? onOpenSearch;
@@ -818,12 +902,19 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
       );
     }
 
+    final sharedAdminVideoId = widget.sharedAdminVideoId;
+    final sharedGeneralVideoId = widget.sharedGeneralVideoId;
     if (_feedMode == _FeedMode.forYou &&
         !_appliedSharedTarget &&
-        widget.sharedAdminVideoId != null &&
-        widget.sharedAdminVideoId!.isNotEmpty) {
+        ((sharedAdminVideoId != null && sharedAdminVideoId.isNotEmpty) ||
+            (sharedGeneralVideoId != null &&
+                sharedGeneralVideoId.isNotEmpty))) {
       final targetIndex = feedItems.indexWhere(
-        (item) => item.adminVideoId == widget.sharedAdminVideoId,
+        (item) =>
+            (sharedAdminVideoId != null &&
+                item.adminVideoId == sharedAdminVideoId) ||
+            (sharedGeneralVideoId != null &&
+                item.generalVideoId == sharedGeneralVideoId),
       );
       if (targetIndex >= 0) {
         _appliedSharedTarget = true;
@@ -1093,7 +1184,6 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
           ),
         ),
         const _NotificationBellButton(),
-        const _ChatInboxButton(),
         Expanded(
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -2239,73 +2329,6 @@ class _NotificationBellButtonState extends State<_NotificationBellButton> {
                 Icons.notifications_outlined,
                 color: Colors.white,
                 size: 26,
-                shadows: [Shadow(blurRadius: 6, color: Colors.black54)],
-              ),
-              if (unread > 0)
-                Positioned(
-                  right: -2,
-                  top: -2,
-                  child: Container(
-                    width: 10,
-                    height: 10,
-                    decoration: const BoxDecoration(
-                      color: AppColors.hotPink,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// Chat bubble icon with an unread-count badge, opening the direct message
-/// inbox. Self-contained, same pattern as [_NotificationBellButton].
-class _ChatInboxButton extends StatefulWidget {
-  const _ChatInboxButton();
-
-  @override
-  State<_ChatInboxButton> createState() => _ChatInboxButtonState();
-}
-
-class _ChatInboxButtonState extends State<_ChatInboxButton> {
-  // See the matching comment on _NotificationBellButtonState: created once
-  // so scrolling the feed doesn't keep re-subscribing this listener.
-  late final Stream<int> _unreadStream = ChatService().totalUnreadStream();
-
-  Future<void> _open(BuildContext context) async {
-    if (FirebaseAuth.instance.currentUser == null) {
-      await _promptLoginDialog(context);
-      return;
-    }
-    await stopAllFeedPlayback();
-    if (!context.mounted) return;
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const InboxScreen()),
-    );
-    unlockFeedPlayback();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<int>(
-      stream: _unreadStream,
-      builder: (context, snapshot) {
-        final unread = snapshot.data ?? 0;
-        return IconButton(
-          tooltip: context.tr('Messages'),
-          onPressed: () => _open(context),
-          icon: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              const Icon(
-                Icons.chat_bubble_outline_rounded,
-                color: Colors.white,
-                size: 24,
                 shadows: [Shadow(blurRadius: 6, color: Colors.black54)],
               ),
               if (unread > 0)

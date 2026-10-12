@@ -15,6 +15,7 @@ import '../../widgets/block_participant_dialog.dart';
 import '../../widgets/follow_widgets.dart';
 import '../../services/video_download_service.dart';
 import '../../widgets/report_video_dialog.dart';
+import '../../widgets/chat_inbox_button.dart';
 import '../chat/chat_screen.dart';
 import 'follow_list_screen.dart';
 import 'general_video_player_screen.dart';
@@ -593,6 +594,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         color: AppColors.hotPink,
                       ),
                     ),
+                    const ChatInboxButton(color: AppColors.hotPink),
                     InkWell(
                       borderRadius: BorderRadius.circular(14),
                       onTap: _openSettings,
@@ -650,7 +652,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () => _openChat(name, data.user.photoUrl),
-                    icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                    icon: const Icon(Icons.chat_bubble_rounded, size: 18),
                     label: Text(context.tr('Message')),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.white,

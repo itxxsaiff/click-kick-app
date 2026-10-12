@@ -1215,5 +1215,20 @@
   "Voice message": "رسالة صوتية",
   "Voice messages need the mobile app.": "الرسائل الصوتية تحتاج إلى تطبيق الجوال.",
   "Message": "رسالة",
-  "Unable to load messages.": "تعذر تحميل الرسائل."
+  "Unable to load messages.": "تعذر تحميل الرسائل.",
+  "You can't message this user.": "لا يمكنك مراسلة هذا المستخدم.",
+  "Forward": "إعادة توجيه",
+  "Delete for me": "حذف لدي",
+  "Delete for everyone": "حذف للجميع",
+  "This message was deleted": "تم حذف هذه الرسالة",
+  "Could not delete message.": "تعذر حذف الرسالة.",
+  "Forward to...": "إعادة التوجيه إلى...",
+  "Message forwarded.": "تم إعادة توجيه الرسالة.",
+  "Could not forward message.": "تعذر إعادة توجيه الرسالة.",
+  "Clear all": "مسح الكل",
+  "Clear all notifications?": "مسح جميع الإشعارات؟",
+  "Reply": "رد",
+  "Copy": "نسخ",
+  "Copied to clipboard.": "تم النسخ إلى الحافظة.",
+  "You": "أنت"
 }

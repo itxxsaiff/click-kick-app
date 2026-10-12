@@ -6,6 +6,7 @@ import '../../l10n/l10n.dart';
 import '../../services/general_video_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/block_participant_dialog.dart';
+import '../../widgets/moderation_stat_card.dart';
 import '../profile/general_video_player_screen.dart';
 
 /// Moderation list for General Videos, shown inside the admin "Video
@@ -36,8 +37,20 @@ class AdminGeneralVideosView extends StatelessWidget {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
+        final allDocs = snapshot.data!.docs;
+        final totalCount = allDocs.length;
+        final pendingCount = allDocs
+            .where((d) => (d.data()['status'] ?? 'pending') == 'pending')
+            .length;
+        final approvedCount = allDocs
+            .where((d) => (d.data()['status'] ?? 'pending') == 'approved')
+            .length;
+        final rejectedCount = allDocs
+            .where((d) => (d.data()['status'] ?? 'pending') == 'rejected')
+            .length;
+
         final docs =
-            snapshot.data!.docs.where((doc) {
+            allDocs.where((doc) {
               final data = doc.data();
               final status = (data['status'] ?? 'pending').toString();
               if (statusFilter != 'all' && status != statusFilter) {
@@ -58,19 +71,81 @@ class AdminGeneralVideosView extends StatelessWidget {
               return (bt ?? DateTime(2000)).compareTo(at ?? DateTime(2000));
             });
 
-        if (docs.isEmpty) {
-          return Center(
-            child: Text(
-              context.tr('No videos found for selected filter.'),
-              style: const TextStyle(color: AppColors.textMuted),
+        // One scroll view for the stat cards and the list together, so the
+        // cards aren't pinned eating into the (small) scrollable area —
+        // they now scroll away with the rest of the content.
+        return CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              sliver: SliverToBoxAdapter(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final width = constraints.maxWidth;
+                    final crossAxisCount = width > 880
+                        ? 4
+                        : width > 620
+                        ? 3
+                        : 2;
+                    return GridView.count(
+                      crossAxisCount: crossAxisCount,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 10,
+                      childAspectRatio: width > 620 ? 1.55 : 1.8,
+                      children: [
+                        ModerationStatCard(
+                          label: context.tr('Total Videos'),
+                          value: '$totalCount',
+                          icon: Icons.video_library_rounded,
+                          color: const Color(0xFF5AB4FF),
+                        ),
+                        ModerationStatCard(
+                          label: context.tr('Pending'),
+                          value: '$pendingCount',
+                          icon: Icons.hourglass_top_rounded,
+                          color: AppColors.sunset,
+                        ),
+                        ModerationStatCard(
+                          label: context.tr('Approved'),
+                          value: '$approvedCount',
+                          icon: Icons.verified_rounded,
+                          color: const Color(0xFF2DAF6F),
+                        ),
+                        ModerationStatCard(
+                          label: context.tr('Rejected'),
+                          value: '$rejectedCount',
+                          icon: Icons.cancel_rounded,
+                          color: const Color(0xFFC53D5D),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
             ),
-          );
-        }
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-          itemCount: docs.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 12),
-          itemBuilder: (context, i) => _GeneralVideoAdminCard(doc: docs[i]),
+            if (docs.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: Text(
+                    context.tr('No videos found for selected filter.'),
+                    style: const TextStyle(color: AppColors.textMuted),
+                  ),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                sliver: SliverList.separated(
+                  itemCount: docs.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 12),
+                  itemBuilder: (context, i) =>
+                      _GeneralVideoAdminCard(doc: docs[i]),
+                ),
+              ),
+          ],
         );
       },
     );
@@ -309,6 +384,42 @@ class _GeneralVideoAdminCard extends StatelessWidget {
     );
   }
 
+  Widget _buildName(
+    BuildContext context,
+    String storedUserName,
+    String userId,
+  ) {
+    const style = TextStyle(
+      color: Colors.white,
+      fontSize: 15,
+      fontWeight: FontWeight.w700,
+    );
+    if (storedUserName.isNotEmpty) {
+      return Text(
+        storedUserName,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: style,
+      );
+    }
+    if (userId.isEmpty) {
+      return Text(context.tr('Unknown User'), style: style);
+    }
+    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      future: FirebaseFirestore.instance.collection('users').doc(userId).get(),
+      builder: (context, userSnap) {
+        final liveName = (userSnap.data?.data()?['displayName'] ?? '')
+            .toString();
+        return Text(
+          liveName.isNotEmpty ? liveName : context.tr('Unknown User'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: style,
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final data = doc.data();
@@ -386,49 +497,32 @@ class _GeneralVideoAdminCard extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: storedUserName.isNotEmpty
-                ? Text(
-                    storedUserName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  )
-                : userId.isNotEmpty
-                ? FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                    future: FirebaseFirestore.instance
-                        .collection('users')
-                        .doc(userId)
-                        .get(),
-                    builder: (context, userSnap) {
-                      final liveName =
-                          (userSnap.data?.data()?['displayName'] ?? '')
-                              .toString();
-                      return Text(
-                        liveName.isNotEmpty
-                            ? liveName
-                            : context.tr('Unknown User'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      );
-                    },
-                  )
-                : Text(
-                    context.tr('Unknown User'),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildName(context, storedUserName, userId),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    statusLabel,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
+                ),
+              ],
+            ),
           ),
           PopupMenuButton<String>(
             color: AppColors.card,

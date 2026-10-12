@@ -5,6 +5,7 @@ import 'package:video_player/video_player.dart';
 import '../../l10n/l10n.dart';
 import '../../services/video_download_service.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/moderation_stat_card.dart';
 import 'admin_general_videos_view.dart';
 
 class AdminVideosScreen extends StatefulWidget {
@@ -408,32 +409,32 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                                             ? 1.55
                                             : 1.8,
                                         children: [
-                                          _ModerationStatCard(
+                                          ModerationStatCard(
                                             label: context.tr('Pending'),
                                             value:
                                                 '${pendingCount + underReviewCount}',
                                             icon: Icons.hourglass_top_rounded,
                                             color: AppColors.sunset,
                                           ),
-                                          _ModerationStatCard(
+                                          ModerationStatCard(
                                             label: context.tr('Approved'),
                                             value: '$approvedCount',
                                             icon: Icons.verified_rounded,
                                             color: const Color(0xFF2DAF6F),
                                           ),
-                                          _ModerationStatCard(
+                                          ModerationStatCard(
                                             label: context.tr('Rejected'),
                                             value: '$rejectedCount',
                                             icon: Icons.cancel_rounded,
                                             color: const Color(0xFFC53D5D),
                                           ),
-                                          _ModerationStatCard(
+                                          ModerationStatCard(
                                             label: context.tr('Total Votes'),
                                             value: '$totalVotes',
                                             icon: Icons.how_to_vote_rounded,
                                             color: const Color(0xFF5AB4FF),
                                           ),
-                                          _ModerationStatCard(
+                                          ModerationStatCard(
                                             label: context.tr('Total Shares'),
                                             value: '$totalShares',
                                             icon: Icons.share_rounded,
@@ -1658,65 +1659,6 @@ class _ModerationTab extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _ModerationStatCard extends StatelessWidget {
-  const _ModerationStatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF151324),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.18),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: color, size: 18),
-          ),
-          const Spacer(),
-          Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w800,
-              fontSize: 24,
-            ),
-          ),
-          Text(
-            label,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AppColors.textMuted,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
       ),
     );
   }

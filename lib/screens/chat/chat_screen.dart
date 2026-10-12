@@ -58,6 +58,16 @@ class _ChatScreenState extends State<ChatScreen> {
   Timer? _recordTimer;
   String? _playingMessageId;
   ChatMessage? _replyingTo;
+  final Set<String> _selectedIds = <String>{};
+  bool get _inSelectionMode => _selectedIds.isNotEmpty;
+
+  void _toggleSelect(ChatMessage message) {
+    setState(() {
+      if (!_selectedIds.remove(message.id)) _selectedIds.add(message.id);
+    });
+  }
+
+  void _exitSelection() => setState(_selectedIds.clear);
 
   @override
   void initState() {
@@ -412,6 +422,88 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _forwardSelected(List<ChatMessage> selected) async {
+    final targetChatId = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const _ForwardPickerScreen()),
+    );
+    if (targetChatId == null || !mounted) return;
+    final ordered = [...selected]
+      ..sort((a, b) {
+        final at = a.createdAt ?? DateTime(2000);
+        final bt = b.createdAt ?? DateTime(2000);
+        return at.compareTo(bt);
+      });
+    var failed = 0;
+    for (final message in ordered) {
+      try {
+        await _service.forwardMessage(targetChatId, message);
+      } catch (_) {
+        failed++;
+      }
+    }
+    _exitSelection();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          failed == 0
+              ? context.tr('Message forwarded.')
+              : context.tr('Could not forward message.'),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteSelected(List<ChatMessage> selected) async {
+    final chatId = _chatId;
+    if (chatId == null) return;
+    final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final allMine = selected.every((m) => m.senderId == myUid);
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.card,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.white),
+              title: Text(
+                sheetContext.tr('Delete for me'),
+                style: const TextStyle(color: Colors.white),
+              ),
+              onTap: () => Navigator.pop(sheetContext, 'delete_me'),
+            ),
+            if (allMine)
+              ListTile(
+                leading: const Icon(
+                  Icons.delete_forever,
+                  color: Colors.redAccent,
+                ),
+                title: Text(
+                  sheetContext.tr('Delete for everyone'),
+                  style: const TextStyle(color: Colors.redAccent),
+                ),
+                onTap: () => Navigator.pop(sheetContext, 'delete_everyone'),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    _exitSelection();
+    for (final message in selected) {
+      try {
+        if (action == 'delete_everyone') {
+          await _service.deleteForEveryone(chatId, message.id);
+        } else {
+          await _service.deleteForMe(chatId, message.id);
+        }
+      } catch (_) {}
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
@@ -458,42 +550,85 @@ class _ChatScreenState extends State<ChatScreen> {
                                 ),
                               );
                             }
-                            return ListView.builder(
-                              controller: _scrollController,
-                              reverse: true,
-                              padding: const EdgeInsets.fromLTRB(
-                                12,
-                                12,
-                                12,
-                                12,
-                              ),
-                              itemCount: messages.length,
-                              itemBuilder: (context, i) => _MessageBubble(
-                                message: messages[i],
-                                isMine: messages[i].senderId == myUid,
-                                myUid: myUid,
-                                otherUserName: widget.otherUserName,
-                                isPlayingAudio:
-                                    _playingMessageId == messages[i].id,
-                                onToggleAudio: () =>
-                                    _togglePlayAudio(messages[i]),
-                                onOpenImage: (url) => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        _ImageViewerScreen(url: url),
+                            final selected = messages
+                                .where((m) => _selectedIds.contains(m.id))
+                                .toList();
+                            final messagesById = {
+                              for (final m in messages) m.id: m,
+                            };
+                            return Column(
+                              children: [
+                                if (_inSelectionMode)
+                                  _buildSelectionBar(context, selected),
+                                Expanded(
+                                  child: ListView.builder(
+                                    controller: _scrollController,
+                                    reverse: true,
+                                    padding: const EdgeInsets.fromLTRB(
+                                      12,
+                                      12,
+                                      12,
+                                      12,
+                                    ),
+                                    itemCount: messages.length,
+                                    itemBuilder: (context, i) {
+                                      final message = messages[i];
+                                      return _MessageBubble(
+                                        message: message,
+                                        isMine: message.senderId == myUid,
+                                        myUid: myUid,
+                                        otherUserName: widget.otherUserName,
+                                        isPlayingAudio:
+                                            _playingMessageId == message.id,
+                                        selected: _selectedIds.contains(
+                                          message.id,
+                                        ),
+                                        selectionMode: _inSelectionMode,
+                                        onToggleSelect: () =>
+                                            _toggleSelect(message),
+                                        onToggleAudio: () {
+                                          if (_inSelectionMode) {
+                                            _toggleSelect(message);
+                                          } else {
+                                            _togglePlayAudio(message);
+                                          }
+                                        },
+                                        onOpenImage: (url) {
+                                          if (_inSelectionMode) {
+                                            _toggleSelect(message);
+                                            return;
+                                          }
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  _ImageViewerScreen(url: url),
+                                            ),
+                                          );
+                                        },
+                                        onOpenVideo: (url) {
+                                          if (_inSelectionMode) {
+                                            _toggleSelect(message);
+                                            return;
+                                          }
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  SimpleVideoPlayerScreen(
+                                                    videoUrl: url,
+                                                  ),
+                                            ),
+                                          );
+                                        },
+                                        onShowActions: () =>
+                                            _showMessageActions(message),
+                                        messagesById: messagesById,
+                                      );
+                                    },
                                   ),
                                 ),
-                                onOpenVideo: (url) => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        SimpleVideoPlayerScreen(videoUrl: url),
-                                  ),
-                                ),
-                                onShowActions: () =>
-                                    _showMessageActions(messages[i]),
-                              ),
+                              ],
                             );
                           },
                         ),
@@ -516,6 +651,68 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSelectionBar(BuildContext context, List<ChatMessage> selected) {
+    final single = selected.length == 1 ? selected.first : null;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      color: AppColors.card,
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: _exitSelection,
+            icon: const Icon(Icons.close, color: Colors.white),
+          ),
+          Expanded(
+            child: Text(
+              '${selected.length}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+                fontSize: 16,
+              ),
+            ),
+          ),
+          if (single != null) ...[
+            if (single.type == 'text')
+              IconButton(
+                tooltip: context.tr('Copy'),
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: single.text));
+                  _exitSelection();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(context.tr('Copied to clipboard.')),
+                      ),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.copy_rounded, color: Colors.white),
+              ),
+            IconButton(
+              tooltip: context.tr('Reply'),
+              onPressed: () {
+                setState(() => _replyingTo = single);
+                _exitSelection();
+              },
+              icon: const Icon(Icons.reply_rounded, color: Colors.white),
+            ),
+          ],
+          IconButton(
+            tooltip: context.tr('Forward'),
+            onPressed: () => _forwardSelected(selected),
+            icon: const Icon(Icons.forward_rounded, color: Colors.white),
+          ),
+          IconButton(
+            tooltip: context.tr('Delete'),
+            onPressed: () => _deleteSelected(selected),
+            icon: const Icon(Icons.delete_outline, color: Colors.white),
           ),
         ],
       ),
@@ -776,6 +973,10 @@ class _MessageBubble extends StatelessWidget {
     required this.onShowActions,
     required this.otherUserName,
     required this.myUid,
+    required this.selected,
+    required this.selectionMode,
+    required this.onToggleSelect,
+    required this.messagesById,
   });
 
   final ChatMessage message;
@@ -787,6 +988,10 @@ class _MessageBubble extends StatelessWidget {
   final VoidCallback onShowActions;
   final String otherUserName;
   final String myUid;
+  final bool selected;
+  final bool selectionMode;
+  final VoidCallback onToggleSelect;
+  final Map<String, ChatMessage> messagesById;
 
   String _formatTime(DateTime? dt) {
     if (dt == null) return '';
@@ -814,7 +1019,12 @@ class _MessageBubble extends StatelessWidget {
             ),
           );
     final bubble = GestureDetector(
-      onLongPress: message.deletedForEveryone ? null : onShowActions,
+      // Long-press selects (WhatsApp-style); the "..." button above still
+      // opens the single-message action sheet for a quicker Reply/Copy/
+      // Forward/Delete without entering multi-select. Tap-to-toggle while
+      // already in selection mode is handled by the row-wide wrapper below
+      // so the whole row (not just the tightly-sized bubble) is tappable.
+      onLongPress: message.deletedForEveryone ? null : onToggleSelect,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
         constraints: BoxConstraints(
@@ -831,12 +1041,14 @@ class _MessageBubble extends StatelessWidget {
             bottomLeft: Radius.circular(isMine ? 18 : 4),
             bottomRight: Radius.circular(isMine ? 4 : 18),
           ),
+          border: selected ? Border.all(color: Colors.white, width: 2) : null,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (message.isReply) _buildReplyQuote(context),
+            if (message.isReply && !message.deletedForEveryone)
+              _buildReplyQuote(context),
             _buildContent(context),
             const SizedBox(height: 2),
             Text(
@@ -851,19 +1063,49 @@ class _MessageBubble extends StatelessWidget {
       ),
     );
 
-    return Row(
+    final checkmark = selectionMode && !message.deletedForEveryone
+        ? Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Icon(
+              selected ? Icons.check_circle : Icons.radio_button_unchecked,
+              size: 20,
+              color: selected ? AppColors.hotPink : AppColors.textMuted,
+            ),
+          )
+        : null;
+
+    final row = Row(
       mainAxisAlignment: isMine
           ? MainAxisAlignment.end
           : MainAxisAlignment.start,
       crossAxisAlignment: CrossAxisAlignment.center,
-      children: isMine ? [?moreButton, bubble] : [bubble, ?moreButton],
+      children: isMine
+          ? [?checkmark, ?(selectionMode ? null : moreButton), bubble]
+          : [bubble, ?(selectionMode ? null : moreButton), ?checkmark],
     );
+
+    // While selecting, make the ENTIRE row tappable — not just the tightly
+    // sized bubble — so taps that land on the checkmark's padding or the
+    // empty space on the other side of the row still toggle selection.
+    // Deleted-for-everyone messages can never be selected.
+    if (selectionMode && !message.deletedForEveryone) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onToggleSelect,
+        child: row,
+      );
+    }
+    return row;
   }
 
   Widget _buildReplyQuote(BuildContext context) {
     final senderLabel = message.replyToSenderId == myUid
         ? context.tr('You')
         : otherUserName;
+    final original = messagesById[message.replyToId];
+    final preview = original != null && original.deletedForEveryone
+        ? context.tr('This message was deleted')
+        : message.replyToText;
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -884,7 +1126,7 @@ class _MessageBubble extends StatelessWidget {
             ),
           ),
           Text(
-            message.replyToText,
+            preview,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(

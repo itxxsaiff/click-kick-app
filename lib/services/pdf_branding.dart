@@ -3,11 +3,38 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart' show PdfGoogleFonts;
 
 class PdfBranding {
   static Future<Uint8List> loadLogoBytes() async {
     final data = await rootBundle.load('assets/images/logo.png');
     return data.buffer.asUint8List();
+  }
+
+  static pw.ThemeData? _cachedTheme;
+
+  /// A PDF theme that covers both Latin and Arabic glyphs. The `pdf`
+  /// package's built-in default font is Latin-only, so any Arabic text
+  /// (contest titles, participant names, ...) silently renders as empty
+  /// boxes without this. The reverse is also true: Noto Sans Arabic on its
+  /// own does NOT cover plain Latin letters, so it must be added as a
+  /// *fallback* alongside a Latin base font rather than replacing it —
+  /// otherwise English text breaks instead. Pass this to every
+  /// `pw.Document(theme: ...)` used for a report that might contain either.
+  static Future<pw.ThemeData> arabicTheme() async {
+    final cached = _cachedTheme;
+    if (cached != null) return cached;
+    final latinRegular = await PdfGoogleFonts.notoSansRegular();
+    final latinBold = await PdfGoogleFonts.notoSansBold();
+    final arabicRegular = await PdfGoogleFonts.notoSansArabicRegular();
+    final arabicBold = await PdfGoogleFonts.notoSansArabicBold();
+    final theme = pw.ThemeData.withFont(
+      base: latinRegular,
+      bold: latinBold,
+      fontFallback: [arabicRegular, arabicBold],
+    );
+    _cachedTheme = theme;
+    return theme;
   }
 
   static pw.Widget brandedHeader({

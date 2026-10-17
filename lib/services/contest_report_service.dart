@@ -199,7 +199,7 @@ class ContestReportService {
     required List<ContestWinnerRow> winners,
     required List<ContestReportParticipantRow> participants,
   }) async {
-    final doc = pw.Document();
+    final doc = pw.Document(theme: await PdfBranding.arabicTheme());
     final logo = pw.MemoryImage(await PdfBranding.loadLogoBytes());
     doc.addPage(
       pw.MultiPage(

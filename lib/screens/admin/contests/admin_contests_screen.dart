@@ -26,6 +26,14 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
   String _dateFilter = 'all';
   bool _listMode = true;
 
+  // Contest docs never carry a denormalized participant-count field — the
+  // real count lives as one submission doc per joined user. Count it via a
+  // live aggregate query across every contest's submissions subcollection.
+  late final Stream<int> _totalParticipantsStream = FirebaseFirestore.instance
+      .collectionGroup('submissions')
+      .snapshots()
+      .map((snap) => snap.docs.length);
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -222,12 +230,12 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
           behavior: SnackBarBehavior.floating,
         ),
       );
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            context.tr('Could not delete contest. Please try again.'),
+            '${context.tr('Could not delete contest. Please try again.')} ($e)',
           ),
           behavior: SnackBarBehavior.floating,
         ),
@@ -522,13 +530,20 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
                         accent: const Color(0xFFFF647A),
                         note: context.tr('Stopped contests'),
                       ),
-                      _ContestStatCard(
-                        icon: Icons.groups_2_outlined,
-                        iconColor: const Color(0xFF64A8FF),
-                        label: context.tr('Total Participants'),
-                        value: _compactNumber(totalParticipants),
-                        accent: const Color(0xFF3A7EFF),
-                        note: context.tr('Joined users'),
+                      StreamBuilder<int>(
+                        stream: _totalParticipantsStream,
+                        builder: (context, countSnap) {
+                          return _ContestStatCard(
+                            icon: Icons.groups_2_outlined,
+                            iconColor: const Color(0xFF64A8FF),
+                            label: context.tr('Total Participants'),
+                            value: _compactNumber(
+                              countSnap.data ?? totalParticipants,
+                            ),
+                            accent: const Color(0xFF3A7EFF),
+                            note: context.tr('Joined users'),
+                          );
+                        },
                       ),
                       _ContestStatCard(
                         icon: Icons.remove_red_eye_outlined,
@@ -1075,11 +1090,24 @@ class _AdminContestsScreenState extends State<AdminContestsScreen> {
                                   width: isCompactCard
                                       ? (screenWidth - 88) / 2
                                       : (screenWidth - 216) / 4,
-                                  child: _ContestInfoCell(
-                                    icon: Icons.groups_2_outlined,
-                                    label: context.tr('Participants'),
-                                    value: participants.toString(),
-                                  ),
+                                  child:
+                                      StreamBuilder<
+                                        QuerySnapshot<Map<String, dynamic>>
+                                      >(
+                                        stream: doc.reference
+                                            .collection('submissions')
+                                            .snapshots(),
+                                        builder: (context, submissionsSnap) {
+                                          final liveCount =
+                                              submissionsSnap.data?.docs.length;
+                                          return _ContestInfoCell(
+                                            icon: Icons.groups_2_outlined,
+                                            label: context.tr('Participants'),
+                                            value: (liveCount ?? participants)
+                                                .toString(),
+                                          );
+                                        },
+                                      ),
                                 ),
                                 SizedBox(
                                   width: isCompactCard

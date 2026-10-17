@@ -7,6 +7,7 @@ import 'package:video_player/video_player.dart';
 import '../../l10n/l10n.dart';
 import '../../services/auth_service.dart';
 import '../../services/short_link_service.dart';
+import '../../services/video_cache_service.dart';
 import '../../services/video_download_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/gradient_button.dart';
@@ -1261,6 +1262,17 @@ class _ContestVideoScreenState extends State<_ContestVideoScreen> {
     _votedSubmissionIds = Set.of(widget.votedSubmissionIds);
     _pageController = PageController(initialPage: _index);
     _loadVideo(widget.submissions[_index]);
+    _preloadUpcoming(_index);
+  }
+
+  /// Starts background-caching the next couple of videos so swiping to them
+  /// plays instantly instead of waiting on a fresh network fetch.
+  void _preloadUpcoming(int index) {
+    for (final i in [index + 1, index + 2]) {
+      if (i < 0 || i >= widget.submissions.length) continue;
+      final url = (widget.submissions[i].data()['videoUrl'] ?? '').toString();
+      if (url.isNotEmpty) VideoCacheService.preload(url);
+    }
   }
 
   @override
@@ -1318,6 +1330,7 @@ class _ContestVideoScreenState extends State<_ContestVideoScreen> {
             onPageChanged: (i) {
               setState(() => _index = i);
               _loadVideo(widget.submissions[i]);
+              _preloadUpcoming(i);
             },
             itemBuilder: (context, i) {
               final doc = widget.submissions[i];
@@ -1467,17 +1480,22 @@ class _ContestVideoPage extends StatelessWidget {
           '${ShortLinkService.shareBaseUrl}/contest?contestId=$contestId&submissionId=${doc.id}';
     }
     if (!context.mounted) return;
-    try {
-      await doc.reference.update({
-        'shareCount': FieldValue.increment(1),
-        'lastSharedAt': Timestamp.fromDate(DateTime.now()),
-      });
-    } catch (_) {}
-    await Share.share(
+    // Only count it as a share once the user actually goes through with it —
+    // tapping Share and then cancelling the system sheet must not inflate
+    // the count.
+    final result = await Share.share(
       '${context.tr('Vote for my video')}: $contestTitle\n$link',
       subject: contestTitle,
       sharePositionOrigin: _shareOriginForContext(context),
     );
+    if (result.status == ShareResultStatus.success) {
+      try {
+        await doc.reference.update({
+          'shareCount': FieldValue.increment(1),
+          'lastSharedAt': Timestamp.fromDate(DateTime.now()),
+        });
+      } catch (_) {}
+    }
   }
 
   Future<void> _openProfile(BuildContext context, String ownerUserId) async {
@@ -1504,9 +1522,9 @@ class _ContestVideoPage extends StatelessWidget {
       fileName: 'clickkick_${doc.id}',
     );
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.tr(result.messageKey))),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(context.tr(result.messageKey))));
   }
 
   @override

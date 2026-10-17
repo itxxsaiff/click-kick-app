@@ -359,10 +359,23 @@ class _AdminContestDrawWinnersScreenState
                                               label:
                                                   '${_fmtDate(startDate)} - ${_fmtDate(endDate)}',
                                             ),
-                                            _WinnerMeta(
-                                              icon: Icons.group_outlined,
-                                              label:
-                                                  '$participantCount ${context.tr('Videos')}',
+                                            StreamBuilder<
+                                              QuerySnapshot<
+                                                Map<String, dynamic>
+                                              >
+                                            >(
+                                              stream: contest.reference
+                                                  .collection('submissions')
+                                                  .snapshots(),
+                                              builder: (context, subsSnap) {
+                                                final liveCount =
+                                                    subsSnap.data?.docs.length;
+                                                return _WinnerMeta(
+                                                  icon: Icons.group_outlined,
+                                                  label:
+                                                      '${liveCount ?? participantCount} ${context.tr('Videos')}',
+                                                );
+                                              },
                                             ),
                                             _WinnerMeta(
                                               icon: Icons.emoji_events_outlined,

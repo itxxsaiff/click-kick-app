@@ -1230,5 +1230,20 @@
   "Reply": "Reply",
   "Copy": "Copy",
   "Copied to clipboard.": "Copied to clipboard.",
-  "You": "You"
+  "You": "You",
+  "Registration Report": "Registration Report",
+  "Sign-ups over time, by country": "Sign-ups over time, by country",
+  "Total Registrants": "Total Registrants",
+  "Cancelled Accounts": "Cancelled Accounts",
+  "Registrations over time": "Registrations over time",
+  "Daily": "Daily",
+  "Weekly": "Weekly",
+  "Monthly": "Monthly",
+  "No registration data yet.": "No registration data yet.",
+  "By country": "By country",
+  "Video Deleted": "Video Deleted",
+  "Your video was deleted.": "Your video was deleted.",
+  "Video deleted.": "Video deleted.",
+  "estimated": "estimated",
+  "Unknown": "Unknown"
 }

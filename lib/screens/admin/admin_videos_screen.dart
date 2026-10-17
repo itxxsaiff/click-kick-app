@@ -273,7 +273,16 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                                     (b.data()['createdAt'] as Timestamp?)
                                         ?.millisecondsSinceEpoch ??
                                     0;
-                                return bt.compareTo(at);
+                                // Tie-break by doc id so videos submitted in
+                                // the same millisecond always land in the
+                                // same relative order — otherwise the list
+                                // can silently reshuffle between live
+                                // rebuilds (any vote/share anywhere
+                                // re-triggers this stream) and the same
+                                // video appears to "jump" to a different
+                                // spot while scrolling.
+                                final cmp = bt.compareTo(at);
+                                return cmp != 0 ? cmp : a.id.compareTo(b.id);
                               });
 
                           final pendingCount = docs
@@ -360,7 +369,8 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                                   (b.data()['createdAt'] as Timestamp?)
                                       ?.millisecondsSinceEpoch ??
                                   0;
-                              return at.compareTo(bt);
+                              final cmp = at.compareTo(bt);
+                              return cmp != 0 ? cmp : a.id.compareTo(b.id);
                             });
                           } else if (_sortBy == 'most_votes') {
                             filtered.sort((a, b) {
@@ -368,7 +378,8 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                                   .toInt();
                               final bv = ((b.data()['voteCount'] ?? 0) as num)
                                   .toInt();
-                              return bv.compareTo(av);
+                              final cmp = bv.compareTo(av);
+                              return cmp != 0 ? cmp : a.id.compareTo(b.id);
                             });
                           } else if (_sortBy == 'most_shared') {
                             filtered.sort((a, b) {
@@ -376,7 +387,8 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                                   .toInt();
                               final bv = ((b.data()['shareCount'] ?? 0) as num)
                                   .toInt();
-                              return bv.compareTo(av);
+                              final cmp = bv.compareTo(av);
+                              return cmp != 0 ? cmp : a.id.compareTo(b.id);
                             });
                           }
 
@@ -717,6 +729,7 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                                             ?.toDate();
 
                                     return Container(
+                                      key: ValueKey(doc.id),
                                       padding: const EdgeInsets.all(10),
                                       decoration: BoxDecoration(
                                         color: const Color(0xFF151324),
@@ -1151,12 +1164,11 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                                                     context.tr('Reject'),
                                                   ),
                                                 ),
-                                              if (status == 'approved' ||
-                                                  status == 'under_review')
+                                              if (status != 'removed')
                                                 PopupMenuItem(
                                                   value: 'remove',
                                                   child: Text(
-                                                    context.tr('Remove Video'),
+                                                    context.tr('Delete Video'),
                                                   ),
                                                 ),
                                             ],
@@ -1284,7 +1296,7 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
     final reason = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(context.tr('Remove Video')),
+        title: Text(context.tr('Delete Video')),
         content: TextField(
           controller: reasonController,
           decoration: InputDecoration(
@@ -1302,7 +1314,7 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
               if (value.isEmpty) return;
               Navigator.pop(context, value);
             },
-            child: Text(context.tr('Remove')),
+            child: Text(context.tr('Delete')),
           ),
         ],
       ),
@@ -1325,13 +1337,13 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
     );
     await _notifyParticipant(
       userId: (data['userId'] ?? '').toString(),
-      title: context.tr('Video Removed'),
+      title: context.tr('Video Deleted'),
       message:
-          '${context.tr('Your video was removed.')} ${context.tr('Reason')}: $reason',
+          '${context.tr('Your video was deleted.')} ${context.tr('Reason')}: $reason',
       contestId: (data['contestId'] ?? '').toString(),
       submissionId: ref.id,
     );
-    _snack(context, context.tr('Video removed.'));
+    _snack(context, context.tr('Video deleted.'));
   }
 
   Future<void> _showDetails(

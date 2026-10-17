@@ -167,9 +167,30 @@ async function requireAdminUser(request) {
 /**
  * Deletes or cleans up private account data for a user.
  * @param {string} targetUid
+ * @param {string} reason "self" (user-initiated) or "admin" (removed by staff).
  * @return {Promise<void>}
  */
-async function cleanupUserPrivateData(targetUid) {
+async function cleanupUserPrivateData(targetUid, reason = "self") {
+  // Log the withdrawal before the users doc is gone, so registration
+  // analytics can report how many accounts were cancelled over time.
+  const userSnap = await db.collection("users").doc(targetUid).get();
+  if (userSnap.exists) {
+    const userData = userSnap.data() || {};
+    await db
+        .collection("account_deletions")
+        .doc(targetUid)
+        .set({
+          uid: targetUid,
+          role: userData.role || "",
+          phoneCountryCode: userData.phoneCountryCode || "",
+          country: userData.country || "",
+          createdAt: userData.createdAt || null,
+          deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+          reason,
+        })
+        .catch(() => null);
+  }
+
   await db
       .collection("login_otps")
       .doc(targetUid)
@@ -748,7 +769,7 @@ exports.deleteUserAccountPermanently = onCall(async (request) => {
     );
   }
 
-  await cleanupUserPrivateData(targetUid);
+  await cleanupUserPrivateData(targetUid, "admin");
 
   try {
     await admin.auth().deleteUser(targetUid);
@@ -2097,6 +2118,15 @@ exports.generateVideoThumbnail = onObjectFinalized(
       const filePath = object.name || "";
       const contentType = object.contentType || "";
       if (!contentType.startsWith("video/")) return;
+      // Ignore watermarked copies: thumbnailTargetDoc() only strips the file
+      // extension, so "<id>_watermarked.mp4" would resolve to a doc id of
+      // "<id>_watermarked" — a phantom submission that doesn't exist and
+      // gets silently created with nothing but a thumbnailUrl, then shows up
+      // in admin moderation as a blank "pending" ghost entry next to the
+      // real (already-reviewed) video. The original upload already got its
+      // thumbnail before watermarking ever ran, so there's nothing to do
+      // here for the watermarked copy anyway.
+      if (path.basename(filePath).includes("_watermarked")) return;
 
       const docRef = thumbnailTargetDoc(filePath);
       if (!docRef) return;
@@ -2360,3 +2390,4 @@ exports.onChatMessageCreated = onDocumentCreated(
           });
     },
 );
+

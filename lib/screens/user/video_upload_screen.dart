@@ -242,18 +242,26 @@ class _VideoUploadScreenState extends State<VideoUploadScreen> {
         }
       }
 
-      final existing = await submissionsRef
-          .where('userId', isEqualTo: user.uid)
-          .limit(1)
-          .get()
-          .timeout(const Duration(seconds: 20));
-      if (existing.docs.isNotEmpty) {
-        _show(context.tr('You already submitted for this contest.'));
-        setState(() => _saving = false);
-        return;
+      // One submission doc per (contest, user), by construction: the doc id
+      // is the user's own uid, not a random auto-id. This is what actually
+      // prevents duplicates — a query-then-create check here can't, because
+      // the upload below can take minutes, and a second attempt started
+      // while the first is still uploading would pass the same "no existing
+      // doc yet" check and create a second document once both finish.
+      final doc = submissionsRef.doc(user.uid);
+      final existingSnap = await doc.get().timeout(
+        const Duration(seconds: 20),
+      );
+      if (existingSnap.exists) {
+        final existingStatus = (existingSnap.data()?['status'] ?? 'pending')
+            .toString();
+        if (existingStatus != 'rejected' && existingStatus != 'removed') {
+          _show(context.tr('You already submitted for this contest.'));
+          setState(() => _saving = false);
+          return;
+        }
       }
 
-      final doc = submissionsRef.doc();
       final storageRef = FirebaseStorage.instance.ref().child(
         'videos/${user.uid}/${widget.contestId}/${doc.id}.mp4',
       );

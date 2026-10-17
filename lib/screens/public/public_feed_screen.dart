@@ -36,6 +36,7 @@ import '../user/video_capture_screen.dart';
 import '../../services/chat_service.dart';
 import '../../services/general_video_service.dart';
 import '../../services/short_link_service.dart';
+import '../../services/video_cache_service.dart';
 import '../../services/video_download_service.dart';
 import '../chat/inbox_screen.dart';
 
@@ -659,6 +660,20 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
     }
   }
 
+  /// Starts background-caching the video(s) right after [index] in
+  /// [feedItems], so by the time the user actually swipes there, it plays
+  /// from disk instantly instead of showing a loading spinner while it
+  /// streams from Firebase Storage for the first time.
+  void _preloadUpcoming(List<_FeedItem> feedItems, int index) {
+    for (final i in [index + 1, index + 2]) {
+      if (i < 0 || i >= feedItems.length) continue;
+      final item = feedItems[i];
+      if (item.hasVideo && item.videoUrl.isNotEmpty) {
+        VideoCacheService.preload(item.videoUrl);
+      }
+    }
+  }
+
   void _scheduleActiveVideoSync(_FeedItem item, {required bool autoplay}) {
     if (_feedPlaybackLocked) return;
     final desiredUrl = item.hasVideo && item.videoUrl.isNotEmpty
@@ -936,6 +951,7 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
     final activeItem = feedItems[safeIndex];
     if (widget.isVisible) {
       _scheduleActiveVideoSync(activeItem, autoplay: true);
+      _preloadUpcoming(feedItems, safeIndex);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _trackFeedVideoView(activeItem);
       });
@@ -955,6 +971,7 @@ class _HomeFeedTabState extends State<_HomeFeedTab> with RouteAware {
         } else {
           await _clearActiveVideo();
         }
+        _preloadUpcoming(feedItems, i);
       },
       itemBuilder: (context, index) {
         final item = feedItems[index];

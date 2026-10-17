@@ -41,7 +41,7 @@ class EmployeeReportService {
   Future<Uint8List> buildAllEmployeesReport({
     required List<EmployeeSummaryRow> rows,
   }) async {
-    final doc = pw.Document();
+    final doc = pw.Document(theme: await PdfBranding.arabicTheme());
     final logo = pw.MemoryImage(await PdfBranding.loadLogoBytes());
     doc.addPage(
       pw.MultiPage(
@@ -92,7 +92,7 @@ class EmployeeReportService {
     required int rejectedCount,
     required List<EmployeeVideoRow> videos,
   }) async {
-    final doc = pw.Document();
+    final doc = pw.Document(theme: await PdfBranding.arabicTheme());
     final logo = pw.MemoryImage(await PdfBranding.loadLogoBytes());
     doc.addPage(
       pw.MultiPage(

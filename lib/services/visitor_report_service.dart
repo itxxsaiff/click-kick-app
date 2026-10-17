@@ -37,7 +37,7 @@ class VisitorReportService {
   Future<Uint8List> buildAllVisitorsReport({
     required List<VisitorSummaryRow> rows,
   }) async {
-    final doc = pw.Document();
+    final doc = pw.Document(theme: await PdfBranding.arabicTheme());
     final logo = pw.MemoryImage(await PdfBranding.loadLogoBytes());
     doc.addPage(
       pw.MultiPage(
@@ -88,7 +88,7 @@ class VisitorReportService {
     required int totalVotes,
     required List<VisitorVoteRow> votes,
   }) async {
-    final doc = pw.Document();
+    final doc = pw.Document(theme: await PdfBranding.arabicTheme());
     final logo = pw.MemoryImage(await PdfBranding.loadLogoBytes());
     doc.addPage(
       pw.MultiPage(

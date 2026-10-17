@@ -43,7 +43,7 @@ class ParticipantReportService {
   Future<Uint8List> buildAllParticipantsReport({
     required List<ParticipantSummaryRow> rows,
   }) async {
-    final doc = pw.Document();
+    final doc = pw.Document(theme: await PdfBranding.arabicTheme());
     final logo = pw.MemoryImage(await PdfBranding.loadLogoBytes());
     doc.addPage(
       pw.MultiPage(
@@ -100,7 +100,7 @@ class ParticipantReportService {
     required int pendingCount,
     required List<ParticipantContestRow> contests,
   }) async {
-    final doc = pw.Document();
+    final doc = pw.Document(theme: await PdfBranding.arabicTheme());
     final logo = pw.MemoryImage(await PdfBranding.loadLogoBytes());
     doc.addPage(
       pw.MultiPage(

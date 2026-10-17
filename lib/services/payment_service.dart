@@ -61,7 +61,7 @@ class PaymentService {
     required double amount,
     required String currency,
   }) async {
-    final doc = pw.Document();
+    final doc = pw.Document(theme: await PdfBranding.arabicTheme());
     final logo = pw.MemoryImage(await PdfBranding.loadLogoBytes());
 
     doc.addPage(

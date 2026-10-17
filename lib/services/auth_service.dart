@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -814,6 +815,13 @@ class AuthService {
       // which is what we want for every login after the first.
       if (!snap.exists) 'role': enumToName(roleIfMissing),
       if (!snap.exists) 'createdAt': now,
+      // Google/Apple sign-in never asks for a phone number, so there's no
+      // phoneCountryCode to report on for these accounts. Fall back to the
+      // device's locale at first sign-in as a best-effort guess, so the
+      // admin registration report isn't entirely "Unknown" for them.
+      if (!snap.exists && (existingData['phoneCountryCode'] == null))
+        'localeCountryCode':
+            ui.PlatformDispatcher.instance.locale.countryCode ?? '',
       'pendingEmail': FieldValue.delete(),
       'updatedAt': now,
     }, SetOptions(merge: true));

@@ -1230,5 +1230,20 @@
   "Reply": "رد",
   "Copy": "نسخ",
   "Copied to clipboard.": "تم النسخ إلى الحافظة.",
-  "You": "أنت"
+  "You": "أنت",
+  "Registration Report": "تقرير التسجيل",
+  "Sign-ups over time, by country": "التسجيلات عبر الزمن، حسب الدولة",
+  "Total Registrants": "إجمالي المسجلين",
+  "Cancelled Accounts": "حسابات ملغاة",
+  "Registrations over time": "التسجيلات عبر الزمن",
+  "Daily": "يومي",
+  "Weekly": "أسبوعي",
+  "Monthly": "شهري",
+  "No registration data yet.": "لا توجد بيانات تسجيل بعد.",
+  "By country": "حسب الدولة",
+  "Video Deleted": "تم حذف الفيديو",
+  "Your video was deleted.": "تم حذف الفيديو الخاص بك.",
+  "Video deleted.": "تم حذف الفيديو.",
+  "estimated": "تقديري",
+  "Unknown": "غير معروف"
 }

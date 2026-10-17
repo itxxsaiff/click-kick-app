@@ -8,6 +8,7 @@ import '../../services/auth_service.dart';
 import '../../services/follow_service.dart';
 import '../../services/general_video_service.dart';
 import '../../services/short_link_service.dart';
+import '../../services/video_cache_service.dart';
 import '../../services/video_download_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/follow_widgets.dart';
@@ -25,6 +26,12 @@ String formatCount(int value) {
 
 /// Opens [url] in a new [VideoPlayerController], retrying a failed load.
 ///
+/// Checks the on-disk video cache first — a video that was already watched
+/// (or already preloaded) plays back from the local file instantly instead
+/// of re-fetching it from Firebase Storage. On a cache miss, falls back to
+/// streaming from the network and kicks off a background download so the
+/// *next* play of this same video is instant.
+///
 /// Browsers fetch fragmented MP4s (common for videos saved from other apps)
 /// with many range requests, and Firebase Storage occasionally answers one of
 /// them with a redirect. Chrome then reports MEDIA_ERR_SRC_NOT_SUPPORTED for a
@@ -34,6 +41,20 @@ Future<VideoPlayerController> openVideoWithRetry(
   String url, {
   int attempts = 3,
 }) async {
+  final cached = await VideoCacheService.getCachedFile(url);
+  if (cached != null) {
+    final controller = VideoPlayerController.file(cached.file);
+    try {
+      await controller.initialize();
+      return controller;
+    } catch (e) {
+      debugPrint('Cached video load failed, falling back to network: $e');
+      await controller.dispose();
+    }
+  } else {
+    VideoCacheService.preload(url);
+  }
+
   Object? lastError;
   for (var attempt = 1; attempt <= attempts; attempt++) {
     final controller = VideoPlayerController.networkUrl(Uri.parse(url));

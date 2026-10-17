@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 
 import '../../l10n/l10n.dart';
 import '../../theme/app_colors.dart';
+import '../profile/general_video_player_screen.dart'
+    show SimpleVideoPlayerScreen;
 
 class AdminVideoReportsScreen extends StatefulWidget {
   const AdminVideoReportsScreen({super.key});
@@ -106,6 +108,7 @@ class _AdminVideoReportsScreenState extends State<AdminVideoReportsScreen> {
                             _handleAction(doc.reference, action),
                         onQuickAction: (action) =>
                             _handleAction(doc.reference, action),
+                        onWatch: () => _watchVideo(doc.data()),
                       ),
                       const SizedBox(height: 10),
                     ],
@@ -116,6 +119,9 @@ class _AdminVideoReportsScreenState extends State<AdminVideoReportsScreen> {
                           ? null
                           : (action) =>
                                 _handleAction(selectedDoc.reference, action),
+                      onWatch: selectedDoc == null
+                          ? null
+                          : () => _watchVideo(selectedDoc.data()),
                     ),
                     const SizedBox(height: 12),
                     Center(
@@ -226,6 +232,57 @@ class _AdminVideoReportsScreenState extends State<AdminVideoReportsScreen> {
       'reviewedAt': Timestamp.fromDate(DateTime.now().toUtc()),
       'updatedAt': Timestamp.fromDate(DateTime.now().toUtc()),
     });
+  }
+
+  // A report only stores a reference (contestId+submissionId, or
+  // adminVideoId) to the reported video, not its videoUrl directly — so
+  // watching it means resolving that reference first.
+  Future<void> _watchVideo(Map<String, dynamic> data) async {
+    final type = _videoTypeKey(data);
+    String? videoUrl;
+    try {
+      if (type == 'contest') {
+        final contestId = (data['contestId'] ?? '').toString();
+        final submissionId = (data['submissionId'] ?? '').toString();
+        if (contestId.isNotEmpty && submissionId.isNotEmpty) {
+          final snap = await FirebaseFirestore.instance
+              .collection('contests')
+              .doc(contestId)
+              .collection('submissions')
+              .doc(submissionId)
+              .get();
+          videoUrl = (snap.data()?['videoUrl'] ?? '').toString();
+        }
+      } else {
+        final adminVideoId = (data['adminVideoId'] ?? '').toString();
+        if (adminVideoId.isNotEmpty) {
+          final snap = await FirebaseFirestore.instance
+              .collection('general_videos')
+              .doc(adminVideoId)
+              .get();
+          videoUrl = (snap.data()?['videoUrl'] ?? '').toString();
+        }
+      }
+    } catch (_) {
+      videoUrl = null;
+    }
+
+    if (!mounted) return;
+    if (videoUrl == null || videoUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.tr('Video unavailable.')),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SimpleVideoPlayerScreen(videoUrl: videoUrl!),
+      ),
+    );
   }
 }
 
@@ -538,6 +595,7 @@ class _ReportCard extends StatelessWidget {
     required this.onTap,
     required this.onMenuSelected,
     required this.onQuickAction,
+    required this.onWatch,
   });
 
   final Map<String, dynamic> data;
@@ -545,6 +603,7 @@ class _ReportCard extends StatelessWidget {
   final VoidCallback onTap;
   final ValueChanged<_ReportAction> onMenuSelected;
   final ValueChanged<_ReportAction> onQuickAction;
+  final VoidCallback onWatch;
 
   @override
   Widget build(BuildContext context) {
@@ -691,6 +750,14 @@ class _ReportCard extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         _StatusPill(status: status),
+                        IconButton(
+                          onPressed: onWatch,
+                          tooltip: context.tr('Watch Video'),
+                          icon: const Icon(
+                            Icons.play_circle_fill_rounded,
+                            color: Color(0xFF3A7EFF),
+                          ),
+                        ),
                         PopupMenuButton<_ReportAction>(
                           onSelected: onMenuSelected,
                           color: const Color(0xFF151E31),
@@ -856,10 +923,15 @@ class _QuickActionChip extends StatelessWidget {
 }
 
 class _ReportDetailPanel extends StatelessWidget {
-  const _ReportDetailPanel({required this.data, required this.onAction});
+  const _ReportDetailPanel({
+    required this.data,
+    required this.onAction,
+    required this.onWatch,
+  });
 
   final Map<String, dynamic>? data;
   final ValueChanged<_ReportAction>? onAction;
+  final VoidCallback? onWatch;
 
   @override
   Widget build(BuildContext context) {
@@ -1062,6 +1134,11 @@ class _ReportDetailPanel extends StatelessWidget {
             spacing: 10,
             runSpacing: 10,
             children: [
+              _ActionButton(
+                label: context.tr('Watch Video'),
+                color: const Color(0xFF3A7EFF),
+                onTap: onWatch,
+              ),
               if (status != 'resolved')
                 _ActionButton(
                   label: context.tr('Mark reviewed'),

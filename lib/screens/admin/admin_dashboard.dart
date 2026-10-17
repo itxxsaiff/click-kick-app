@@ -18,6 +18,7 @@ import 'admin_contest_draw_winners_screen.dart';
 import 'admin_support_screen.dart';
 import 'payments/admin_invoices_screen.dart';
 import 'payments/admin_payments_screen.dart';
+import 'admin_registration_stats_screen.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key, required this.displayName});
@@ -269,6 +270,20 @@ class _AdminDashboardState extends State<AdminDashboard> {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const AdminParticipantsScreen()),
+          );
+        },
+      ),
+      _AdminModuleItem(
+        title: context.tr('Registration Report'),
+        subtitle: context.tr('Sign-ups over time, by country'),
+        icon: Icons.insert_chart_outlined_rounded,
+        accent: const Color(0xFF3A7EFF),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const AdminRegistrationStatsScreen(),
+            ),
           );
         },
       ),
